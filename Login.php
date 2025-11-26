@@ -19,7 +19,7 @@ $msg = $_GET['msg'] ?? '';
         <div class="col-4">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="card-title mb-4">Login</h4>
+                    <h4 class="card-title mb-4">Login usuarios</h4>
                     <?php if($msg): ?>
                         <div class="alert alert-danger"><?= $msg ?></div>
                     <?php endif; ?>
