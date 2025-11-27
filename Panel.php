@@ -14,35 +14,53 @@ if (empty($_SESSION['Usuario'])) {
     <meta charset="utf-8">
     <title>Panel de Usuario</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .sidebar {
+            width: 220px;
+            background-color: #0d6efd;
+            color: white;
+            flex-shrink: 0;
+        }
+        .sidebar .nav-link {
+            color: white;
+        }
+        .sidebar .nav-link.active {
+            background-color: #084298;
+        }
+        .content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+        .sidebar .navbar-brand {
+            padding: 1rem;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+    </style>
 </head>
-<body class="bg-light">
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="#">Mi App</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu" aria-controls="navbarMenu" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarMenu">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link" href="Transfers.php">➕ Registrar Transferencia</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="Reportes.php">📄 Reportes</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="CrearUsuarios.php">👥 Usuarios</a>
-                </li>
-            </ul>
-            <span class="navbar-text me-3">
-                Bienvenido, <?= $_SESSION['Usuario'] ?>
-            </span>
-            <a href="Logout.php" class="btn btn-outline-light">Cerrar sesión</a>
-        </div>
-    </div>
-</nav>
+<body>
 
-<div class="container mt-4">
+<div class="sidebar d-flex flex-column">
+    <a class="navbar-brand text-white" href="#">Mi App</a>
+    <nav class="nav flex-column px-2">
+        <a class="nav-link" href="Transfers.php">➕ Registrar Transferencia</a>
+        <a class="nav-link" href="Reportes.php">📄 Reportes</a>
+        <a class="nav-link" href="CrearUsuarios.php">👥 Usuarios</a>
+        <a class="nav-link" href="CrearAutorizaciones.php">📋 Autorizaciones</a>
+        <a class="nav-link" href="CrearAutoTerceros.php">🗂️ Autorizaciones por Usuario</a>
+    </nav>
+    <div class="mt-auto p-3">
+        <div>Bienvenido, <?= $_SESSION['Usuario'] ?></div>
+        <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
+    </div>
+</div>
+
+<div class="content">
     <h2>Panel de control</h2>
     <p>Selecciona una opción del menú para comenzar.</p>
 </div>
