@@ -16,7 +16,10 @@ $terceros = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros ORDER BY Nomb
 // Obtener lista de autorizaciones activas
 $autorizaciones = $mysqli->query("SELECT Nro_Auto, Nombre FROM Autorizaciones WHERE Estado='1' ORDER BY Nro_Auto ASC");
 
-// Crear asignación
+// Filtrar por tercero si se selecciona
+$filtroTercero = $_GET['filtro_tercero'] ?? '';
+
+// Crear asignación individual
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarAsignacion'])) {
     $cedula = $_POST['CedulaNit'];
     $Nro_Auto = $_POST['Nro_Auto'];
@@ -35,6 +38,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarAsignacion']))
     }
 }
 
+// Copiar permisos de un tercero a otro
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['copiarPermisos'])) {
+    $origen = $_POST['CedulaOrigen'];
+    $destino = $_POST['CedulaDestino'];
+    if (empty($origen) || empty($destino) || $origen === $destino) {
+        $mensaje = "Debe seleccionar un tercero origen y otro destino diferente.";
+    } else {
+        $result = $mysqli->query("SELECT Nro_Auto, Swich FROM autorizacion_tercero WHERE CedulaNit='$origen'");
+        while ($row = $result->fetch_assoc()) {
+            $stmt = $mysqli->prepare("INSERT IGNORE INTO autorizacion_tercero (CedulaNit, Nro_Auto, Swich) VALUES (?, ?, ?)");
+            $stmt->bind_param("sss", $destino, $row['Nro_Auto'], $row['Swich']);
+            $stmt->execute();
+            $stmt->close();
+        }
+        $mensaje = "Permisos copiados de manera exitosa.";
+    }
+}
+
 // Eliminar asignación
 if (isset($_GET['delete'])) {
     $id_delete = intval($_GET['delete']);
@@ -48,13 +69,15 @@ if (isset($_GET['delete'])) {
     $stmt->close();
 }
 
-// Obtener todas las asignaciones
+// Obtener todas las asignaciones con filtro
+$where = $filtroTercero ? "WHERE at.CedulaNit='$filtroTercero'" : "";
 $asignaciones = $mysqli->query("
     SELECT at.Id, at.CedulaNit, t.Nombre, a.Nro_Auto, a.Nombre AS AutoNombre, at.Swich, at.Estado, at.F_Creacion
     FROM autorizacion_tercero at
     INNER JOIN terceros t ON at.CedulaNit = t.CedulaNit
     INNER JOIN Autorizaciones a ON at.Nro_Auto = a.Nro_Auto
-    ORDER BY at.CedulaNit,a.Nro_Auto asc
+    $where
+    ORDER BY at.CedulaNit, a.Nro_Auto ASC
 ");
 
 $UsuarioSesion = $_SESSION['Usuario'];
@@ -67,10 +90,7 @@ $UsuarioSesion = $_SESSION['Usuario'];
 <title>Asignar Autorizaciones</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-body {
-    background-color: #f3f4f6;
-    padding: 20px;
-}
+body { background-color: #f3f4f6; padding: 20px; }
 .card { margin-bottom: 20px; border-radius: 0.5rem; }
 .table thead { background-color: #343a40; color: #fff; }
 </style>
@@ -81,8 +101,35 @@ body {
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Asignaciones de Autorizaciones</h2>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAsignacion">➕ Nueva Asignación</button>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAsignacion">➕ Nueva Asignación</button>
+            <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalCopiar">📋 Copiar Permisos</button>
+        </div>
     </div>
+
+    <!-- Filtro por tercero -->
+    <form method="get" class="mb-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label for="filtro_tercero" class="col-form-label">Filtrar por Tercero:</label>
+            </div>
+            <div class="col-auto">
+                <select name="filtro_tercero" id="filtro_tercero" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Todos los terceros --</option>
+                    <?php
+                    $terceros->data_seek(0);
+                    while ($t = $terceros->fetch_assoc()):
+                        $selected = $t['CedulaNit'] === $filtroTercero ? "selected" : "";
+                    ?>
+                        <option value="<?= $t['CedulaNit'] ?>" <?= $selected ?>><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+            <div class="col-auto">
+                <a href="?" class="btn btn-outline-secondary">Limpiar filtro</a>
+            </div>
+        </div>
+    </form>
 
     <?php if ($mensaje): ?>
         <div class="alert alert-info"><?= $mensaje ?></div>
@@ -125,7 +172,7 @@ body {
     </div>
 </div>
 
-<!-- Modal para nueva asignación -->
+<!-- Modal nueva asignación -->
 <div class="modal fade" id="modalAsignacion" tabindex="-1" aria-labelledby="modalAsignacionLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -171,6 +218,51 @@ body {
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary">Guardar Asignación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal copiar permisos -->
+<div class="modal fade" id="modalCopiar" tabindex="-1" aria-labelledby="modalCopiarLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalCopiarLabel">Copiar Permisos</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+            <div class="mb-3">
+                <label for="CedulaOrigen" class="form-label">Tercero Origen</label>
+                <select name="CedulaOrigen" id="CedulaOrigen" class="form-select" required>
+                    <option value="">-- Seleccione un tercero origen --</option>
+                    <?php
+                    $terceros->data_seek(0);
+                    while ($t = $terceros->fetch_assoc()):
+                    ?>
+                        <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="CedulaDestino" class="form-label">Tercero Destino</label>
+                <select name="CedulaDestino" id="CedulaDestino" class="form-select" required>
+                    <option value="">-- Seleccione un tercero destino --</option>
+                    <?php
+                    $terceros->data_seek(0);
+                    while ($t = $terceros->fetch_assoc()):
+                    ?>
+                        <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+            <input type="hidden" name="copiarPermisos" value="1">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Copiar Permisos</button>
         </div>
       </form>
     </div>
