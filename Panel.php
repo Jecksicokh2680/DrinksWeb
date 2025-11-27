@@ -2,6 +2,8 @@
 require 'Conexion.php';
 require 'helpers.php';
 
+session_start();
+
 if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php?msg=Debe iniciar sesión");
     exit;
@@ -22,7 +24,6 @@ function Autorizacion($User, $Solicitud) {
 }
 
 $UsuarioSesion = $_SESSION['Usuario'];
-
 ?>
 
 <!doctype html>
@@ -33,15 +34,16 @@ $UsuarioSesion = $_SESSION['Usuario'];
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
     body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
         display: flex;
-        min-height: 100vh;
-        overflow-x: hidden;
+        height: 100vh;
     }
     .sidebar {
         width: 220px;
         background-color: #0d6efd;
         color: white;
-        flex-shrink: 0;
         display: flex;
         flex-direction: column;
     }
@@ -51,14 +53,19 @@ $UsuarioSesion = $_SESSION['Usuario'];
     .sidebar .nav-link.active {
         background-color: #084298;
     }
-    .content {
-        flex-grow: 1;
-        padding: 20px;
-    }
     .sidebar .navbar-brand {
         padding: 1rem;
         font-weight: bold;
         font-size: 1.2rem;
+    }
+    .sidebar .mt-auto {
+        margin-top: auto;
+    }
+    .content-frame {
+        flex-grow: 1;
+        border: none;
+        width: 100%;
+        height: 100%;
     }
     @media (max-width: 768px) {
         .sidebar {
@@ -66,8 +73,8 @@ $UsuarioSesion = $_SESSION['Usuario'];
             left: -250px;
             top: 0;
             height: 100%;
-            transition: 0.3s;
             z-index: 999;
+            transition: 0.3s;
         }
         .sidebar.show {
             left: 0;
@@ -81,17 +88,15 @@ $UsuarioSesion = $_SESSION['Usuario'];
 <div class="sidebar d-flex flex-column" id="sidebar">
     <a class="navbar-brand text-white" href="#">Mi App</a>
     <nav class="nav flex-column px-2">
-        <a class="nav-link" href="Transfers.php">➕ Registrar Transferencia</a>
-        <a class="nav-link" href="Reportes.php">📄 Reportes</a>
+        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Registrar Transferencia</a>
+        <a class="nav-link" href="Reportes.php" target="contentFrame">📄 Reportes</a>
 
         <!-- Permiso Usuarios -->
         <?php if (Autorizacion($UsuarioSesion,'0001') === "SI"): ?>
-            <a class="nav-link" href="CrearUsuarios.php">👥 Usuarios</a>
-            <a class="nav-link" href="CrearAutorizaciones.php">📋 Autorizaciones</a>
-            <a class="nav-link" href="CrearAutoTerceros.php">🗂️ Autorizaciones por Usuario</a>
+            <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
+            <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
+            <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Autorizaciones por Usuario</a>
         <?php endif; ?>
-
-        
     </nav>
     <div class="mt-auto p-3">
         <div>Bienvenido, <?= htmlspecialchars($UsuarioSesion) ?></div>
@@ -99,17 +104,21 @@ $UsuarioSesion = $_SESSION['Usuario'];
     </div>
 </div>
 
-<!-- Contenido principal -->
-<div class="content">
-    <button class="btn btn-primary mb-3 d-md-none" id="toggleSidebar">☰ Menú</button>
-
-    <h2>Panel de control</h2>
-    <p>Selecciona una opción del menú para comenzar.</p>
-</div>
+<!-- Contenido principal (iframe) -->
+<iframe src="" name="contentFrame" class="content-frame" id="contentFrame"></iframe>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    const toggleBtn = document.getElementById('toggleSidebar');
+    // Toggle sidebar en móviles
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn btn-primary d-md-none';
+    toggleBtn.textContent = '☰ Menú';
+    toggleBtn.style.position = 'fixed';
+    toggleBtn.style.top = '10px';
+    toggleBtn.style.left = '10px';
+    toggleBtn.style.zIndex = '1000';
+    document.body.appendChild(toggleBtn);
+
     const sidebar = document.getElementById('sidebar');
     toggleBtn.addEventListener('click', () => {
         sidebar.classList.toggle('show');

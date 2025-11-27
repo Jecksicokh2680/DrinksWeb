@@ -1,6 +1,7 @@
 <?php
 require 'Conexion.php';
 require 'helpers.php';
+session_start();
 
 if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php?msg=Debe iniciar sesión");
@@ -34,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $mysqli->prepare("INSERT INTO Autorizaciones (Nro_Auto, Nombre) VALUES (?, ?)");
         $stmt->bind_param("ss", $nro_auto, $nombre);
         if ($stmt->execute()) {
-            //$mensaje = "Autorización creada exitosamente con número $nro_auto.";
+            $mensaje = "Autorización creada exitosamente con número $nro_auto.";
         } else {
             $mensaje = ($mysqli->errno === 1062) ? "El número de autorización $nro_auto ya existe." : "Error: " . $mysqli->error;
         }
@@ -50,88 +51,19 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Id_Auto DESC");
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Autorizaciones - Panel Gerencial</title>
+<title>Autorizaciones</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-    body {
-        display: flex;
-        min-height: 100vh;
-        overflow-x: hidden;
-    }
-    .sidebar {
-        width: 240px;
-        background-color: #1f2937;
-        color: #fff;
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-    }
-    .sidebar a.nav-link {
-        color: #fff;
-        padding: 0.75rem 1rem;
-    }
-    .sidebar a.nav-link.active, .sidebar a.nav-link:hover {
-        background-color: #111827;
-    }
-    .sidebar .brand {
-        font-size: 1.5rem;
-        font-weight: bold;
-        padding: 1rem;
-        text-align: center;
-        border-bottom: 1px solid #374151;
-    }
-    .sidebar .user-info {
-        margin-top: auto;
-        padding: 1rem;
-        border-top: 1px solid #374151;
-        text-align: center;
-    }
-    .content {
-        flex-grow: 1;
-        padding: 2rem;
-        background-color: #f3f4f6;
-    }
-    @media (max-width: 768px) {
-        .sidebar {
-            position: fixed;
-            left: -250px;
-            top: 0;
-            height: 100%;
-            transition: 0.3s;
-            z-index: 999;
-        }
-        .sidebar.show {
-            left: 0;
-        }
-        .content {
-            padding: 1rem;
-        }
-    }
+    body { background-color: #f3f4f6; padding: 20px; }
+    .card { margin-bottom: 20px; border-radius: 0.5rem; }
+    .table thead { background-color: #343a40; color: #fff; }
 </style>
 </head>
 <body>
 
-<!-- Sidebar -->
-<div class="sidebar" id="sidebar">
-    <div class="brand">Mi Panel</div>
-    <nav class="nav flex-column mt-3">
-        <a class="nav-link" href="Transfers.php">➕ Registrar Transferencia</a>
-        <a class="nav-link" href="Reportes.php">📄 Reportes</a>
-        <a class="nav-link" href="CrearUsuarios.php">👥 Usuarios</a>
-        <a class="nav-link active" href="CrearAutorizaciones.php">📋 Autorizaciones</a>
-        <a class="nav-link" href="CrearAutoTerceros.php">🗂️ Autorizaciones por Usuario</a>
-    </nav>
-    <div class="user-info">
-        <div>Bienvenido, <?= $_SESSION['Usuario'] ?></div>
-        <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
-    </div>
-</div>
+<div class="container">
 
-<!-- Contenido principal -->
-<div class="content">
-    <button class="btn btn-primary mb-3 d-md-none" id="toggleSidebar">☰ Menú</button>
-
-    <div class="card mb-4">
+    <div class="card">
         <div class="card-header bg-primary text-white">Crear Nueva Autorización</div>
         <div class="card-body">
             <?php if ($mensaje): ?>
@@ -156,7 +88,7 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Id_Auto DESC");
         <div class="card-header bg-secondary text-white">Autorizaciones Registradas</div>
         <div class="card-body table-responsive">
             <table class="table table-bordered table-striped mb-0">
-                <thead class="table-dark">
+                <thead>
                     <tr>
                         <th>ID</th>
                         <th>Número</th>
@@ -179,20 +111,16 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Id_Auto DESC");
                         </td>
                     </tr>
                     <?php endwhile; ?>
+                    <?php if ($result->num_rows === 0): ?>
+                        <tr><td colspan="6" class="text-center">No hay autorizaciones registradas.</td></tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
     </div>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    const toggleBtn = document.getElementById('toggleSidebar');
-    const sidebar = document.getElementById('sidebar');
-    toggleBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('show');
-    });
-</script>
-
 </body>
 </html>

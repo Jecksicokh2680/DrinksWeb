@@ -7,19 +7,19 @@ if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php?msg=Debe iniciar sesión");
     exit;
 }
+
 $mensaje = "";
 
 // Obtener lista de terceros
 $terceros = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros ORDER BY Nombre ASC");
 
 // Obtener lista de autorizaciones activas
-$autorizaciones = $mysqli->query("SELECT  Nro_Auto, Nombre FROM Autorizaciones WHERE Estado='1' ORDER BY Nro_Auto ASC");
+$autorizaciones = $mysqli->query("SELECT Nro_Auto, Nombre FROM Autorizaciones WHERE Estado='1' ORDER BY Nro_Auto ASC");
 
 // Crear asignación
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarAsignacion'])) {
     $cedula = $_POST['CedulaNit'];
     $Nro_Auto = $_POST['Nro_Auto'];
-    // echo $Nro_Auto;
     $switch = $_POST['Swich'] ?? 'SI';
     if (empty($cedula) || empty($Nro_Auto)) {
         $mensaje = "Debe seleccionar un tercero y una autorización.";
@@ -68,60 +68,17 @@ $UsuarioSesion = $_SESSION['Usuario'];
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
 body {
-    display: flex;
-    min-height: 100vh;
-    overflow-x: hidden;
-}
-.sidebar {
-    width: 240px;
-    background-color: #1f2937;
-    color: #fff;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-}
-.sidebar .nav-link {
-    color: #fff;
-}
-.sidebar .nav-link.active, .sidebar .nav-link:hover {
-    background-color: #111827;
-}
-.sidebar .brand {
-    font-size: 1.5rem;
-    font-weight: bold;
-    padding: 1rem;
-    text-align: center;
-    border-bottom: 1px solid #374151;
-}
-.sidebar .user-info {
-    margin-top: auto;
-    padding: 1rem;
-    border-top: 1px solid #374151;
-    text-align: center;
-}
-.content {
-    flex-grow: 1;
-    padding: 2rem;
     background-color: #f3f4f6;
+    padding: 20px;
 }
+.card { margin-bottom: 20px; border-radius: 0.5rem; }
+.table thead { background-color: #343a40; color: #fff; }
 </style>
 </head>
 <body>
 
-<div class="sidebar">
-    <div class="brand">Mi Panel</div>
-    <nav class="nav flex-column mt-3 px-2">
-        <a class="nav-link" href="Transfers.php">➕ Registrar Transferencia</a>
-        <a class="nav-link" href="Reportes.php">📄 Reportes</a>
-        <a class="nav-link active" href="#">🗂️ Autorizaciones por Usuario</a>
-    </nav>
-    <div class="user-info">
-        <div>Bienvenido, <?= htmlspecialchars($UsuarioSesion) ?></div>
-        <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
-    </div>
-</div>
+<div class="container">
 
-<div class="content">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Asignaciones de Autorizaciones</h2>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAsignacion">➕ Nueva Asignación</button>
@@ -160,6 +117,9 @@ body {
                     </td>
                 </tr>
                 <?php endwhile; ?>
+                <?php if ($asignaciones->num_rows === 0): ?>
+                    <tr><td colspan="8" class="text-center">No hay asignaciones registradas.</td></tr>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
@@ -179,7 +139,10 @@ body {
                 <label for="CedulaNit" class="form-label">Tercero</label>
                 <select name="CedulaNit" id="CedulaNit" class="form-select" required>
                     <option value="">-- Seleccione un tercero --</option>
-                    <?php while ($t = $terceros->fetch_assoc()): ?>
+                    <?php
+                    $terceros->data_seek(0);
+                    while ($t = $terceros->fetch_assoc()):
+                    ?>
                         <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
                     <?php endwhile; ?>
                 </select>
@@ -188,7 +151,10 @@ body {
                 <label for="Nro_Auto" class="form-label">Autorización</label>
                 <select name="Nro_Auto" id="Nro_Auto" class="form-select" required>
                     <option value="">-- Seleccione una autorización --</option>
-                    <?php while ($a = $autorizaciones->fetch_assoc()): ?>
+                    <?php
+                    $autorizaciones->data_seek(0);
+                    while ($a = $autorizaciones->fetch_assoc()):
+                    ?>
                         <option value="<?= $a['Nro_Auto'] ?>"><?= $a['Nro_Auto'] ?> - <?= $a['Nombre'] ?></option>
                     <?php endwhile; ?>
                 </select>
