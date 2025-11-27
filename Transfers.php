@@ -3,10 +3,11 @@ require 'Conexion.php';
 require 'helpers.php';
 
 session_start();
+session_regenerate_id(true); // Previene secuestro de sesión
 
 /* ============================================================
    CONFIGURACIÓN DE SESIÓN
-   ============================================================ */
+============================================================ */
 $session_timeout   = 3600;
 $inactive_timeout  = 1800;
 
@@ -18,14 +19,13 @@ if (isset($_SESSION['ultimo_acceso'])) {
         exit;
     }
 }
-
 $_SESSION['ultimo_acceso'] = time();
 ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);
 
 /* ============================================================
    VARIABLES DE SESIÓN
-   ============================================================ */
+============================================================ */
 $UsuarioSesion   = $_SESSION['Usuario']     ?? '';
 $NitSesion       = $_SESSION['NitEmpresa']  ?? '';
 $SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
@@ -36,10 +36,19 @@ if (empty($UsuarioSesion)) {
 }
 
 /* ============================================================
-   FUNCIÓN AUTORIZACIÓN
-   ============================================================ */
+   FUNCIÓN AUTORIZACIÓN CON CACHE EN SESIÓN
+============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
+
+    if (!isset($_SESSION['Autorizaciones'])) {
+        $_SESSION['Autorizaciones'] = [];
+    }
+
+    $key = $User . '_' . $Solicitud;
+    if (isset($_SESSION['Autorizaciones'][$key])) {
+        return $_SESSION['Autorizaciones'][$key];
+    }
 
     $stmt = $mysqli->prepare("
         SELECT Swich
@@ -50,21 +59,26 @@ function Autorizacion($User, $Solicitud) {
 
     $stmt->bind_param("ss", $User, $Solicitud);
     $stmt->execute();
-
     $result = $stmt->get_result();
-    if ($row = $result->fetch_assoc()) {
-        return $row['Swich'] ?? "NO";
-    }
-    return "NO";
+
+    $permiso = ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
+    $_SESSION['Autorizaciones'][$key] = $permiso;
+
+    $stmt->close();
+    return $permiso;
 }
 
 /* ============================================================
    AJAX — DEVOLVER SUCURSALES POR NIT
-   ============================================================ */
+============================================================ */
 if (isset($_GET['ajax']) && $_GET['ajax'] === "sucursales") {
     header("Content-Type: application/json; charset=utf-8");
 
     $nit = $_GET['nit'] ?? '';
+    if ($nit === '') {
+        echo json_encode([]);
+        exit;
+    }
 
     $stmt = $mysqli->prepare("
         SELECT NroSucursal, Direccion
@@ -82,53 +96,62 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === "sucursales") {
     }
 
     echo json_encode($data);
+    $stmt->close();
     exit;
 }
 
 /* ============================================================
    FECHA Y HORA (BOGOTÁ)
-   ============================================================ */
+============================================================ */
 date_default_timezone_set('America/Bogota');
 $FechaHoy = date("Y-m-d");
 $HoraHoy  = date("H:i");
 
 /* ============================================================
    MENSAJE
-   ============================================================ */
+============================================================ */
 $msg = "";
 
 /* ============================================================
    ELIMINAR TRANSFERENCIA — SOLO SI 0002 = SI
-   ============================================================ */
+============================================================ */
 if (isset($_GET['borrar'])) {
+    $idBorrar = intval($_GET['borrar']);
 
-    if (Autorizacion($UsuarioSesion, "0002") !== "SI") {
+    if (Autorizacion($UsuarioSesion, "0006") !== "SI") {
         $msg = "❌ No tiene autorización para eliminar transferencias.";
     } else {
-
-        $idBorrar = intval($_GET['borrar']);
-        $del = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer = ?");
-        $del->bind_param("i", $idBorrar);
-
-        if ($del->execute()) {
-            // $msg = "✓ Transferencia eliminada correctamente.";
+        $check = $mysqli->prepare("SELECT IdTransfer FROM Relaciontransferencias WHERE IdTransfer=?");
+        $check->bind_param("i", $idBorrar);
+        $check->execute();
+        $resCheck = $check->get_result();
+        if ($resCheck->num_rows === 0) {
+            $msg = "❌ La transferencia no existe.";
         } else {
-            $msg = "❌ Error al eliminar: " . $del->error;
+            $del = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer = ?");
+            $del->bind_param("i", $idBorrar);
+            if ($del->execute()) {
+                $msg = "✓ Transferencia eliminada correctamente.";
+            } else {
+                $msg = "❌ Error al eliminar: " . $del->error;
+            }
+            $del->close();
         }
-        $del->close();
+        $check->close();
     }
 }
 
 /* ============================================================
-   REGISTRAR TRANSFERENCIA — SOLO SI 0002 = SI
-   ============================================================ */
+   REGISTRAR TRANSFERENCIA — SOLO SI 0007 = SI
+============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'])) {
+
+    $puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI";
 
     if (Autorizacion($UsuarioSesion, "0007") !== "SI") {
         $msg = "❌ No tiene autorización para registrar transferencias.";
     } else {
 
-        // Sanitizar inputs
         $Fecha      = limpiar($_POST['Fecha'] ?? '');
         $Hora       = limpiar($_POST['Hora'] ?? '');
         $NitEmpresa = limpiar($_POST['NitEmpresa'] ?? '');
@@ -137,8 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
         $IdMedio    = intval($_POST['IdMedio'] ?? 0);
         $Monto      = floatval($_POST['Monto'] ?? 0);
 
-        // Si NO tiene autorización, forzar valores sesión
-        if (Autorizacion($UsuarioSesion, "0002") == "NO") {
+        if (!$puedeCambiar) {
             $NitEmpresa = $NitSesion;
             $Sucursal   = $SucursalSesion;
             $CedulaNit  = $UsuarioSesion;
@@ -147,34 +169,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
         if ($Fecha === "" || $Hora === "" || 
             $NitEmpresa === "" || $Sucursal === "" || $CedulaNit === "" || 
             $IdMedio <= 0 || $Monto <= 0) {
-
             $msg = "❌ Faltan datos obligatorios.";
+        } elseif ($puedeCambiar && $Sucursal === '') {
+            $msg = "❌ Debe seleccionar una sucursal.";
         } else {
-
-            $stmt = $mysqli->prepare("
-                INSERT INTO Relaciontransferencias
-                (Fecha, Hora, NitEmpresa, Sucursal, CedulaNit, IdMedio, Monto)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->bind_param("sssssid",
-                $Fecha, $Hora, $NitEmpresa, $Sucursal, $CedulaNit, $IdMedio, $Monto
-            );
-
-            if ($stmt->execute()) {
+            $mysqli->begin_transaction();
+            try {
+                $stmt = $mysqli->prepare("
+                    INSERT INTO Relaciontransferencias
+                    (Fecha, Hora, NitEmpresa, Sucursal, CedulaNit, IdMedio, Monto)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->bind_param("sssssid",
+                    $Fecha, $Hora, $NitEmpresa, $Sucursal, $CedulaNit, $IdMedio, $Monto
+                );
+                $stmt->execute();
+                $mysqli->commit();
                 $msg = "✓ Transferencia registrada correctamente.";
-            } else {
-                $msg = "❌ Error: " . $stmt->error;
+                $stmt->close();
+            } catch(Exception $e) {
+                $mysqli->rollback();
+                $msg = "❌ Error: " . $e->getMessage();
             }
-
-            $stmt->close();
         }
     }
 }
 
 /* ============================================================
    LISTAR TRANSFERENCIAS
-   ============================================================ */
-$transferencias = $mysqli->query("
+   Si 0002 = NO, mostrar solo las del usuario
+============================================================ */
+$consultaSQL = "
     SELECT t.IdTransfer, t.Fecha, t.Hora,
            e.NombreComercial,
            s.Direccion AS Sucursal,
@@ -186,16 +211,30 @@ $transferencias = $mysqli->query("
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
     INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
-    ORDER BY t.Fecha DESC, t.Hora DESC
-");
+";
+
+if (Autorizacion($UsuarioSesion, "0002") === "NO") {
+    $consultaSQL .= " WHERE t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+}
+
+$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
+$transferencias = $mysqli->query($consultaSQL);
 
 /* ============================================================
-   CARGA DE LISTAS
-   ============================================================ */
-$empresas = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado = 1 ORDER BY NombreComercial");
-$terceros = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado = 1 ORDER BY Nombre");
-$medios   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado = 1 ORDER BY Nombre");
+   CARGA DE LISTAS EN ARRAYS
+============================================================ */
+$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado = 1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
+$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado = 1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado = 1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
 
+/* ============================================================
+   TOTAL MONTOS
+============================================================ */
+$totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias";
+if (Autorizacion($UsuarioSesion, "0002") === "NO") {
+    $totalSQL .= " WHERE CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+}
+$totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -236,7 +275,6 @@ function cargarSucursales() {
 }
 </script>
 </head>
-
 <body>
 <div class="container mt-5">
 
@@ -261,7 +299,6 @@ function cargarSucursales() {
 
     <div class="card shadow p-4 mb-4">
         <h4 class="mb-3">Transferencias Registradas</h4>
-
         <div class="table-responsive">
             <table class="table table-striped table-bordered align-middle">
                 <thead class="table-dark">
@@ -286,9 +323,8 @@ function cargarSucursales() {
                             <td><?= $row['Tercero'] ?></td>
                             <td><?= $row['Medio'] ?></td>
                             <td class="text-end"><?= number_format($row['Monto'],2) ?></td>
-
                             <td class="text-center">
-                                <?php if (Autorizacion($UsuarioSesion, "0002") === "SI"): ?>
+                                <?php if (Autorizacion($UsuarioSesion, "0006") === "SI"): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>"
                                        onclick="return confirm('¿Eliminar esta transferencia?')"
                                        class="btn btn-danger btn-sm">🗑</a>
@@ -298,19 +334,23 @@ function cargarSucursales() {
                             </td>
                         </tr>
                     <?php endwhile; ?>
-
                     <?php if ($transferencias->num_rows == 0): ?>
                         <tr><td colspan="8" class="text-center">No hay transferencias registradas.</td></tr>
                     <?php endif; ?>
                 </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="6" class="text-end">Total:</th>
+                        <th class="text-end"><?= number_format($totalMontos,2) ?></th>
+                        <th></th>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
 </div>
 
-<!-- ============================================================
-     MODAL NUEVA TRANSFERENCIA
-=============================================================== -->
+<!-- MODAL NUEVA TRANSFERENCIA -->
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -319,108 +359,94 @@ function cargarSucursales() {
           <h5 class="modal-title">Nueva Transferencia</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-
         <div class="modal-body">
-
             <input type="hidden" name="guardarTransferencia" value="1">
 
-            <div class="mb-3">
-                <label class="form-label">Fecha</label>
-                <input type="date" name="Fecha" class="form-control" value="<?= $FechaHoy ?>" readonly>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Hora</label>
-                <input type="time" name="Hora" class="form-control" value="<?= $HoraHoy ?>" readonly>
+            <!-- Fecha y Hora en la misma línea -->
+            <div class="mb-3 row g-2 align-items-end">
+                <div class="col">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" name="Fecha" class="form-control" value="<?= $FechaHoy ?>" readonly>
+                </div>
+                <div class="col">
+                    <label class="form-label">Hora</label>
+                    <input type="time" name="Hora" class="form-control" value="<?= $HoraHoy ?>" readonly>
+                </div>
             </div>
 
             <?php $puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI"; ?>
 
-            <!-- EMPRESA -->
-            <div class="mb-3">
-                <label class="form-label">Empresa</label>
-
-                <?php if ($puedeCambiar): ?>
-                    <select name="NitEmpresa" id="NitEmpresa" class="form-select" onchange="cargarSucursales()" required>
-                        <option value="">Seleccione...</option>
-                        <?php while ($e = $empresas->fetch_assoc()): ?>
-                            <option value="<?= $e['Nit'] ?>">
-                                <?= $e['NombreComercial'] ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-
-                <?php else: ?>
-                    <input type="text" class="form-control" value="<?= $NitSesion ?>" readonly>
-                    <input type="hidden" name="NitEmpresa" value="<?= $NitSesion ?>">
-                <?php endif; ?>
+            <!-- Empresa y Sucursal en la misma línea -->
+            <div class="mb-3 row g-2 align-items-end">
+                <div class="col">
+                    <label class="form-label">Empresa</label>
+                    <?php if ($puedeCambiar): ?>
+                        <select name="NitEmpresa" id="NitEmpresa" class="form-select" onchange="cargarSucursales()" required>
+                            <option value="">Seleccione...</option>
+                            <?php foreach($empresasArray as $e): ?>
+                                <option value="<?= $e['Nit'] ?>"><?= $e['NombreComercial'] ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php else: ?>
+                        <input type="text" class="form-control" value="<?= $NitSesion ?>" readonly>
+                        <input type="hidden" name="NitEmpresa" value="<?= $NitSesion ?>">
+                    <?php endif; ?>
+                </div>
+                <div class="col">
+                    <label class="form-label">Sucursal</label>
+                    <?php if ($puedeCambiar): ?>
+                        <select name="Sucursal" id="Sucursal" class="form-select" required>
+                            <option value="">Seleccione una empresa...</option>
+                        </select>
+                    <?php else: ?>
+                        <input type="text" class="form-control" value="<?= $SucursalSesion ?>" readonly>
+                        <input type="hidden" name="Sucursal" value="<?= $SucursalSesion ?>">
+                    <?php endif; ?>
+                </div>
             </div>
 
-            <!-- SUCURSAL -->
-            <div class="mb-3">
-                <label class="form-label">Sucursal</label>
-
-                <?php if ($puedeCambiar): ?>
-                    <select name="Sucursal" id="Sucursal" class="form-select" required>
-                        <option value="">Seleccione una empresa...</option>
-                    </select>
-
-                <?php else: ?>
-                    <input type="text" class="form-control" value="<?= $SucursalSesion ?>" readonly>
-                    <input type="hidden" name="Sucursal" value="<?= $SucursalSesion ?>">
-                <?php endif; ?>
-            </div>
-
-            <!-- TERCERO -->
+            <!-- Tercero -->
             <div class="mb-3">
                 <label class="form-label">Tercero</label>
-
                 <?php if ($puedeCambiar): ?>
                     <select name="CedulaNit" class="form-select" required>
                         <option value="">Seleccione...</option>
-                        <?php while ($t = $terceros->fetch_assoc()): ?>
-                            <option value="<?= $t['CedulaNit'] ?>">
-                                <?= $t['Nombre'] ?>
-                            </option>
-                        <?php endwhile; ?>
+                        <?php foreach($tercerosArray as $t): ?>
+                            <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?></option>
+                        <?php endforeach; ?>
                     </select>
-
                 <?php else: ?>
                     <input type="text" class="form-control" value="<?= $UsuarioSesion ?>" readonly>
                     <input type="hidden" name="CedulaNit" value="<?= $UsuarioSesion ?>">
                 <?php endif; ?>
-
             </div>
 
-            <!-- MEDIO PAGO -->
+            <!-- Medio de Pago -->
             <div class="mb-3">
                 <label class="form-label">Medio de Pago</label>
                 <select name="IdMedio" class="form-select" required>
                     <option value="">Seleccione...</option>
-                    <?php while ($m = $medios->fetch_assoc()): ?>
+                    <?php foreach($mediosArray as $m): ?>
                         <option value="<?= $m['IdMedio'] ?>"><?= $m['Nombre'] ?></option>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </select>
             </div>
 
-            <!-- MONTO -->
+            <!-- Monto -->
             <div class="mb-3">
                 <label class="form-label">Monto</label>
-                <input type="number" step="0.01" name="Monto" class="form-control" required>
+                <input type="number" step="0.01" min="0.01" name="Monto" class="form-control" placeholder="0.00" required>
             </div>
         </div>
-
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary">Guardar Transferencia</button>
         </div>
-
       </form>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 </body>
 </html>
