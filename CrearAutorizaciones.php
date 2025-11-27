@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Obtener todas las autorizaciones
-$result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Id_Auto DESC");
+$result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto asc");
 ?>
 
 <!doctype html>

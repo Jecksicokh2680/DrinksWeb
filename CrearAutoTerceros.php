@@ -54,7 +54,7 @@ $asignaciones = $mysqli->query("
     FROM autorizacion_tercero at
     INNER JOIN terceros t ON at.CedulaNit = t.CedulaNit
     INNER JOIN Autorizaciones a ON at.Nro_Auto = a.Nro_Auto
-    ORDER BY at.F_Creacion DESC
+    ORDER BY at.CedulaNit,a.Nro_Auto asc
 ");
 
 $UsuarioSesion = $_SESSION['Usuario'];
