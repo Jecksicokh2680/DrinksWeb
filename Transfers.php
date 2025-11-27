@@ -124,7 +124,7 @@ if (isset($_GET['borrar'])) {
    ============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'])) {
 
-    if (Autorizacion($UsuarioSesion, "0002") !== "SI") {
+    if (Autorizacion($UsuarioSesion, "0007") !== "SI") {
         $msg = "❌ No tiene autorización para registrar transferencias.";
     } else {
 
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
             );
 
             if ($stmt->execute()) {
-               // $msg = "✓ Transferencia registrada correctamente.";
+                $msg = "✓ Transferencia registrada correctamente.";
             } else {
                 $msg = "❌ Error: " . $stmt->error;
             }
@@ -250,7 +250,7 @@ function cargarSucursales() {
     <?php endif; ?>
 
     <div class="mb-4">
-        <?php if (Autorizacion($UsuarioSesion, "0002") === "SI"): ?>
+        <?php if (Autorizacion($UsuarioSesion, "0007") === "SI"): ?>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalTransferencia">
                 ➕ Nueva Transferencia
             </button>
