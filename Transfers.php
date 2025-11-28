@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
             $stmt = $mysqli->prepare("INSERT INTO Relaciontransferencias (Fecha, Hora, NitEmpresa, Sucursal, CedulaNit, IdMedio, Monto) VALUES (?,?,?,?,?,?,?)");
             $stmt->bind_param("sssssid",$Fecha,$Hora,$NitEmpresa,$Sucursal,$CedulaNit,$IdMedio,$Monto);
             if ($stmt->execute()) {
-                $msg = "✓ Transferencia registrada correctamente.";
+               // $msg = "✓ Transferencia registrada correctamente.";
             } else {
                 $msg = "❌ Error al registrar transferencia: " . $stmt->error;
             }
@@ -208,6 +208,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
         }
     }
 }
+
+/* ============================================================
+   FILTRO DINÁMICO POR TERCERO
+============================================================ */
+$TerceroFiltro = $_GET['tercero'] ?? '';
+
+$tercerosConTransferencias = $mysqli->query("
+    SELECT DISTINCT t.CedulaNit, tr.Nombre
+    FROM Relaciontransferencias t
+    INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
+    ORDER BY tr.Nombre
+")->fetch_all(MYSQLI_ASSOC);
 
 /* ============================================================
    LISTAR TRANSFERENCIAS
@@ -228,8 +240,15 @@ $consultaSQL = "
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
 ";
 
+$whereClauses = [];
 if (Autorizacion($UsuarioSesion, "0003") === "NO") {
-    $consultaSQL .= " WHERE t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+    $whereClauses[] = "t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+} elseif ($TerceroFiltro != '') {
+    $whereClauses[] = "t.CedulaNit = '".$mysqli->real_escape_string($TerceroFiltro)."'";
+}
+
+if (!empty($whereClauses)) {
+    $consultaSQL .= " WHERE ".implode(" AND ", $whereClauses);
 }
 
 $consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
@@ -248,6 +267,8 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
 $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1";
 if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+} elseif ($TerceroFiltro != '') {
+    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($TerceroFiltro)."'";
 }
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 ?>
@@ -314,6 +335,22 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         <?php else: ?>
             <button class="btn btn-secondary" disabled>🚫 No autorizado</button>
         <?php endif; ?>
+    </div>
+
+    <!-- FILTRO DINÁMICO DE TERCEROS -->
+    <div class="mb-3">
+        <form method="GET" class="d-flex align-items-center gap-2">
+            <label class="mb-0">Filtrar por Tercero:</label>
+            <select name="tercero" class="form-select" onchange="this.form.submit()">
+                <option value="">Todos</option>
+                <?php foreach($tercerosConTransferencias as $t): ?>
+                    <option value="<?= $t['CedulaNit'] ?>" <?= ($TerceroFiltro==$t['CedulaNit'] ? 'selected':'') ?>>
+                        <?= htmlspecialchars($t['Nombre']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <noscript><button type="submit" class="btn btn-primary btn-sm">Filtrar</button></noscript>
+        </form>
     </div>
 
     <div class="card shadow p-4 mb-4">
