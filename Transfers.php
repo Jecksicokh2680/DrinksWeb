@@ -3,7 +3,7 @@ require 'Conexion.php';
 require 'helpers.php';
 
 session_start();
-session_regenerate_id(true); // Previene secuestro de sesión
+session_regenerate_id(true);
 
 /* ============================================================
    CONFIGURACIÓN DE SESIÓN
@@ -101,98 +101,62 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === "sucursales") {
 }
 
 /* ============================================================
-   FECHA Y HORA (BOGOTÁ)
+   ACTUALIZAR CHECKBOX RevisadoLogistica / RevisadoGerencia
 ============================================================ */
-date_default_timezone_set('America/Bogota');
-$FechaHoy = date("Y-m-d");
-$HoraHoy  = date("H:i");
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (Autorizacion($UsuarioSesion, "0002") === "SI") {
+        if (isset($_POST['updateLogistica'])) {
+            $id = intval($_POST['id'] ?? 0);
+            $valor = ($_POST['valor'] ?? 0) ? 1 : 0;
+            $stmt = $mysqli->prepare("UPDATE Relaciontransferencias SET RevisadoLogistica=? WHERE IdTransfer=?");
+            $stmt->bind_param("ii", $valor, $id);
+            $stmt->execute();
+            $stmt->close();
+            exit;
+        }
 
-/* ============================================================
-   MENSAJE
-============================================================ */
-$msg = "";
+        if (isset($_POST['updateGerencia'])) {
+            $id = intval($_POST['id'] ?? 0);
+            $valor = ($_POST['valor'] ?? 0) ? 1 : 0;
+            $stmt = $mysqli->prepare("UPDATE Relaciontransferencias SET RevisadoGerencia=? WHERE IdTransfer=?");
+            $stmt->bind_param("ii", $valor, $id);
+            $stmt->execute();
+            $stmt->close();
+            exit;
+        }
 
-/* ============================================================
-   ELIMINAR TRANSFERENCIA — SOLO SI 0002 = SI
-============================================================ */
-if (isset($_GET['borrar'])) {
-    $idBorrar = intval($_GET['borrar']);
+        if (isset($_POST['guardarTransferencia'])) {
+            // ================== REGISTRAR NUEVA TRANSFERENCIA ==================
+            $Fecha      = limpiar($_POST['Fecha'] ?? '');
+            $Hora       = limpiar($_POST['Hora'] ?? '');
+            $NitEmpresa = limpiar($_POST['NitEmpresa'] ?? '');
+            $Sucursal   = limpiar($_POST['Sucursal'] ?? '');
+            $CedulaNit  = limpiar($_POST['CedulaNit'] ?? '');
+            $IdMedio    = intval($_POST['IdMedio'] ?? 0);
+            $Monto      = floatval($_POST['Monto'] ?? 0);
 
-    if (Autorizacion($UsuarioSesion, "0006") !== "SI") {
-        $msg = "❌ No tiene autorización para eliminar transferencias.";
-    } else {
-        $check = $mysqli->prepare("SELECT IdTransfer FROM Relaciontransferencias WHERE IdTransfer=?");
-        $check->bind_param("i", $idBorrar);
-        $check->execute();
-        $resCheck = $check->get_result();
-        if ($resCheck->num_rows === 0) {
-            $msg = "❌ La transferencia no existe.";
-        } else {
-            $del = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer = ?");
-            $del->bind_param("i", $idBorrar);
-            if ($del->execute()) {
-                // $msg = "✓ Transferencia eliminada correctamente.";
+            if ($Fecha === "" || $Hora === "" || $NitEmpresa === "" || $Sucursal === "" || $CedulaNit === "" || $IdMedio <= 0 || $Monto <= 0) {
+                $msg = "❌ Faltan datos obligatorios.";
             } else {
-                $msg = "❌ Error al eliminar: " . $del->error;
-            }
-            $del->close();
-        }
-        $check->close();
-    }
-}
-
-/* ============================================================
-   REGISTRAR TRANSFERENCIA — SOLO SI 0007 = SI
-============================================================ */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'])) {
-
-    $puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI";
-
-    if (Autorizacion($UsuarioSesion, "0007") !== "SI") {
-        $msg = "❌ No tiene autorización para registrar transferencias.";
-    } else {
-
-        $Fecha      = limpiar($_POST['Fecha'] ?? '');
-        $Hora       = limpiar($_POST['Hora'] ?? '');
-        $NitEmpresa = limpiar($_POST['NitEmpresa'] ?? '');
-        $Sucursal   = limpiar($_POST['Sucursal'] ?? '');
-        $CedulaNit  = limpiar($_POST['CedulaNit'] ?? '');
-        $IdMedio    = intval($_POST['IdMedio'] ?? 0);
-        $Monto      = floatval($_POST['Monto'] ?? 0);
-
-        if (!$puedeCambiar) {
-            $NitEmpresa = $NitSesion;
-            $Sucursal   = $SucursalSesion;
-            $CedulaNit  = $UsuarioSesion;
-        }
-
-        if ($Fecha === "" || $Hora === "" || 
-            $NitEmpresa === "" || $Sucursal === "" || $CedulaNit === "" || 
-            $IdMedio <= 0 || $Monto <= 0) {
-            $msg = "❌ Faltan datos obligatorios.";
-        } elseif ($puedeCambiar && $Sucursal === '') {
-            $msg = "❌ Debe seleccionar una sucursal.";
-        } else {
-            $mysqli->begin_transaction();
-            try {
                 $stmt = $mysqli->prepare("
                     INSERT INTO Relaciontransferencias
                     (Fecha, Hora, NitEmpresa, Sucursal, CedulaNit, IdMedio, Monto)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->bind_param("sssssid",
-                    $Fecha, $Hora, $NitEmpresa, $Sucursal, $CedulaNit, $IdMedio, $Monto
-                );
+                $stmt->bind_param("sssssid", $Fecha, $Hora, $NitEmpresa, $Sucursal, $CedulaNit, $IdMedio, $Monto);
                 $stmt->execute();
-                $mysqli->commit();
                 $stmt->close();
-            } catch(Exception $e) {
-                $mysqli->rollback();
-                $msg = "❌ Error: " . $e->getMessage();
             }
         }
     }
 }
+
+/* ============================================================
+   FECHA Y HORA (BOGOTÁ)
+============================================================ */
+date_default_timezone_set('America/Bogota');
+$FechaHoy = date("Y-m-d");
+$HoraHoy  = date("H:i");
 
 /* ============================================================
    LISTAR TRANSFERENCIAS
@@ -203,7 +167,9 @@ $consultaSQL = "
            s.Direccion AS Sucursal,
            tr.Nombre AS Tercero,
            m.Nombre AS Medio,
-           t.Monto
+           t.Monto,
+           t.RevisadoLogistica,
+           t.RevisadoGerencia
     FROM Relaciontransferencias t
     INNER JOIN empresa e ON e.Nit = t.NitEmpresa
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
@@ -219,20 +185,25 @@ $consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
 
 /* ============================================================
-   CARGA DE LISTAS EN ARRAYS
+   TOTAL MONTO DE TRANSFERENCIAS REVISADAS
 ============================================================ */
-$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado = 1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
-$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado = 1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado = 1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-
-/* ============================================================
-   TOTAL MONTOS
-============================================================ */
-$totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias";
+$totalSQL = "
+    SELECT SUM(Monto) AS Total
+    FROM Relaciontransferencias
+    WHERE (RevisadoLogistica + RevisadoGerencia) >= 1
+";
 if (Autorizacion($UsuarioSesion, "0002") === "NO") {
-    $totalSQL .= " WHERE CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
+
+/* ============================================================
+   CARGA DE LISTAS
+============================================================ */
+$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
+$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI";
 ?>
 
 <!DOCTYPE html>
@@ -240,37 +211,46 @@ $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Registrar Transferencias</title>
-
+<title>Transferencias</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
 <style>
 body { background-color: #f3f4f6; }
-.card { border-radius: 1rem; }
 .table thead { background-color: #343a40; color: #fff; }
-.modal-header { background-color: #0d6efd; color: white; }
 .table-responsive { overflow-x:auto; }
+.modal-header { background-color: #0d6efd; color: #fff; }
 </style>
-
 <script>
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".revisadoLogistica").forEach(cb => {
+        cb.addEventListener("change", function() {
+            fetch("", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "updateLogistica=1&id=" + this.dataset.id + "&valor=" + (this.checked ? 1 : 0)
+            }).then(()=>location.reload());
+        });
+    });
+    document.querySelectorAll(".revisadoGerencia").forEach(cb => {
+        cb.addEventListener("change", function() {
+            fetch("", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "updateGerencia=1&id=" + this.dataset.id + "&valor=" + (this.checked ? 1 : 0)
+            }).then(()=>location.reload());
+        });
+    });
+});
+
 function cargarSucursales() {
     let nit = document.getElementById("NitEmpresa").value;
     let suc = document.getElementById("Sucursal");
-
-    if (!nit) {
-        suc.innerHTML = '<option value="">Seleccione una empresa...</option>';
-        return;
-    }
-
-    suc.innerHTML = '<option>Cargando...</option>';
-
-    fetch("Transfers.php?ajax=sucursales&nit=" + encodeURIComponent(nit))
-        .then(res => res.json())
-        .then(data => {
-            suc.innerHTML = '<option value="">Seleccione...</option>';
-            data.forEach(s => {
-                suc.innerHTML += `<option value="${s.NroSucursal}">${s.Direccion}</option>`;
-            });
+    if (!nit) { suc.innerHTML='<option value="">Seleccione empresa</option>'; return; }
+    suc.innerHTML='<option>Cargando...</option>';
+    fetch("Transfers.php?ajax=sucursales&nit="+encodeURIComponent(nit))
+        .then(res=>res.json())
+        .then(data=>{
+            suc.innerHTML='<option value="">Seleccione...</option>';
+            data.forEach(s=>suc.innerHTML+=`<option value="${s.NroSucursal}">${s.Direccion}</option>`);
         });
 }
 </script>
@@ -278,12 +258,8 @@ function cargarSucursales() {
 <body>
 <div class="container mt-5">
 
-    <?php if ($msg != ""): ?>
-        <div class="alert alert-info"><?= htmlspecialchars($msg) ?></div>
-    <?php endif; ?>
-
     <div class="mb-4">
-        <?php if (Autorizacion($UsuarioSesion, "0007") === "SI"): ?>
+        <?php if (Autorizacion($UsuarioSesion, "0007")==="SI"): ?>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalTransferencia">
                 ➕ Nueva Transferencia
             </button>
@@ -305,11 +281,12 @@ function cargarSucursales() {
                         <th>Tercero</th>
                         <th>Medio</th>
                         <th>Monto</th>
-                        <th class="text-center">Acción</th>
+                        <th>Revisado Logistica</th>
+                        <th>Revisado Gerencia</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while ($row = $transferencias->fetch_assoc()): ?>
+                    <?php while($row=$transferencias->fetch_assoc()): ?>
                         <tr>
                             <td><?= $row['Fecha'] ?></td>
                             <td><?= $row['Hora'] ?></td>
@@ -319,25 +296,26 @@ function cargarSucursales() {
                             <td><?= $row['Medio'] ?></td>
                             <td class="text-end"><?= number_format($row['Monto'],2) ?></td>
                             <td class="text-center">
-                                <?php if (Autorizacion($UsuarioSesion, "0006") === "SI"): ?>
-                                    <a href="?borrar=<?= intval($row['IdTransfer']) ?>"
-                                       onclick="return confirm('¿Eliminar esta transferencia?')"
-                                       class="btn btn-danger btn-sm">🗑</a>
-                                <?php else: ?>
-                                    <button class="btn btn-secondary btn-sm" disabled>🚫</button>
-                                <?php endif; ?>
+                                <input type="checkbox" class="revisadoLogistica" data-id="<?= $row['IdTransfer'] ?>"
+                                    <?= $row['RevisadoLogistica']?'checked':'' ?>
+                                    <?= $puedeCambiar?'':'disabled' ?>>
+                            </td>
+                            <td class="text-center">
+                                <input type="checkbox" class="revisadoGerencia" data-id="<?= $row['IdTransfer'] ?>"
+                                    <?= $row['RevisadoGerencia']?'checked':'' ?>
+                                    <?= $puedeCambiar?'':'disabled' ?>>
                             </td>
                         </tr>
                     <?php endwhile; ?>
-                    <?php if ($transferencias->num_rows == 0): ?>
-                        <tr><td colspan="8" class="text-center">No hay transferencias registradas.</td></tr>
+                    <?php if($transferencias->num_rows==0): ?>
+                        <tr><td colspan="9" class="text-center">No hay transferencias registradas.</td></tr>
                     <?php endif; ?>
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="6" class="text-end">Total:</th>
+                        <th colspan="6" class="text-end">Total Revisadas:</th>
                         <th class="text-end"><?= number_format($totalMontos,2) ?></th>
-                        <th></th>
+                        <th colspan="2"></th>
                     </tr>
                 </tfoot>
             </table>
@@ -346,8 +324,8 @@ function cargarSucursales() {
 </div>
 
 <!-- MODAL NUEVA TRANSFERENCIA -->
-<div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
+<div class="modal fade" id="modalTransferencia" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <form method="POST">
         <div class="modal-header">
@@ -357,25 +335,21 @@ function cargarSucursales() {
         <div class="modal-body">
             <input type="hidden" name="guardarTransferencia" value="1">
 
-            <!-- Fecha y Hora -->
             <div class="row g-2 mb-3">
-                <div class="col-12 col-md">
-                    <label class="form-label">Fecha</label>
+                <div class="col">
+                    <label>Fecha</label>
                     <input type="date" name="Fecha" class="form-control" value="<?= $FechaHoy ?>" readonly>
                 </div>
-                <div class="col-12 col-md">
-                    <label class="form-label">Hora</label>
+                <div class="col">
+                    <label>Hora</label>
                     <input type="time" name="Hora" class="form-control" value="<?= $HoraHoy ?>" readonly>
                 </div>
             </div>
 
-            <?php $puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI"; ?>
-
-            <!-- Empresa y Sucursal -->
             <div class="row g-2 mb-3">
-                <div class="col-12 col-md">
-                    <label class="form-label">Empresa</label>
-                    <?php if ($puedeCambiar): ?>
+                <div class="col">
+                    <label>Empresa</label>
+                    <?php if($puedeCambiar): ?>
                         <select name="NitEmpresa" id="NitEmpresa" class="form-select" onchange="cargarSucursales()" required>
                             <option value="">Seleccione...</option>
                             <?php foreach($empresasArray as $e): ?>
@@ -387,11 +361,11 @@ function cargarSucursales() {
                         <input type="hidden" name="NitEmpresa" value="<?= $NitSesion ?>">
                     <?php endif; ?>
                 </div>
-                <div class="col-12 col-md">
-                    <label class="form-label">Sucursal</label>
-                    <?php if ($puedeCambiar): ?>
+                <div class="col">
+                    <label>Sucursal</label>
+                    <?php if($puedeCambiar): ?>
                         <select name="Sucursal" id="Sucursal" class="form-select" required>
-                            <option value="">Seleccione una empresa...</option>
+                            <option value="">Seleccione empresa...</option>
                         </select>
                     <?php else: ?>
                         <input type="text" class="form-control" value="<?= $SucursalSesion ?>" readonly>
@@ -400,10 +374,9 @@ function cargarSucursales() {
                 </div>
             </div>
 
-            <!-- Tercero -->
             <div class="mb-3">
-                <label class="form-label">Tercero</label>
-                <?php if ($puedeCambiar): ?>
+                <label>Tercero</label>
+                <?php if($puedeCambiar): ?>
                     <select name="CedulaNit" class="form-select" required>
                         <option value="">Seleccione...</option>
                         <?php foreach($tercerosArray as $t): ?>
@@ -416,9 +389,8 @@ function cargarSucursales() {
                 <?php endif; ?>
             </div>
 
-            <!-- Medio de Pago -->
             <div class="mb-3">
-                <label class="form-label">Medio de Pago</label>
+                <label>Medio de Pago</label>
                 <select name="IdMedio" class="form-select" required>
                     <option value="">Seleccione...</option>
                     <?php foreach($mediosArray as $m): ?>
@@ -427,15 +399,15 @@ function cargarSucursales() {
                 </select>
             </div>
 
-            <!-- Monto -->
             <div class="mb-3">
-                <label class="form-label">Monto</label>
+                <label>Monto</label>
                 <input type="number" step="0.01" min="0.01" name="Monto" class="form-control" placeholder="0.00" required>
             </div>
+
         </div>
-        <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">
-          <button type="button" class="btn btn-secondary w-100 w-md-auto" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary w-100 w-md-auto">Guardar Transferencia</button>
+        <div class="modal-footer d-flex justify-content-end">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Transferencia</button>
         </div>
       </form>
     </div>
