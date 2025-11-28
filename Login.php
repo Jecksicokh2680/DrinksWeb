@@ -62,7 +62,7 @@ function cargarSucursales() {
 if (isset($_GET['loadSucursales'])) {
     $nit = $_GET['nit'] ?? '';
     if ($nit != "") {
-        $sql = "SELECT NroSucursal, Ciudad 
+        $sql = "SELECT NroSucursal, Direccion
                 FROM empresa_sucursal 
                 WHERE Nit=? AND Estado=1 
                 ORDER BY NroSucursal";
@@ -76,7 +76,7 @@ if (isset($_GET['loadSucursales'])) {
         } else {
             while ($row = $result->fetch_assoc()) {
                 echo "<option value='".$row['NroSucursal']."'>"
-                     .$row['NroSucursal']." - ".$row['Ciudad'].
+                     .$row['NroSucursal']." - ".$row['Direccion'].
                      "</option>";
             }
         }

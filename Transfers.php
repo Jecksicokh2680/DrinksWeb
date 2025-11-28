@@ -153,7 +153,6 @@ if (isset($_GET['borrar'])) {
     $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
 
     if (!$puedeBorrar) {
-        // Solo puede borrar su propia transferencia
         $stmtCheck = $mysqli->prepare("SELECT IdTransfer FROM Relaciontransferencias WHERE IdTransfer=? AND CedulaNit=?");
         $stmtCheck->bind_param("is",$idBorrar,$UsuarioSesion);
         $stmtCheck->execute();
@@ -169,7 +168,6 @@ if (isset($_GET['borrar'])) {
             $stmtDel->close();
         }
     } else {
-        // Puede borrar cualquier transferencia
         $stmtDel = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer=?");
         $stmtDel->bind_param("i",$idBorrar);
         $stmtDel->execute();
@@ -200,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
             $stmt = $mysqli->prepare("INSERT INTO Relaciontransferencias (Fecha, Hora, NitEmpresa, Sucursal, CedulaNit, IdMedio, Monto) VALUES (?,?,?,?,?,?,?)");
             $stmt->bind_param("sssssid",$Fecha,$Hora,$NitEmpresa,$Sucursal,$CedulaNit,$IdMedio,$Monto);
             if ($stmt->execute()) {
-               // $msg = "✓ Transferencia registrada correctamente.";
+                $msg = "✓ Transferencia registrada correctamente.";
             } else {
                 $msg = "❌ Error al registrar transferencia: " . $stmt->error;
             }
@@ -210,16 +208,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
 }
 
 /* ============================================================
-   FILTRO DINÁMICO POR TERCERO
+   FILTRO DINÁMICO DE TERCERO (solo si tiene autorización 0012)
 ============================================================ */
-$TerceroFiltro = $_GET['tercero'] ?? '';
-
-$tercerosConTransferencias = $mysqli->query("
-    SELECT DISTINCT t.CedulaNit, tr.Nombre
-    FROM Relaciontransferencias t
-    INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
-    ORDER BY tr.Nombre
-")->fetch_all(MYSQLI_ASSOC);
+$filtroTercero = '';
+if (Autorizacion($UsuarioSesion, "0012") === "SI") {
+    $filtroTercero = $_GET['filtroTercero'] ?? '';
+}
 
 /* ============================================================
    LISTAR TRANSFERENCIAS
@@ -232,7 +226,8 @@ $consultaSQL = "
            m.Nombre AS Medio,
            t.Monto,
            t.RevisadoLogistica,
-           t.RevisadoGerencia
+           t.RevisadoGerencia,
+           t.CedulaNit
     FROM Relaciontransferencias t
     INNER JOIN empresa e ON e.Nit = t.NitEmpresa
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
@@ -240,37 +235,48 @@ $consultaSQL = "
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
 ";
 
-$whereClauses = [];
+$where = [];
 if (Autorizacion($UsuarioSesion, "0003") === "NO") {
-    $whereClauses[] = "t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
-} elseif ($TerceroFiltro != '') {
-    $whereClauses[] = "t.CedulaNit = '".$mysqli->real_escape_string($TerceroFiltro)."'";
+    $where[] = "t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 
-if (!empty($whereClauses)) {
-    $consultaSQL .= " WHERE ".implode(" AND ", $whereClauses);
+if ($filtroTercero !== '') {
+    $where[] = "t.CedulaNit = '".$mysqli->real_escape_string($filtroTercero)."'";
+}
+
+if (count($where) > 0) {
+    $consultaSQL .= " WHERE " . implode(" AND ", $where);
 }
 
 $consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
 
 /* ============================================================
-   CARGA DE LISTAS EN ARRAYS
-============================================================ */
-$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
-$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-
-/* ============================================================
    TOTAL MONTOS (Solo si RevisadoLogistica+RevisadoGerencia >= 1)
 ============================================================ */
 $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1";
+
 if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
-} elseif ($TerceroFiltro != '') {
-    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($TerceroFiltro)."'";
 }
+if ($filtroTercero !== '') {
+    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($filtroTercero)."'";
+}
+
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
+
+/* ============================================================
+   LISTA DE TERCEROS CON TRANSFERENCIAS
+============================================================ */
+$tercerosArray = [];
+if (Autorizacion($UsuarioSesion, "0012") === "SI") {
+    $tercerosArray = $mysqli->query("
+        SELECT DISTINCT t.CedulaNit, tr.Nombre 
+        FROM Relaciontransferencias t 
+        INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
+        ORDER BY tr.Nombre
+    ")->fetch_all(MYSQLI_ASSOC);
+}
 ?>
 
 <!DOCTYPE html>
@@ -318,6 +324,10 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         location.reload();
     });
 }
+
+function filtrarTercero(select) {
+    window.location.href = 'Transfers.php?filtroTercero=' + select.value;
+}
 </script>
 </head>
 <body>
@@ -337,22 +347,21 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         <?php endif; ?>
     </div>
 
-    <!-- FILTRO DINÁMICO DE TERCEROS -->
-    <div class="mb-3">
-        <form method="GET" class="d-flex align-items-center gap-2">
-            <label class="mb-0">Filtrar por Tercero:</label>
-            <select name="tercero" class="form-select" onchange="this.form.submit()">
+    <?php if (Autorizacion($UsuarioSesion, "0012") === "SI" && count($tercerosArray) > 0): ?>
+        <div class="mb-4">
+            <label>Filtrar por Tercero:</label>
+            <select class="form-select" onchange="filtrarTercero(this)">
                 <option value="">Todos</option>
-                <?php foreach($tercerosConTransferencias as $t): ?>
-                    <option value="<?= $t['CedulaNit'] ?>" <?= ($TerceroFiltro==$t['CedulaNit'] ? 'selected':'') ?>>
-                        <?= htmlspecialchars($t['Nombre']) ?>
+                <?php foreach($tercerosArray as $t): ?>
+                    <option value="<?= $t['CedulaNit'] ?>" <?= ($t['CedulaNit']==$filtroTercero)?'selected':'' ?>>
+                        <?= $t['Nombre'] ?>
                     </option>
                 <?php endforeach; ?>
             </select>
-            <noscript><button type="submit" class="btn btn-primary btn-sm">Filtrar</button></noscript>
-        </form>
-    </div>
+        </div>
+    <?php endif; ?>
 
+    <!-- AQUÍ VA LA TABLA DE TRANSFERENCIAS (igual que tu código actual) -->
     <div class="card shadow p-4 mb-4">
         <h4 class="mb-3">Transferencias Registradas</h4>
         <div class="table-responsive">
@@ -398,7 +407,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                             <td class="text-center">
                                 <?php
                                     $puedeBorrar = Autorizacion($UsuarioSesion, "0006") === "SI";
-                                    if($puedeBorrar || $row['Tercero']==$UsuarioSesion): ?>
+                                    if($puedeBorrar || $row['CedulaNit']==$UsuarioSesion): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar esta transferencia?')">🗑</a>
                                 <?php else: ?>
                                     <button class="btn btn-secondary btn-sm" disabled>🚫</button>
@@ -422,7 +431,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
     </div>
 </div>
 
-<!-- MODAL NUEVA TRANSFERENCIA -->
+<!-- MODAL NUEVA TRANSFERENCIA (igual que tu código actual) -->
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
@@ -433,7 +442,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         </div>
         <div class="modal-body">
             <input type="hidden" name="guardarTransferencia" value="1">
-
+            <!-- resto del formulario igual que tu código -->
             <div class="row g-2 mb-3">
                 <div class="col-12 col-md">
                     <label class="form-label">Fecha</label>
@@ -513,6 +522,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
     </div>
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
