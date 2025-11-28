@@ -150,7 +150,7 @@ $msg = "";
 ============================================================ */
 if (isset($_GET['borrar'])) {
     $idBorrar = intval($_GET['borrar']);
-    $puedeBorrar = Autorizacion($UsuarioSesion, "0002") === "SI";
+    $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
 
     if (!$puedeBorrar) {
         // Solo puede borrar su propia transferencia
@@ -228,7 +228,7 @@ $consultaSQL = "
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
 ";
 
-if (Autorizacion($UsuarioSesion, "0002") === "NO") {
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $consultaSQL .= " WHERE t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 
@@ -246,7 +246,7 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
    TOTAL MONTOS (Solo si RevisadoLogistica+RevisadoGerencia >= 1)
 ============================================================ */
 $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1";
-if (Autorizacion($UsuarioSesion, "0002") === "NO") {
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
@@ -360,7 +360,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                             </td>
                             <td class="text-center">
                                 <?php
-                                    $puedeBorrar = Autorizacion($UsuarioSesion, "0002") === "SI";
+                                    $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
                                     if($puedeBorrar || $row['Tercero']==$UsuarioSesion): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar esta transferencia?')">🗑</a>
                                 <?php else: ?>
@@ -408,7 +408,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                 </div>
             </div>
 
-            <?php $puedeCambiarEmpresa = Autorizacion($UsuarioSesion, "0002")==="SI"; ?>
+            <?php $puedeCambiarEmpresa = Autorizacion($UsuarioSesion, "0003")==="SI"; ?>
 
             <div class="row g-2 mb-3">
                 <div class="col-12 col-md">
