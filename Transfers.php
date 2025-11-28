@@ -131,7 +131,7 @@ if (isset($_GET['borrar'])) {
             $del = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer = ?");
             $del->bind_param("i", $idBorrar);
             if ($del->execute()) {
-                $msg = "✓ Transferencia eliminada correctamente.";
+                // $msg = "✓ Transferencia eliminada correctamente.";
             } else {
                 $msg = "❌ Error al eliminar: " . $del->error;
             }
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
                 );
                 $stmt->execute();
                 $mysqli->commit();
-                $msg = "✓ Transferencia registrada correctamente.";
+                //$msg = "✓ Transferencia registrada correctamente.";
                 $stmt->close();
             } catch(Exception $e) {
                 $mysqli->rollback();
@@ -278,10 +278,7 @@ function cargarSucursales() {
 <body>
 <div class="container mt-5">
 
-    <div class="d-flex justify-content-between mb-3">
-        <h3>Registrar Transferencias</h3>
-        <a href="Panel.php" class="btn btn-secondary">← Volver al Panel</a>
-    </div>
+    
 
     <?php if ($msg != ""): ?>
         <div class="alert alert-info"><?= htmlspecialchars($msg) ?></div>

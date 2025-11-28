@@ -25,7 +25,7 @@ if (isset($_GET['delete'])) {
 }
 
 // Crear nueva autorización
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarAutorizacion'])) {
     $nro_auto = str_pad(trim($_POST['Nro_Auto']), 4, "0", STR_PAD_LEFT);
     $nombre = trim($_POST['Nombre']);
 
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $mysqli->prepare("INSERT INTO Autorizaciones (Nro_Auto, Nombre) VALUES (?, ?)");
         $stmt->bind_param("ss", $nro_auto, $nombre);
         if ($stmt->execute()) {
-            $mensaje = "Autorización creada exitosamente con número $nro_auto.";
+            //$mensaje = "Autorización creada exitosamente con número $nro_auto.";
         } else {
             $mensaje = ($mysqli->errno === 1062) ? "El número de autorización $nro_auto ya existe." : "Error: " . $mysqli->error;
         }
@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Obtener todas las autorizaciones
-$result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto asc");
+$result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto ASC");
 ?>
 
 <!doctype html>
@@ -63,29 +63,16 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto asc");
 
 <div class="container">
 
-    <div class="card">
-        <div class="card-header bg-primary text-white">Crear Nueva Autorización</div>
-        <div class="card-body">
-            <?php if ($mensaje): ?>
-                <div class="alert alert-info"><?= $mensaje ?></div>
-            <?php endif; ?>
-            <form method="post">
-                <div class="mb-3">
-                    <label for="Nro_Auto" class="form-label">Número de Autorización</label>
-                    <input type="number" min="1" max="9999" name="Nro_Auto" id="Nro_Auto" class="form-control" required>
-                    <small class="text-muted">Se rellenará automáticamente con ceros a la izquierda (ej: 1 → 0001).</small>
-                </div>
-                <div class="mb-3">
-                    <label for="Nombre" class="form-label">Nombre</label>
-                    <input type="text" maxlength="80" name="Nombre" id="Nombre" class="form-control" required>
-                </div>
-                <button type="submit" class="btn btn-success">Guardar</button>
-            </form>
-        </div>
+    <?php if ($mensaje): ?>
+        <div class="alert alert-info"><?= $mensaje ?></div>
+    <?php endif; ?>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Autorizaciones Registradas</h2>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalAutorizacion">➕ Crear Autorización</button>
     </div>
 
     <div class="card">
-        <div class="card-header bg-secondary text-white">Autorizaciones Registradas</div>
         <div class="card-body table-responsive">
             <table class="table table-bordered table-striped mb-0">
                 <thead>
@@ -103,7 +90,7 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto asc");
                     <tr>
                         <td><?= $row['Id_Auto'] ?></td>
                         <td><?= $row['Nro_Auto'] ?></td>
-                        <td><?= $row['Nombre'] ?></td>
+                        <td><?= htmlspecialchars($row['Nombre']) ?></td>
                         <td><?= $row['Estado'] === '1' ? 'Activo' : 'Inactivo' ?></td>
                         <td><?= $row['F_Creacion'] ?></td>
                         <td>
@@ -119,6 +106,40 @@ $result = $mysqli->query("SELECT * FROM Autorizaciones ORDER BY Nro_auto asc");
         </div>
     </div>
 
+</div>
+
+<!-- Modal Crear Autorización -->
+<div class="modal fade" id="modalAutorizacion" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        <div class="modal-header">
+          <h5 class="modal-title">Crear Nueva Autorización</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+
+            <div class="mb-3">
+                <label for="Nro_Auto" class="form-label">Número de Autorización</label>
+                <input type="number" min="1" max="9999" name="Nro_Auto" id="Nro_Auto" class="form-control" required>
+                <small class="text-muted">Se rellenará automáticamente con ceros a la izquierda (ej: 1 → 0001).</small>
+            </div>
+
+            <div class="mb-3">
+                <label for="Nombre" class="form-label">Nombre</label>
+                <input type="text" maxlength="80" name="Nombre" id="Nombre" class="form-control" required>
+            </div>
+
+            <input type="hidden" name="guardarAutorizacion" value="1">
+
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-success">Guardar Autorización</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
