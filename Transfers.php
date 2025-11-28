@@ -210,26 +210,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
 }
 
 /* ============================================================
-   CARGA DE LISTAS EN ARRAYS
-============================================================ */
-$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
-$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-
-/* ============================================================
-   FILTRO POR TERCERO
-============================================================ */
-$FiltroTercero = $_GET['tercero'] ?? '';
-
-$consultaFiltro = '';
-if (!empty($FiltroTercero)) {
-    $consultaFiltro = " AND t.CedulaNit = '".$mysqli->real_escape_string($FiltroTercero)."'";
-} elseif (Autorizacion($UsuarioSesion, "0003") === "NO") {
-    // Si no tiene autorización 0003, solo puede ver sus propias transferencias
-    $consultaFiltro = " AND t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
-}
-
-/* ============================================================
    LISTAR TRANSFERENCIAS
 ============================================================ */
 $consultaSQL = "
@@ -240,23 +220,35 @@ $consultaSQL = "
            m.Nombre AS Medio,
            t.Monto,
            t.RevisadoLogistica,
-           t.RevisadoGerencia,
-           t.CedulaNit
+           t.RevisadoGerencia
     FROM Relaciontransferencias t
     INNER JOIN empresa e ON e.Nit = t.NitEmpresa
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
     INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
-    WHERE 1=1
-    $consultaFiltro
-    ORDER BY t.Fecha DESC, t.Hora asc
 ";
+
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
+    $consultaSQL .= " WHERE t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+}
+
+$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
+
+/* ============================================================
+   CARGA DE LISTAS EN ARRAYS
+============================================================ */
+$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
+$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
 
 /* ============================================================
    TOTAL MONTOS (Solo si RevisadoLogistica+RevisadoGerencia >= 1)
 ============================================================ */
-$totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1 $consultaFiltro";
+$totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1";
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
+    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+}
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 ?>
 
@@ -324,22 +316,6 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         <?php endif; ?>
     </div>
 
-    <!-- FILTRO POR TERCERO -->
-    <div class="mb-3">
-        <form method="GET" class="d-flex align-items-center gap-2">
-            <label for="tercero" class="mb-0">Filtrar por Tercero:</label>
-            <select name="tercero" id="tercero" class="form-select w-auto" onchange="this.form.submit()">
-                <option value="">Todos</option>
-                <?php foreach($tercerosArray as $t): ?>
-                    <option value="<?= htmlspecialchars($t['CedulaNit']) ?>" <?= ($t['CedulaNit']==$FiltroTercero)?'selected':'' ?>>
-                        <?= htmlspecialchars($t['Nombre']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <noscript><button type="submit" class="btn btn-primary btn-sm">Filtrar</button></noscript>
-        </form>
-    </div>
-
     <div class="card shadow p-4 mb-4">
         <h4 class="mb-3">Transferencias Registradas</h4>
         <div class="table-responsive">
@@ -365,12 +341,12 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                     ?>
                     <?php while ($row = $transferencias->fetch_assoc()): ?>
                         <tr>
-                            <td><?= htmlspecialchars($row['Fecha']) ?></td>
-                            <td><?= htmlspecialchars($row['Hora']) ?></td>
-                            <td><?= htmlspecialchars($row['NombreComercial']) ?></td>
-                            <td><?= htmlspecialchars($row['Sucursal']) ?></td>
-                            <td><?= htmlspecialchars($row['Tercero']) ?></td>
-                            <td><?= htmlspecialchars($row['Medio']) ?></td>
+                            <td><?= $row['Fecha'] ?></td>
+                            <td><?= $row['Hora'] ?></td>
+                            <td><?= $row['NombreComercial'] ?></td>
+                            <td><?= $row['Sucursal'] ?></td>
+                            <td><?= $row['Tercero'] ?></td>
+                            <td><?= $row['Medio'] ?></td>
                             <td class="text-end"><?= number_format($row['Monto'],2) ?></td>
                             <td class="text-center">
                                 <input type="checkbox" <?= $row['RevisadoLogistica'] ? 'checked' : '' ?> 
@@ -385,7 +361,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                             <td class="text-center">
                                 <?php
                                     $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
-                                    if($puedeBorrar || $row['CedulaNit']==$UsuarioSesion): ?>
+                                    if($puedeBorrar || $row['Tercero']==$UsuarioSesion): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar esta transferencia?')">🗑</a>
                                 <?php else: ?>
                                     <button class="btn btn-secondary btn-sm" disabled>🚫</button>
