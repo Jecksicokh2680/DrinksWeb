@@ -2,6 +2,8 @@
 require 'Conexion.php';
 require 'helpers.php';
 
+session_start();
+
 session_regenerate_id(true); // Previene secuestro de sesión
 
 /* ============================================================
