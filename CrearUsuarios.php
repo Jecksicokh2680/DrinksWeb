@@ -1,5 +1,6 @@
 <?php
 require 'Conexion.php';
+session_start();
 
 // Procesar creación de usuario
 $msg = "";

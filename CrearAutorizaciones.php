@@ -1,6 +1,7 @@
 <?php
 require 'Conexion.php';
 require 'helpers.php';
+session_start();session_start();
 
 if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php?msg=Debe iniciar sesión");

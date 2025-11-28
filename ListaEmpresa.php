@@ -1,6 +1,6 @@
 <?php
 require 'Conexion.php';
-
+session_start();
 $sql = "SELECT Nit, RazonSocial, NombreComercial, Alias, Regimen, Email, WebSite, FechaCreacion, Estado 
         FROM empresa ORDER BY RazonSocial ASC";
 
