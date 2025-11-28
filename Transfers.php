@@ -360,7 +360,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                             </td>
                             <td class="text-center">
                                 <?php
-                                    $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
+                                    $puedeBorrar = Autorizacion($UsuarioSesion, "0006") === "SI";
                                     if($puedeBorrar || $row['Tercero']==$UsuarioSesion): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar esta transferencia?')">🗑</a>
                                 <?php else: ?>
