@@ -1,5 +1,4 @@
 <?php
-session_start();
 require 'Conexion.php';
 
 // Procesar creación de usuario

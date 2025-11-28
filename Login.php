@@ -1,5 +1,4 @@
 <?php
-session_start();
 require 'Conexion.php';
 
 // Redirige si ya está logueado

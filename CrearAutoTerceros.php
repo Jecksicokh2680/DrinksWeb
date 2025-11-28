@@ -1,7 +1,6 @@
 <?php
 require 'Conexion.php';
 require 'helpers.php';
-session_start();
 
 /* ============================================================
    VALIDAR SESIÓN

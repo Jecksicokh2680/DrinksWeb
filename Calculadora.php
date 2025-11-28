@@ -1,5 +1,4 @@
 <?php
-session_start();
 
 // CONFIGURACIÓN DE TIEMPO DE SESIÓN
 $session_timeout   = 3600;  // duración total de la sesión (1 hora)
