@@ -89,8 +89,8 @@ body {
 <div class="sidebar d-flex flex-column" id="sidebar">
     <a class="navbar-brand text-white" href="#">Mi App</a>
     <nav class="nav flex-column px-2">
-        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Registrar Transferencia</a>
-        <a class="nav-link" href="Reportes.php" target="contentFrame">📄 Reportes</a>
+        <a class="nav-link" href="Transfers.php"   target="contentFrame">➕ Registrar Transferencia</a>
+        <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
 
         <?php if (Autorizacion($UsuarioSesion,'0001') === "SI"): ?>
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>

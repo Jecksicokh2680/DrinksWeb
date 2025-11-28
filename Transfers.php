@@ -110,9 +110,16 @@ if (isset($_POST['ajax']) && $_POST['ajax'] === 'actualizar_check') {
     $campo      = $_POST['campo'] ?? '';
     $valor      = isset($_POST['valor']) && $_POST['valor'] == "1" ? 1 : 0;
 
-    $puedeRevisar = Autorizacion($UsuarioSesion, "0009") === "SI";
+    $puedeRevisarLogistica = Autorizacion($UsuarioSesion, "0009") === "SI";
+    $puedeRevisarGerencia  = Autorizacion($UsuarioSesion, "0010") === "SI";
 
-    if (!$puedeRevisar || !in_array($campo, ['RevisadoLogistica','RevisadoGerencia']) || $idTransfer <= 0) {
+    if (!in_array($campo, ['RevisadoLogistica','RevisadoGerencia']) || $idTransfer <= 0) {
+        echo json_encode(['status'=>'error','msg'=>'Campo inválido']);
+        exit;
+    }
+
+    if (($campo === 'RevisadoLogistica' && !$puedeRevisarLogistica) ||
+        ($campo === 'RevisadoGerencia'  && !$puedeRevisarGerencia)) {
         echo json_encode(['status'=>'error','msg'=>'No autorizado']);
         exit;
     }
@@ -328,7 +335,10 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php $puedeRevisar = Autorizacion($UsuarioSesion, "0009")==="SI"; ?>
+                    <?php 
+                        $puedeRevisarLogistica = Autorizacion($UsuarioSesion, "0009")==="SI";
+                        $puedeRevisarGerencia  = Autorizacion($UsuarioSesion, "0010")==="SI";
+                    ?>
                     <?php while ($row = $transferencias->fetch_assoc()): ?>
                         <tr>
                             <td><?= $row['Fecha'] ?></td>
@@ -340,12 +350,12 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                             <td class="text-end"><?= number_format($row['Monto'],2) ?></td>
                             <td class="text-center">
                                 <input type="checkbox" <?= $row['RevisadoLogistica'] ? 'checked' : '' ?> 
-                                <?= $puedeRevisar?'':'disabled' ?> 
+                                <?= $puedeRevisarLogistica?'':'disabled' ?> 
                                 onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoLogistica',this)">
                             </td>
                             <td class="text-center">
                                 <input type="checkbox" <?= $row['RevisadoGerencia'] ? 'checked' : '' ?> 
-                                <?= $puedeRevisar?'':'disabled' ?> 
+                                <?= $puedeRevisarGerencia?'':'disabled' ?> 
                                 onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoGerencia',this)">
                             </td>
                             <td class="text-center">
