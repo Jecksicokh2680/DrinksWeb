@@ -185,7 +185,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
                 );
                 $stmt->execute();
                 $mysqli->commit();
-                //$msg = "✓ Transferencia registrada correctamente.";
                 $stmt->close();
             } catch(Exception $e) {
                 $mysqli->rollback();
@@ -197,7 +196,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
 
 /* ============================================================
    LISTAR TRANSFERENCIAS
-   Si 0002 = NO, mostrar solo las del usuario
 ============================================================ */
 $consultaSQL = "
     SELECT t.IdTransfer, t.Fecha, t.Hora,
@@ -236,6 +234,7 @@ if (Autorizacion($UsuarioSesion, "0002") === "NO") {
 }
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -250,6 +249,7 @@ body { background-color: #f3f4f6; }
 .card { border-radius: 1rem; }
 .table thead { background-color: #343a40; color: #fff; }
 .modal-header { background-color: #0d6efd; color: white; }
+.table-responsive { overflow-x:auto; }
 </style>
 
 <script>
@@ -277,8 +277,6 @@ function cargarSucursales() {
 </head>
 <body>
 <div class="container mt-5">
-
-    
 
     <?php if ($msg != ""): ?>
         <div class="alert alert-info"><?= htmlspecialchars($msg) ?></div>
@@ -349,7 +347,7 @@ function cargarSucursales() {
 
 <!-- MODAL NUEVA TRANSFERENCIA -->
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <form method="POST">
         <div class="modal-header">
@@ -359,13 +357,13 @@ function cargarSucursales() {
         <div class="modal-body">
             <input type="hidden" name="guardarTransferencia" value="1">
 
-            <!-- Fecha y Hora en la misma línea -->
-            <div class="mb-3 row g-2 align-items-end">
-                <div class="col">
+            <!-- Fecha y Hora -->
+            <div class="row g-2 mb-3">
+                <div class="col-12 col-md">
                     <label class="form-label">Fecha</label>
                     <input type="date" name="Fecha" class="form-control" value="<?= $FechaHoy ?>" readonly>
                 </div>
-                <div class="col">
+                <div class="col-12 col-md">
                     <label class="form-label">Hora</label>
                     <input type="time" name="Hora" class="form-control" value="<?= $HoraHoy ?>" readonly>
                 </div>
@@ -373,9 +371,9 @@ function cargarSucursales() {
 
             <?php $puedeCambiar = Autorizacion($UsuarioSesion, "0002") === "SI"; ?>
 
-            <!-- Empresa y Sucursal en la misma línea -->
-            <div class="mb-3 row g-2 align-items-end">
-                <div class="col">
+            <!-- Empresa y Sucursal -->
+            <div class="row g-2 mb-3">
+                <div class="col-12 col-md">
                     <label class="form-label">Empresa</label>
                     <?php if ($puedeCambiar): ?>
                         <select name="NitEmpresa" id="NitEmpresa" class="form-select" onchange="cargarSucursales()" required>
@@ -389,7 +387,7 @@ function cargarSucursales() {
                         <input type="hidden" name="NitEmpresa" value="<?= $NitSesion ?>">
                     <?php endif; ?>
                 </div>
-                <div class="col">
+                <div class="col-12 col-md">
                     <label class="form-label">Sucursal</label>
                     <?php if ($puedeCambiar): ?>
                         <select name="Sucursal" id="Sucursal" class="form-select" required>
@@ -435,9 +433,9 @@ function cargarSucursales() {
                 <input type="number" step="0.01" min="0.01" name="Monto" class="form-control" placeholder="0.00" required>
             </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar Transferencia</button>
+        <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">
+          <button type="button" class="btn btn-secondary w-100 w-md-auto" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary w-100 w-md-auto">Guardar Transferencia</button>
         </div>
       </form>
     </div>
