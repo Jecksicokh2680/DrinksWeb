@@ -25,13 +25,19 @@ $empresas = $mysqli->query("SELECT Nit, RazonSocial
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-body { background: #f5f5f5; }
+body { 
+    background: #f5f5f5; 
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
 .card { border-radius: 10px; }
 </style>
 
 <script>
 // ======================================================
-// Cargar sucursales vía AJAX SIN ARCHIVOS EXTERNOS
+// Cargar sucursales vía AJAX
 // ======================================================
 function cargarSucursales() {
     let nit = document.getElementById("NitEmpresa").value;
@@ -42,7 +48,6 @@ function cargarSucursales() {
         return;
     }
 
-    // Petición AJAX dentro del mismo archivo
     fetch("Login.php?loadSucursales=1&nit=" + nit)
         .then(res => res.text())
         .then(data => {
@@ -55,20 +60,13 @@ function cargarSucursales() {
 <body>
 
 <?php
-// ======================================================
-// Cargar sucursales si AJAX lo solicita
-// ======================================================
 if (isset($_GET['loadSucursales'])) {
-
     $nit = $_GET['nit'] ?? '';
-
     if ($nit != "") {
-
         $sql = "SELECT NroSucursal, Ciudad 
                 FROM empresa_sucursal 
                 WHERE Nit=? AND Estado=1 
                 ORDER BY NroSucursal";
-
         $stmt = $mysqli->prepare($sql);
         $stmt->bind_param("s", $nit);
         $stmt->execute();
@@ -78,79 +76,80 @@ if (isset($_GET['loadSucursales'])) {
             echo "<option value=''>No hay sucursales activas</option>";
         } else {
             while ($row = $result->fetch_assoc()) {
-                echo "<option value='".$row['NroSucursal']."'>
-                        ".$row['NroSucursal']." - ".$row['Ciudad']."
-                      </option>";
+                echo "<option value='".$row['NroSucursal']."'>"
+                     .$row['NroSucursal']." - ".$row['Ciudad'].
+                     "</option>";
             }
         }
     }
-    exit; // No continuar con la página completa
+    exit;
 }
 ?>
 
-<div class="container mt-5">
-    <div class="col-md-4 offset-md-4">
-        <div class="card shadow">
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-10 col-md-6 col-lg-5 col-xl-4">
+            <div class="card shadow">
 
-            <div class="card-header bg-primary text-white text-center">
-                <h4 class="mb-0">Inicio de Sesión</h4>
-            </div>
+                <div class="card-header bg-primary text-white text-center">
+                    <h4 class="mb-0">Inicio de Sesión</h4>
+                </div>
 
-            <div class="card-body">
+                <div class="card-body">
 
-                <?php if ($msg != ""): ?>
-                    <div class="alert alert-warning text-center">
-                        <?= htmlspecialchars($msg) ?>
-                    </div>
-                <?php endif; ?>
+                    <?php if ($msg != ""): ?>
+                        <div class="alert alert-warning text-center">
+                            <?= htmlspecialchars($msg) ?>
+                        </div>
+                    <?php endif; ?>
 
-                <form method="POST" action="Validar.php">
+                    <form method="POST" action="Validar.php">
 
-                    <!-- Usuario -->
-                    <div class="mb-3">
-                        <label class="form-label">Cédula / NIT Usuario</label>
-                        <input type="text" name="CedulaNit" class="form-control" required>
-                    </div>
+                        <!-- Usuario -->
+                        <div class="mb-3">
+                            <label class="form-label">Cédula / NIT Usuario</label>
+                            <input type="text" name="CedulaNit" class="form-control" required>
+                        </div>
 
-                    <!-- Empresa -->
-                    <div class="mb-3">
-                        <label class="form-label">Empresa</label>
-                        <select name="NitEmpresa" id="NitEmpresa"
-                                class="form-select" onchange="cargarSucursales()" required>
-                            <option value="">Seleccione la empresa</option>
+                        <!-- Empresa -->
+                        <div class="mb-3">
+                            <label class="form-label">Empresa</label>
+                            <select name="NitEmpresa" id="NitEmpresa"
+                                    class="form-select" onchange="cargarSucursales()" required>
+                                <option value="">Seleccione la empresa</option>
+                                <?php while ($e = $empresas->fetch_assoc()): ?>
+                                    <option value="<?= $e['Nit'] ?>">
+                                        <?= $e['Nit'] ?> - <?= $e['RazonSocial'] ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
 
-                            <?php while ($e = $empresas->fetch_assoc()): ?>
-                                <option value="<?= $e['Nit'] ?>">
-                                    <?= $e['Nit'] ?> - <?= $e['RazonSocial'] ?>
-                                </option>
-                            <?php endwhile; ?>
+                        <!-- Sucursal -->
+                        <div class="mb-3">
+                            <label class="form-label">Sucursal</label>
+                            <select name="NroSucursal" id="NroSucursal" class="form-select" required>
+                                <option value="">Seleccione una empresa primero</option>
+                            </select>
+                        </div>
 
-                        </select>
-                    </div>
+                        <!-- Contraseña -->
+                        <div class="mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input type="password" name="Password" class="form-control" required>
+                        </div>
 
-                    <!-- Sucursal -->
-                    <div class="mb-3">
-                        <label class="form-label">Sucursal</label>
-                        <select name="NroSucursal" id="NroSucursal" class="form-select" required>
-                            <option value="">Seleccione una empresa primero</option>
-                        </select>
-                    </div>
+                        <!-- Botón -->
+                        <button class="btn btn-primary w-100">Ingresar</button>
 
-                    <!-- Contraseña -->
-                    <div class="mb-3">
-                        <label class="form-label">Contraseña</label>
-                        <input type="password" name="Password" class="form-control" required>
-                    </div>
+                    </form>
 
-                    <!-- Botón -->
-                    <button class="btn btn-primary w-100">Ingresar</button>
-
-                </form>
-
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
