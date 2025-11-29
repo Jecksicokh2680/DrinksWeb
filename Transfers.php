@@ -153,6 +153,7 @@ if (isset($_GET['borrar'])) {
     $puedeBorrar = Autorizacion($UsuarioSesion, "0003") === "SI";
 
     if (!$puedeBorrar) {
+        // Solo puede borrar su propia transferencia
         $stmtCheck = $mysqli->prepare("SELECT IdTransfer FROM Relaciontransferencias WHERE IdTransfer=? AND CedulaNit=?");
         $stmtCheck->bind_param("is",$idBorrar,$UsuarioSesion);
         $stmtCheck->execute();
@@ -168,6 +169,7 @@ if (isset($_GET['borrar'])) {
             $stmtDel->close();
         }
     } else {
+        // Puede borrar cualquier transferencia
         $stmtDel = $mysqli->prepare("DELETE FROM Relaciontransferencias WHERE IdTransfer=?");
         $stmtDel->bind_param("i",$idBorrar);
         $stmtDel->execute();
@@ -208,33 +210,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
 }
 
 /* ============================================================
-   AUTORIZACIÓN 0003
-============================================================ */
-$aut0003 = Autorizacion($UsuarioSesion, "0003") === "SI";
-
-/* ============================================================
-   FILTROS DE TERCEROS
-============================================================ */
-$filtroTerceroTabla = '';
-if (Autorizacion($UsuarioSesion, "0012") === "SI") {
-    $filtroTerceroTabla = $_GET['filtroTercero'] ?? '';
-}
-
-// Para el modal de nueva transferencia (lista independiente)
-$tercerosModal = $mysqli->query("
-    SELECT CedulaNit, Nombre
-    FROM terceros
-    WHERE Estado=1
-    ORDER BY Nombre
-")->fetch_all(MYSQLI_ASSOC);
-
-/* ============================================================
-   CARGA DE LISTAS DE EMPRESAS Y MEDIOS DE PAGO
-============================================================ */
-$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
-$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-
-/* ============================================================
    LISTAR TRANSFERENCIAS
 ============================================================ */
 $consultaSQL = "
@@ -245,8 +220,7 @@ $consultaSQL = "
            m.Nombre AS Medio,
            t.Monto,
            t.RevisadoLogistica,
-           t.RevisadoGerencia,
-           t.CedulaNit
+           t.RevisadoGerencia
     FROM Relaciontransferencias t
     INNER JOIN empresa e ON e.Nit = t.NitEmpresa
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
@@ -254,34 +228,27 @@ $consultaSQL = "
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
 ";
 
-$where = [];
-if (!$aut0003) {
-    $where[] = "t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
+    $consultaSQL .= " WHERE t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 
-if ($filtroTerceroTabla !== '') {
-    $where[] = "t.CedulaNit = '".$mysqli->real_escape_string($filtroTerceroTabla)."'";
-}
-
-if (count($where) > 0) {
-    $consultaSQL .= " WHERE " . implode(" AND ", $where);
-}
-
-$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora asc";
+$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
 
 /* ============================================================
-   TOTAL MONTOS
+   CARGA DE LISTAS EN ARRAYS
+============================================================ */
+$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
+$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+
+/* ============================================================
+   TOTAL MONTOS (Solo si RevisadoLogistica+RevisadoGerencia >= 1)
 ============================================================ */
 $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias WHERE (RevisadoLogistica+RevisadoGerencia)>=1";
-
-if (!$aut0003) {
+if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
-if ($filtroTerceroTabla !== '') {
-    $totalSQL .= " AND CedulaNit = '".$mysqli->real_escape_string($filtroTerceroTabla)."'";
-}
-
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 ?>
 
@@ -330,10 +297,6 @@ function actualizarCheck(idTransfer, campo, checkbox) {
         location.reload();
     });
 }
-
-function filtrarTercero(select) {
-    window.location.href = 'Transfers.php?filtroTercero=' + select.value;
-}
 </script>
 </head>
 <body>
@@ -352,27 +315,6 @@ function filtrarTercero(select) {
             <button class="btn btn-secondary" disabled>🚫 No autorizado</button>
         <?php endif; ?>
     </div>
-
-    <?php if (Autorizacion($UsuarioSesion, "0012") === "SI"): ?>
-        <div class="mb-4">
-            <label>Filtrar tabla por Tercero:</label>
-            <select class="form-select" onchange="filtrarTercero(this)">
-                <option value="">Todos</option>
-                <?php
-                $tercerosTabla = $mysqli->query("
-                    SELECT DISTINCT t.CedulaNit, tr.Nombre
-                    FROM Relaciontransferencias t
-                    INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
-                    ORDER BY tr.Nombre
-                ")->fetch_all(MYSQLI_ASSOC);
-                foreach($tercerosTabla as $t): ?>
-                    <option value="<?= $t['CedulaNit'] ?>" <?= ($t['CedulaNit']==$filtroTerceroTabla)?'selected':'' ?>>
-                        <?= $t['Nombre'] ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-    <?php endif; ?>
 
     <div class="card shadow p-4 mb-4">
         <h4 class="mb-3">Transferencias Registradas</h4>
@@ -419,7 +361,7 @@ function filtrarTercero(select) {
                             <td class="text-center">
                                 <?php
                                     $puedeBorrar = Autorizacion($UsuarioSesion, "0006") === "SI";
-                                    if($puedeBorrar || $row['CedulaNit']==$UsuarioSesion): ?>
+                                    if($puedeBorrar || $row['Tercero']==$UsuarioSesion): ?>
                                     <a href="?borrar=<?= intval($row['IdTransfer']) ?>" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar esta transferencia?')">🗑</a>
                                 <?php else: ?>
                                     <button class="btn btn-secondary btn-sm" disabled>🚫</button>
@@ -444,79 +386,91 @@ function filtrarTercero(select) {
 </div>
 
 <!-- MODAL NUEVA TRANSFERENCIA -->
-<?php
-$NitModal    = $aut0003 ? '' : $NitSesion;
-$SucursalModal = $aut0003 ? '' : $SucursalSesion;
-$TerceroModal = $aut0003 ? '' : $UsuarioSesion;
-?>
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <form method="POST">
         <div class="modal-header">
-          <h5 class="modal-title">Registrar Nueva Transferencia</h5>
+          <h5 class="modal-title">Nueva Transferencia</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body row g-3">
-            <div class="col-md-3">
-                <label>Fecha</label>
-                <input type="date" class="form-control" name="Fecha" value="<?= $FechaHoy ?>" required>
+        <div class="modal-body">
+            <input type="hidden" name="guardarTransferencia" value="1">
+
+            <div class="row g-2 mb-3">
+                <div class="col-12 col-md">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" name="Fecha" class="form-control" value="<?= $FechaHoy ?>" readonly>
+                </div>
+                <div class="col-12 col-md">
+                    <label class="form-label">Hora</label>
+                    <input type="time" name="Hora" class="form-control" value="<?= $HoraHoy ?>" readonly>
+                </div>
             </div>
-            <div class="col-md-3">
-                <label>Hora</label>
-                <input type="time" class="form-control" name="Hora" value="<?= $HoraHoy ?>" required>
-            </div>
-            <div class="col-md-3">
-                <label>Empresa</label>
-                <select class="form-select" name="NitEmpresa" id="NitEmpresa"
-                    <?= $aut0003 ? 'onchange="cargarSucursales()"' : 'disabled' ?> required>
-                    <?php foreach($empresasArray as $e): ?>
-                        <option value="<?= $e['Nit'] ?>" <?= ($e['Nit']==$NitModal)?'selected':'' ?>>
-                            <?= $e['NombreComercial'] ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label>Sucursal</label>
-                <select class="form-select" name="Sucursal" id="Sucursal" <?= $aut0003?'':'disabled' ?> required>
-                    <?php if(!$aut0003): ?>
-                        <option value="<?= $SucursalSesion ?>"><?= $SucursalSesion ?></option>
+
+            <?php $puedeCambiarEmpresa = Autorizacion($UsuarioSesion, "0003")==="SI"; ?>
+
+            <div class="row g-2 mb-3">
+                <div class="col-12 col-md">
+                    <label class="form-label">Empresa</label>
+                    <?php if($puedeCambiarEmpresa): ?>
+                        <select name="NitEmpresa" id="NitEmpresa" class="form-select" onchange="cargarSucursales()" required>
+                            <option value="">Seleccione...</option>
+                            <?php foreach($empresasArray as $e): ?>
+                                <option value="<?= $e['Nit'] ?>"><?= $e['NombreComercial'] ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     <?php else: ?>
-                        <option value="">Seleccione empresa primero...</option>
+                        <input type="text" class="form-control" value="<?= $NitSesion ?>" readonly>
+                        <input type="hidden" name="NitEmpresa" value="<?= $NitSesion ?>">
                     <?php endif; ?>
-                </select>
-            </div>
-            <div class="col-md-6">
-                <label>Tercero</label>
-                <select class="form-select" name="CedulaNit" <?= $aut0003?'':'disabled' ?> required>
-                    <?php if(!$aut0003): ?>
-                        <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?></option>
+                </div>
+                <div class="col-12 col-md">
+                    <label class="form-label">Sucursal</label>
+                    <?php if($puedeCambiarEmpresa): ?>
+                        <select name="Sucursal" id="Sucursal" class="form-select" required>
+                            <option value="">Seleccione empresa...</option>
+                        </select>
                     <?php else: ?>
+                        <input type="text" class="form-control" value="<?= $SucursalSesion ?>" readonly>
+                        <input type="hidden" name="Sucursal" value="<?= $SucursalSesion ?>">
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Tercero</label>
+                <?php if($puedeCambiarEmpresa): ?>
+                    <select name="CedulaNit" class="form-select" required>
                         <option value="">Seleccione...</option>
-                        <?php foreach($tercerosModal as $t): ?>
+                        <?php foreach($tercerosArray as $t): ?>
                             <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?></option>
                         <?php endforeach; ?>
-                    <?php endif; ?>
-                </select>
+                    </select>
+                <?php else: ?>
+                    <input type="text" class="form-control" value="<?= $UsuarioSesion ?>" readonly>
+                    <input type="hidden" name="CedulaNit" value="<?= $UsuarioSesion ?>">
+                <?php endif; ?>
             </div>
-            <div class="col-md-3">
-                <label>Medio</label>
-                <select class="form-select" name="IdMedio" required>
+
+            <div class="mb-3">
+                <label class="form-label">Medio de Pago</label>
+                <select name="IdMedio" class="form-select" required>
                     <option value="">Seleccione...</option>
                     <?php foreach($mediosArray as $m): ?>
                         <option value="<?= $m['IdMedio'] ?>"><?= $m['Nombre'] ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label>Monto</label>
-                <input type="number" step="0.01" class="form-control" name="Monto" required>
+
+            <div class="mb-3">
+                <label class="form-label">Monto</label>
+                <input type="number" step="0.01" min="0.01" name="Monto" class="form-control" placeholder="0.00" required>
             </div>
         </div>
-        <div class="modal-footer">
-          <button type="submit" name="guardarTransferencia" class="btn btn-success">Guardar</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">
+          
+          <button type="submit" class="btn btn-primary w-100 w-md-auto">Guardar Transferencia</button>
         </div>
       </form>
     </div>
