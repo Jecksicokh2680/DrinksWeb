@@ -216,6 +216,23 @@ if (Autorizacion($UsuarioSesion, "0012") === "SI") {
 }
 
 /* ============================================================
+   CARGA DE LISTAS EN ARRAYS
+============================================================ */
+$empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
+
+$mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+
+$tercerosArray = [];
+if (Autorizacion($UsuarioSesion, "0012") === "SI") {
+    $tercerosArray = $mysqli->query("
+        SELECT DISTINCT t.CedulaNit, tr.Nombre 
+        FROM Relaciontransferencias t 
+        INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
+        ORDER BY tr.Nombre
+    ")->fetch_all(MYSQLI_ASSOC);
+}
+
+/* ============================================================
    LISTAR TRANSFERENCIAS
 ============================================================ */
 $consultaSQL = "
@@ -264,19 +281,6 @@ if ($filtroTercero !== '') {
 }
 
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
-
-/* ============================================================
-   LISTA DE TERCEROS CON TRANSFERENCIAS
-============================================================ */
-$tercerosArray = [];
-if (Autorizacion($UsuarioSesion, "0012") === "SI") {
-    $tercerosArray = $mysqli->query("
-        SELECT DISTINCT t.CedulaNit, tr.Nombre 
-        FROM Relaciontransferencias t 
-        INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
-        ORDER BY tr.Nombre
-    ")->fetch_all(MYSQLI_ASSOC);
-}
 ?>
 
 <!DOCTYPE html>
@@ -361,7 +365,7 @@ function filtrarTercero(select) {
         </div>
     <?php endif; ?>
 
-    <!-- AQUÍ VA LA TABLA DE TRANSFERENCIAS (igual que tu código actual) -->
+    <!-- TABLA DE TRANSFERENCIAS -->
     <div class="card shadow p-4 mb-4">
         <h4 class="mb-3">Transferencias Registradas</h4>
         <div class="table-responsive">
@@ -431,7 +435,7 @@ function filtrarTercero(select) {
     </div>
 </div>
 
-<!-- MODAL NUEVA TRANSFERENCIA (igual que tu código actual) -->
+<!-- MODAL NUEVA TRANSFERENCIA -->
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
@@ -442,7 +446,7 @@ function filtrarTercero(select) {
         </div>
         <div class="modal-body">
             <input type="hidden" name="guardarTransferencia" value="1">
-            <!-- resto del formulario igual que tu código -->
+
             <div class="row g-2 mb-3">
                 <div class="col-12 col-md">
                     <label class="form-label">Fecha</label>
@@ -515,7 +519,6 @@ function filtrarTercero(select) {
             </div>
         </div>
         <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">
-          <button type="button" class="btn btn-secondary w-100 w-md-auto" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary w-100 w-md-auto">Guardar Transferencia</button>
         </div>
       </form>
