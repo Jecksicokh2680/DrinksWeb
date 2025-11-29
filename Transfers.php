@@ -265,7 +265,7 @@ if (count($where) > 0) {
     $consultaSQL .= " WHERE " . implode(" AND ", $where);
 }
 
-$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora DESC";
+$consultaSQL .= " ORDER BY t.Fecha DESC, t.Hora asc";
 $transferencias = $mysqli->query($consultaSQL);
 
 /* ============================================================
