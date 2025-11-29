@@ -2,7 +2,7 @@
 // ------------------------------------------------------------
 // CONEXIÓN
 // ------------------------------------------------------------
-require('conexion.php');
+require('Conexion.php');
 $mysqli->set_charset("utf8mb4");
 
 // ------------------------------------------------------------
@@ -36,7 +36,7 @@ $sql = "
 SELECT
     rt.Fecha,
     rt.CedulaNit,
-    COALESCE(t.NombreCom, t.Nombre) AS Nombre,
+    COALESCE(t.Nombre) AS Nombre,
     SUM(rt.Monto) AS Total
 FROM Relaciontransferencias rt
 LEFT JOIN terceros t ON t.CedulaNit = rt.CedulaNit
