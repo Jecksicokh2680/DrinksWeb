@@ -101,8 +101,8 @@ body {
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>
             <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">🗂️ Lista Transfers Dia</a>
-            <a class="nav-link"href="Productos.php" target="contentFrame">🗂️ Lista Productos</a>
-            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorias</a>
+            <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Lista Productos</a>
+            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Lista Categorias</a>
         <?php endif; ?>
     </nav>
     <div class="mt-auto p-3">
