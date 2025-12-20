@@ -91,13 +91,18 @@ body {
     <a class="navbar-brand text-white" href="#">Mi App</a>
     <nav class="nav flex-column px-2">
         <a class="nav-link" href="Transfers.php"   target="contentFrame">➕ Registrar Transferencia</a>
+        <a class="nav-link" href="Transfers2.php"   target="contentFrame">➕ Registrar x</a>
         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
+        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📄 Traslados de Mercancia</a>
+        <a class="nav-link" href="Conteo.php" target="contentFrame">📄 Conteo Web</a>
 
         <?php if (Autorizacion($UsuarioSesion,'0001') === "SI"): ?>
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>
             <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">🗂️ Lista Transfers Dia</a>
+            <a class="nav-link"href="Productos.php" target="contentFrame">🗂️ Lista Productos</a>
+            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorias</a>
         <?php endif; ?>
     </nav>
     <div class="mt-auto p-3">

@@ -468,8 +468,7 @@ function actualizarCheck(idTransfer, campo, checkbox) {
                 <input type="number" step="0.01" min="0.01" name="Monto" class="form-control" placeholder="0.00" required>
             </div>
         </div>
-        <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">
-          <button type="button" class="btn btn-secondary w-100 w-md-auto" data-bs-dismiss="modal">Cancelar</button>
+        <div class="modal-footer d-flex flex-column flex-md-row justify-content-end gap-2">         
           <button type="submit" class="btn btn-primary w-100 w-md-auto">Guardar Transferencia</button>
         </div>
       </form>
