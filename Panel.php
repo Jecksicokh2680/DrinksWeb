@@ -104,6 +104,7 @@ body {
             <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Lista Productos</a>
             <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Lista Categorias</a>
             <a class="nav-link" href="DashBoard1.php" target="contentFrame">🗂️ Control Central</a>
+            <a class="nav-link" href="DashBoard2.php" target="contentFrame">🗂️ Control Drinks</a>
         <?php endif; ?>
     </nav>
     <div class="mt-auto p-3">
