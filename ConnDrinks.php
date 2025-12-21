@@ -13,4 +13,6 @@ if ($mysqliPos->connect_error) {
     // $mysqliPos->set_charset("utf8mb4");
 }
 // Ahora, el script que incluye este archivo puede revisar la variable $conn_error
+global $mysqliDrinks;  // empresa001
+$mysqliDrinks = $mysqliPos;
 ?>
