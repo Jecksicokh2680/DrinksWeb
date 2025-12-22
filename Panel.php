@@ -10,24 +10,45 @@ if (empty($_SESSION['Usuario'])) {
 
 $UsuarioSesion = $_SESSION['Usuario'];
 
-// -------------------------------------------------
-// CARGAR PERMISOS DEL USUARIO
-// -------------------------------------------------
+/* ======================================================
+   FUNCIÓN: CARGAR PERMISOS (CON CACHE EN SESIÓN)
+====================================================== */
 function PermisosUsuario($user){
     global $mysqli;
+
+    if (isset($_SESSION['PERMISOS'])) {
+        return $_SESSION['PERMISOS'];
+    }
+
     $permisos = [];
-    $res = $mysqli->query("
+
+    $stmt = $mysqli->prepare("
         SELECT Nro_Auto
         FROM autorizacion_tercero
-        WHERE CedulaNit='$user' AND Swich='SI'
+        WHERE CedulaNit = ? AND Swich = 'SI'
     ");
-    while($r = $res->fetch_assoc()){
+    $stmt->bind_param("s", $user);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    while ($r = $res->fetch_assoc()) {
         $permisos[] = $r['Nro_Auto'];
     }
+
+    $stmt->close();
+
+    $_SESSION['PERMISOS'] = $permisos;
     return $permisos;
 }
 
 $PERMISOS = PermisosUsuario($UsuarioSesion);
+
+/* ======================================================
+   FUNCIÓN HELPER: VALIDAR PERMISO
+====================================================== */
+function TienePermiso($codigo){
+    return in_array($codigo, $_SESSION['PERMISOS'] ?? []);
+}
 ?>
 <!doctype html>
 <html lang="es">
@@ -113,15 +134,13 @@ style="position:fixed;top:10px;left:10px;z-index:1100">
 <!-- OPERACIONES -->
 <div class="accordion-item bg-primary border-0">
 <h2 class="accordion-header">
-<button class="accordion-button collapsed"
-data-bs-toggle="collapse" data-bs-target="#operaciones">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#operaciones">
 <i class="bi bi-box-seam me-2"></i> Operaciones
 </button>
 </h2>
 <div id="operaciones" class="accordion-collapse collapse">
 <div class="accordion-body p-0">
 <a class="nav-link" href="Transfers.php" target="contentFrame">Transferencias</a>
-<a class="nav-link" href="Transfers2.php" target="contentFrame">Registrar X</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 <a class="nav-link" href="Conteo.php" target="contentFrame">Conteo Web</a>
 </div>
@@ -131,8 +150,7 @@ data-bs-toggle="collapse" data-bs-target="#operaciones">
 <!-- CONSULTAS -->
 <div class="accordion-item bg-primary border-0">
 <h2 class="accordion-header">
-<button class="accordion-button collapsed"
-data-bs-toggle="collapse" data-bs-target="#consultas">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#consultas">
 <i class="bi bi-clipboard-data me-2"></i> Consultas
 </button>
 </h2>
@@ -148,8 +166,7 @@ data-bs-toggle="collapse" data-bs-target="#consultas">
 <!-- MAESTROS -->
 <div class="accordion-item bg-primary border-0">
 <h2 class="accordion-header">
-<button class="accordion-button collapsed"
-data-bs-toggle="collapse" data-bs-target="#maestros">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#maestros">
 <i class="bi bi-database me-2"></i> Maestros
 </button>
 </h2>
@@ -161,12 +178,11 @@ data-bs-toggle="collapse" data-bs-target="#maestros">
 </div>
 </div>
 
-<?php if(in_array('0001',$PERMISOS)): ?>
+<?php if (TienePermiso('0001')): ?>
 <!-- ADMINISTRACIÓN -->
 <div class="accordion-item bg-primary border-0">
 <h2 class="accordion-header">
-<button class="accordion-button collapsed"
-data-bs-toggle="collapse" data-bs-target="#admin">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#admin">
 <i class="bi bi-gear me-2"></i> Administración
 </button>
 </h2>
@@ -182,8 +198,7 @@ data-bs-toggle="collapse" data-bs-target="#admin">
 <!-- DASHBOARDS -->
 <div class="accordion-item bg-primary border-0">
 <h2 class="accordion-header">
-<button class="accordion-button collapsed"
-data-bs-toggle="collapse" data-bs-target="#dash">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#dash">
 <i class="bi bi-bar-chart me-2"></i> Dashboards
 </button>
 </h2>
@@ -199,13 +214,13 @@ data-bs-toggle="collapse" data-bs-target="#dash">
 
 </div>
 
-<!-- FOOTER SIDEBAR -->
+<!-- FOOTER -->
 <div class="mt-auto p-3 border-top">
 <div class="small">
 <i class="bi bi-person-circle"></i> <?= htmlspecialchars($UsuarioSesion) ?>
 </div>
 <div class="small opacity-75">
-Rol: <?= in_array('0001',$PERMISOS) ? 'Administrador' : 'Usuario' ?>
+Rol: <?= TienePermiso('0001') ? 'Administrador' : 'Usuario' ?>
 </div>
 <a href="Logout.php" class="btn btn-outline-light btn-sm w-100 mt-2">
 <i class="bi bi-box-arrow-right"></i> Cerrar sesión
@@ -218,12 +233,10 @@ Rol: <?= in_array('0001',$PERMISOS) ? 'Administrador' : 'Usuario' ?>
 <iframe src="DashBoard1.php" name="contentFrame" class="content-frame"></iframe>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 const sidebar = document.getElementById('sidebar');
 document.getElementById('btnMenu').onclick = () => sidebar.classList.toggle('show');
 
-// marcar activo
 document.querySelectorAll('.nav-link').forEach(link=>{
     link.addEventListener('click',()=>{
         document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
