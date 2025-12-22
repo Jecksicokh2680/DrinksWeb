@@ -1,4 +1,9 @@
 <?php
+/**
+ * DASHBOARD VENTAS - DETALLE CON EFECTIVO HOY
+ * Localización: America/Bogota
+ */
+
 // 1. Configurar Zona Horaria de Bogotá
 date_default_timezone_set('America/Bogota');
 
@@ -12,11 +17,11 @@ require("ConnDrinks.php");
 $dbCentral = $mysqliCentral ?? $mysqli; 
 $dbDrinks  = $mysqliPos;
 
-// =======================
+// ===========================================
 // Configuración de Fechas
-// =======================
+// ===========================================
 $fecha_input = $_GET['fecha'] ?? date('Y-m');
-$anioMes = str_replace('-', '', $fecha_input); // Formato YYYYMM
+$anioMes = str_replace('-', '', $fecha_input); 
 list($anio, $mes) = explode('-', $fecha_input);
 $ultimoDiaMes = date('t', strtotime("$anio-$mes-01"));
 
@@ -24,13 +29,8 @@ $esMesActual = (date('Y-m') == $fecha_input);
 $diaHoyStr = date('d'); 
 $hoyDiaNum = $esMesActual ? (int)$diaHoyStr : (int)$ultimoDiaMes;
 
-$diasMes = [];
-for ($d = 1; $d <= $hoyDiaNum; $d++) {
-    $diasMes[] = str_pad($d, 2, '0', STR_PAD_LEFT);
-}
-
 // ===========================================
-// Función para Extraer Ventas (Consolidado F+P)
+// Función para Extraer Ventas (Facturas + Pedidos)
 // ===========================================
 function obtenerVentas($db, $anioMes) {
     $data = [];
@@ -46,7 +46,7 @@ function obtenerVentas($db, $anioMes) {
     while($resF && $r = $resF->fetch_assoc()){
         $dia = substr($r['FECHA'], 6, 2);
         $data[$r['NIT']]['NOM'] = $r['NOMBRES'];
-        $data[$r['NIT']]['DIAS'][$dia] = ($data[$r['NIT']]['DIAS'][$dia] ?? 0) + (float)$r['TOTAL'];
+        $data[$r['NIT']]['VENTAS'][$dia] = ($data[$r['NIT']]['VENTAS'][$dia] ?? 0) + (float)$r['TOTAL'];
     }
     // Pedidos
     $qP = "SELECT V.NIT, V.NOMBRES, P.FECHA, SUM(DP.CANTIDAD*DP.VALORPROD) AS TOTAL
@@ -60,177 +60,203 @@ function obtenerVentas($db, $anioMes) {
     while($resP && $r = $resP->fetch_assoc()){
         $dia = substr($r['FECHA'], 6, 2);
         $data[$r['NIT']]['NOM'] = $r['NOMBRES'];
-        $data[$r['NIT']]['DIAS'][$dia] = ($data[$r['NIT']]['DIAS'][$dia] ?? 0) + (float)$r['TOTAL'];
+        $data[$r['NIT']]['VENTAS'][$dia] = ($data[$r['NIT']]['VENTAS'][$dia] ?? 0) + (float)$r['TOTAL'];
     }
     return $data;
 }
 
 // ===========================================
-// Función para Extraer Entregas de Efectivo
+// Función para Extraer Entregas de Efectivo (Detalle)
 // ===========================================
-function obtenerEntregas($db, $anioMes) {
+function obtenerEntregasDetalle($db, $anioMes) {
     $data = [];
-    $qry = "SELECT T1.NIT, CONCAT(T1.nombres,' ',T1.apellidos) AS FACTURADOR, S1.FECHA, SUM(VALOR) AS TOTAL_ENTREGA
+    $qry = "SELECT T1.NIT, S1.FECHA, SUM(VALOR) AS TOTAL
             FROM SALIDASCAJA S1
             INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO
             INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO
             WHERE S1.FECHA LIKE '$anioMes%' AND
-            (UPPER(S1.MOTIVO) LIKE '%ENTREGA%' OR UPPER(S1.MOTIVO) LIKE '%ENTREGADO%' OR 
-             UPPER(S1.MOTIVO) LIKE '%ENTREGAS%' OR UPPER(S1.MOTIVO) LIKE '%UNIDADES%' OR 
-             UPPER(S1.MOTIVO) LIKE '%EFECTIVO%')
-            GROUP BY T1.NIT, T1.nombres, T1.apellidos, S1.FECHA";
+            (UPPER(S1.MOTIVO) LIKE '%ENTREGA%' OR UPPER(S1.MOTIVO) LIKE '%EFECTIVO%' OR 
+             UPPER(S1.MOTIVO) LIKE '%UNIDADES%' OR UPPER(S1.MOTIVO) LIKE '%ENTREGADO%')
+            GROUP BY T1.NIT, S1.FECHA";
     $res = $db->query($qry);
     while($res && $r = $res->fetch_assoc()){
         $dia = substr($r['FECHA'], 6, 2);
-        $data[$r['NIT']]['NOM'] = $r['FACTURADOR'];
-        $data[$r['NIT']]['DIAS'][$dia] = ($data[$r['NIT']]['DIAS'][$dia] ?? 0) + (float)$r['TOTAL_ENTREGA'];
+        $data[$r['NIT']][$dia] = (float)$r['TOTAL'];
     }
     return $data;
 }
 
 // Cargar Datos
-$ventasCentral = obtenerVentas($dbCentral, $anioMes);
-$entregasCentral = obtenerEntregas($dbCentral, $anioMes);
+$ventasC = obtenerVentas($dbCentral, $anioMes);
+$entregasDetC = obtenerEntregasDetalle($dbCentral, $anioMes);
 
-$ventasDrinks = obtenerVentas($dbDrinks, $anioMes);
-$entregasDrinks = obtenerEntregas($dbDrinks, $anioMes);
+$ventasD = obtenerVentas($dbDrinks, $anioMes);
+$entregasDetD = obtenerEntregasDetalle($dbDrinks, $anioMes);
 
 // Helper Moneda
 function money($v) {
     return number_format($v / 1000, 0, ',', '.');
 }
 
-// Función para calcular totales de resumen
-function totalesResumen($datos, $diaHoy, $esMesActual) {
-    $t = ['hoy' => 0, 'mes' => 0];
-    foreach($datos as $u) {
-        foreach($u['DIAS'] as $d => $val) {
-            $t['mes'] += $val;
-            if($esMesActual && $d == $diaHoy) $t['hoy'] += $val;
+// Cálculo Totales para Resumen Global
+function calcularTotalesSede($ventas, $entregasDet, $diaHoy, $esMesActual) {
+    $t = ['v_hoy' => 0, 'v_mes' => 0, 'e_hoy' => 0, 'e_mes' => 0];
+    foreach($ventas as $u) {
+        foreach(($u['VENTAS'] ?? []) as $d => $v) {
+            $t['v_mes'] += $v;
+            if($esMesActual && $d == $diaHoy) $t['v_hoy'] += $v;
+        }
+    }
+    foreach($entregasDet as $nit => $dias) {
+        foreach($dias as $d => $v) {
+            $t['e_mes'] += $v;
+            if($esMesActual && $d == $diaHoy) $t['e_hoy'] += $v;
         }
     }
     return $t;
 }
 
-$resVentasC = totalesResumen($ventasCentral, $diaHoyStr, $esMesActual);
-$resVentasD = totalesResumen($ventasDrinks, $diaHoyStr, $esMesActual);
+$totC = calcularTotalesSede($ventasC, $entregasDetC, $diaHoyStr, $esMesActual);
+$totD = calcularTotalesSede($ventasD, $entregasDetD, $diaHoyStr, $esMesActual);
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Dashboard Ventas y Entregas - Bogotá</title>
+    <title>Dashboard Gerencial - Bogotá</title>
     <style>
-        :root { --primary: #2c3e50; --accent: #e67e22; --cash: #27ae60; --blue: #2980b9; }
-        body { font-family: 'Segoe UI', sans-serif; background: #eef2f7; margin: 0; padding: 10px; font-size: 10px; color: #333; }
-        .container { max-width: 100%; margin: auto; }
-        .section { background: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { margin: 0 0 8px 0; font-size: 1.2rem; display: flex; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+        :root { --primary: #2c3e50; --accent: #e67e22; --blue: #2980b9; --cash: #27ae60; }
+        body { font-family: 'Segoe UI', sans-serif; background: #eef2f7; margin: 0; padding: 15px; font-size: 11px; }
+        .container { max-width: 1300px; margin: auto; }
+        .section { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { margin: 0 0 10px 0; font-size: 1.3rem; border-bottom: 2px solid #eee; padding-bottom: 5px; }
         table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #dee2e6; padding: 4px; text-align: right; }
-        th { background: var(--primary); color: white; font-weight: normal; }
-        td:first-child { text-align: left; font-weight: bold; background: #fafafa; position: sticky; left: 0; z-index: 5; min-width: 120px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: right; }
+        th { background: var(--primary); color: white; font-size: 10px; text-transform: uppercase; }
+        td:first-child { text-align: left; font-weight: bold; background: #fafafa; }
         .col-hoy { background: #fff9db !important; font-weight: bold; color: #d9480f; }
-        .col-total { background: #f1f3f5; font-weight: bold; }
+        .col-acum { background: #e7f5ff !important; font-weight: bold; color: #0b7285; }
+        .col-efec { color: var(--cash); font-weight: bold; }
         .total-row { background: #343a40 !important; color: white; font-weight: bold; }
-        .btn { padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .table-responsive { width: 100%; overflow-x: auto; }
+        .btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="container">
+    
     <!-- FILTRO -->
     <div class="section">
-        <form method="GET" style="display:flex; gap:10px; align-items:center;">
-            <strong>Periodo:</strong>
-            <input type="month" name="fecha" value="<?=$fecha_input?>">
-            <button type="submit" class="btn">Actualizar</button>
-            <div style="margin-left:auto; text-align:right;">
-                <strong>Bogotá:</strong> <?=date('d/m/Y H:i')?> | <strong>Días:</strong> <?=$hoyDiaNum?>
+        <form method="GET" style="display:flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>Periodo:</strong>
+                <input type="month" name="fecha" value="<?=$fecha_input?>">
+                <button type="submit" class="btn">ACTUALIZAR</button>
+            </div>
+            <div style="text-align:right;">
+                <strong>Reloj Bogotá: <?=date('d/m/Y H:i')?></strong><br>
+                <small>Días promediados: <?=$hoyDiaNum?></small>
             </div>
         </form>
     </div>
 
-    <!-- 1. RESUMEN SUPERIOR -->
-    <div class="section">
-        <h2 style="color:var(--blue);">📊 RESUMEN CONSOLIDADO DE VENTAS (Cifras en Miles)</h2>
+    <!-- RESUMEN GLOBAL SUPERIOR -->
+    <div class="section" style="border-top: 5px solid var(--accent);">
+        <h2 style="color:var(--primary);">📊 RESUMEN GENERAL (Consolidado F + P)</h2>
         <table>
             <thead>
                 <tr>
-                    <th style="text-align:left;">SEDE</th>
-                    <th style="background: #d9480f;">VENTA HOY</th>
-                    <th style="background: #1971c2;">ACUMULADO MES</th>
-                    <th style="background: #2b8a3e;">PROMEDIO DIARIO</th>
+                    <th style="text-align:left;">Sede</th>
+                    <th>Venta Hoy</th>
+                    <th>Efectivo Hoy</th>
+                    <th>Venta Acum. Mes</th>
+                    <th>Efectivo Mes</th>
+                    <th style="background:var(--accent);">Promedio Diario</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td>🏢 CENTRAL</td>
-                    <td class="col-hoy">$ <?=money($resVentasC['hoy'])?></td>
-                    <td class="col-total">$ <?=money($resVentasC['mes'])?></td>
-                    <td>$ <?=money($resVentasC['mes'] / $hoyDiaNum)?></td>
+                    <td>🏢 SEDE CENTRAL</td>
+                    <td class="col-hoy">$ <?=money($totC['v_hoy'])?></td>
+                    <td class="col-efec">$ <?=money($totC['e_hoy'])?></td>
+                    <td class="col-acum">$ <?=money($totC['v_mes'])?></td>
+                    <td class="col-efec">$ <?=money($totC['e_mes'])?></td>
+                    <td style="font-weight:bold;">$ <?=money($totC['v_mes'] / $hoyDiaNum)?></td>
                 </tr>
                 <tr>
-                    <td>🍹 DRINKS</td>
-                    <td class="col-hoy">$ <?=money($resVentasD['hoy'])?></td>
-                    <td class="col-total">$ <?=money($resVentasD['mes'])?></td>
-                    <td>$ <?=money($resVentasD['mes'] / $hoyDiaNum)?></td>
+                    <td>🍹 SEDE DRINKS</td>
+                    <td class="col-hoy">$ <?=money($totD['v_hoy'])?></td>
+                    <td class="col-efec">$ <?=money($totD['e_hoy'])?></td>
+                    <td class="col-acum">$ <?=money($totD['v_mes'])?></td>
+                    <td class="col-efec">$ <?=money($totD['e_mes'])?></td>
+                    <td style="font-weight:bold;">$ <?=money($totD['v_mes'] / $hoyDiaNum)?></td>
                 </tr>
             </tbody>
             <tfoot>
                 <tr class="total-row">
-                    <td>TOTAL GENERAL</td>
-                    <td>$ <?=money($resVentasC['hoy'] + $resVentasD['hoy'])?></td>
-                    <td>$ <?=money($resVentasC['mes'] + $resVentasD['mes'])?></td>
-                    <td style="background:var(--accent);">$ <?=money(($resVentasC['mes'] + $resVentasD['mes']) / $hoyDiaNum)?></td>
+                    <td>TOTAL GLOBAL</td>
+                    <td>$ <?=money($totC['v_hoy'] + $totD['v_hoy'])?></td>
+                    <td>$ <?=money($totC['e_hoy'] + $totD['e_hoy'])?></td>
+                    <td>$ <?=money($totC['v_mes'] + $totD['v_mes'])?></td>
+                    <td>$ <?=money($totC['e_mes'] + $totD['e_mes'])?></td>
+                    <td style="background:var(--accent) !important;">$ <?=money(($totC['v_mes'] + $totD['v_mes']) / $hoyDiaNum)?></td>
                 </tr>
             </tfoot>
         </table>
     </div>
 
     <?php
-    // Función reutilizable para dibujar tablas día a día
-    function dibujarTablaDiaADia($titulo, $datos, $diasMes, $color) {
+    /**
+     * Función para dibujar detalle con columna de Efectivo Hoy
+     */
+    function dibujarDetalleCompleto($titulo, $ventas, $entregasDet, $diaHoy, $esMesActual, $divisor, $color) {
         echo "<div class='section'><h2 style='color:$color;'>$titulo</h2>";
-        echo "<div class='table-responsive'><table><thead><tr><th>Usuario</th>";
-        foreach($diasMes as $d) echo "<th>$d</th>";
-        echo "<th>TOTAL</th></tr></thead><tbody>";
+        echo "<table><thead><tr>
+                <th style='text-align:left;'>Usuario / Vendedor</th>
+                <th style='background:#d9480f'>Venta Hoy</th>
+                <th style='background:#27ae60'>Efectivo Hoy</th>
+                <th style='background:#1971c2'>Venta Acumulada</th>
+                <th style='background:#2b8a3e'>Promedio Diario</th>
+              </tr></thead><tbody>";
 
-        $colTotals = array_fill_keys($diasMes, 0);
-        $grandTotal = 0;
+        $sumVH = 0; $sumEH = 0; $sumVM = 0;
 
-        if(empty($datos)) {
-            echo "<tr><td colspan='".(count($diasMes)+2)."' style='text-align:center;'>No hay registros</td></tr>";
+        if(empty($ventas)) {
+            echo "<tr><td colspan='5' style='text-align:center;'>No hay registros</td></tr>";
         } else {
-            foreach($datos as $nit => $info) {
-                $rowTotal = 0;
-                echo "<tr><td>{$info['NOM']}</td>";
-                foreach($diasMes as $d) {
-                    $v = $info['DIAS'][$d] ?? 0;
-                    echo "<td>" . ($v > 0 ? money($v) : '-') . "</td>";
-                    $colTotals[$d] += $v;
-                    $rowTotal += $v;
-                }
-                echo "<td class='col-total'>".money($rowTotal)."</td>";
-                $grandTotal += $rowTotal;
-                echo "</tr>";
+            foreach($ventas as $nit => $u) {
+                $v_hoy = ($esMesActual) ? ($u['VENTAS'][$diaHoy] ?? 0) : 0;
+                $e_hoy = ($esMesActual) ? ($entregasDet[$nit][$diaHoy] ?? 0) : 0;
+                $v_mes = array_sum($u['VENTAS'] ?? []);
+                $prom  = ($v_mes > 0) ? ($v_mes / $divisor) : 0;
+
+                echo "<tr>
+                        <td>{$u['NOM']}</td>
+                        <td class='col-hoy'>$ ".money($v_hoy)."</td>
+                        <td class='col-efec'>$ ".money($e_hoy)."</td>
+                        <td class='col-acum'>$ ".money($v_mes)."</td>
+                        <td style='font-weight:bold; color:#2b8a3e;'>$ ".money($prom)."</td>
+                      </tr>";
+                
+                $sumVH += $v_hoy; $sumEH += $e_hoy; $sumVM += $v_mes;
             }
         }
 
-        echo "</tbody><tfoot><tr class='total-row'><td>TOTALES</td>";
-        foreach($colTotals as $ct) echo "<td>".money($ct)."</td>";
-        echo "<td>".money($grandTotal)."</td></tr></tfoot></table></div></div>";
+        echo "</tbody><tfoot><tr class='total-row'>
+                <td>TOTALES</td>
+                <td>$ ".money($sumVH)."</td>
+                <td>$ ".money($sumEH)."</td>
+                <td>$ ".money($sumVM)."</td>
+                <td>$ ".money($sumVM / $divisor)."</td>
+              </tr></tfoot></table></div>";
     }
 
-    // --- SECCIÓN CENTRAL ---
-    dibujarTablaDiaADia("🏢 CENTRAL: Detalle Ventas Diarias (F + P)", $ventasCentral, $diasMes, "#2980b9");
-    dibujarTablaDiaADia("🏢 CENTRAL: Detalle Entregas Efectivo Diarias", $entregasCentral, $diasMes, "#e67e22");
+    // --- DETALLE CENTRAL ---
+    dibujarDetalleCompleto("🏢 CENTRAL: Detalle Ventas y Entregas", $ventasC, $entregasDetC, $diaHoyStr, $esMesActual, $hoyDiaNum, "#2980b9");
 
-    // --- SECCIÓN DRINKS ---
-    dibujarTablaDiaADia("🍹 DRINKS: Detalle Ventas Diarias (F + P)", $ventasDrinks, $diasMes, "#27ae60");
-    dibujarTablaDiaADia("🍹 DRINKS: Detalle Entregas Efectivo Diarias", $entregasDrinks, $diasMes, "#d35400");
+    // --- DETALLE DRINKS ---
+    dibujarDetalleCompleto("🍹 DRINKS: Detalle Ventas y Entregas", $ventasD, $entregasDetD, $diaHoyStr, $esMesActual, $hoyDiaNum, "#27ae60");
     ?>
 
 </div>
