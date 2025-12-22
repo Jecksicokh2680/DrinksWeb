@@ -1,5 +1,4 @@
 <?php
-
 require 'Conexion.php';
 require 'helpers.php';
 session_start();
@@ -9,36 +8,50 @@ if (empty($_SESSION['Usuario'])) {
     exit;
 }
 
-// Función para verificar autorización
+$UsuarioSesion = $_SESSION['Usuario'];
+
+/* ============================================
+   FUNCIÓN AUTORIZACIÓN (SE MANTIENE)
+============================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
-    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit = ? AND Nro_Auto = ?");
+    $stmt = $mysqli->prepare("
+        SELECT Swich 
+        FROM autorizacion_tercero 
+        WHERE CedulaNit = ? AND Nro_Auto = ?
+        LIMIT 1
+    ");
     $stmt->bind_param("ss", $User, $Solicitud);
     $stmt->execute();
     $result = $stmt->get_result();
+
     if ($result && $result->num_rows > 0) {
         $row = $result->fetch_assoc();
-        return $row['Swich'] ?? "NO";
+        return $row['Swich'];
     }
     return "NO";
 }
 
-$UsuarioSesion = $_SESSION['Usuario'];
+/* ============================================
+   VALIDAR SI ES ADMIN (0001)
+============================================ */
+$EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 ?>
-
 <!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <title>Panel de Usuario</title>
+
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
     display: flex;
     min-height: 100vh;
     overflow-x: hidden;
+    font-family: Arial, sans-serif;
 }
 .sidebar {
     width: 220px;
@@ -47,21 +60,18 @@ body {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    transition: transform 0.3s ease;
 }
 .sidebar .nav-link {
     color: white;
+    padding: 6px 12px;
 }
-.sidebar .nav-link.active {
+.sidebar .nav-link:hover {
     background-color: #084298;
 }
 .sidebar .navbar-brand {
     padding: 1rem;
     font-weight: bold;
     font-size: 1.2rem;
-}
-.sidebar .mt-auto {
-    margin-top: auto;
 }
 .content-frame {
     flex-grow: 1;
@@ -76,7 +86,7 @@ body {
         top: 0;
         height: 100%;
         z-index: 999;
-        transform: translateX(0);
+        transition: left 0.3s;
     }
     .sidebar.show {
         left: 0;
@@ -84,64 +94,63 @@ body {
 }
 </style>
 </head>
+
 <body>
 
-<!-- Sidebar -->
-<div class="sidebar d-flex flex-column" id="sidebar">
+<!-- ================= SIDEBAR ================= -->
+<div class="sidebar" id="sidebar">
     <a class="navbar-brand text-white" href="#">Mi App</a>
-    <nav class="nav flex-column px-2">
-        <a class="nav-link" href="Transfers.php"   target="contentFrame">➕ Registrar Transferencia</a>
-        <a class="nav-link" href="Transfers2.php"   target="contentFrame">➕ Registrar x</a>
-        <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📄 Traslados de Mercancia</a>
-        <a class="nav-link" href="Conteo.php" target="contentFrame">📄 Conteo Web</a>
 
-        <?php if (Autorizacion($UsuarioSesion,'0001') === "SI"): ?>
-            <a class="nav-link" href="ResumenVtas.php" target="contentFrame">🗂️ Resumen Ventas </a>
-            <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores </a>
+    <nav class="nav flex-column px-2">
+
+        <!-- OPCIONES BASICAS (TODOS) -->
+        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Registrar Transferencia</a>        
+        <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
+        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Mercancía</a>
+        <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
+
+        <!-- OPCIONES SOLO ADMIN -->
+        <?php if ($EsAdmin): ?>
+            <hr class="text-white">
+
+            <a class="nav-link" href="ResumenVtas.php" target="contentFrame">📊 Resumen Ventas</a>
+            <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">💰 Cartera Proveedores</a>
+
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>
-            <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">🗂️ Lista Transfers Dia</a>
-            <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Lista Productos</a>
-            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Lista Categorias</a>
-            <a class="nav-link" href="DashBoard1.php" target="contentFrame">🗂️ Control Central</a>
-            <a class="nav-link" href="DashBoard2.php" target="contentFrame">🗂️ Control Drinks</a>
-            <a class="nav-link" href="BnmaTotal.php" target="contentFrame">🗂️ Control Vtas</a>
+
+            <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">📄 Transfers Día</a>
+
+            <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Productos Central</a>
+            <a class="nav-link" href="ProductosD.php" target="contentFrame">🗂️ Productos Drinks</a>
+            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorías</a>
+
+            <a class="nav-link" href="DashBoard1.php" target="contentFrame">📈 Control Central</a>
+            <a class="nav-link" href="DashBoard2.php" target="contentFrame">📈 Control Drinks</a>
+            <a class="nav-link" href="BnmaTotal.php" target="contentFrame">📈 Control Ventas</a>
         <?php endif; ?>
+
     </nav>
-    <div class="mt-auto p-3">
-        <div>Bienvenido, <?= htmlspecialchars($UsuarioSesion) ?></div>
+
+    <div class="mt-auto p-3 border-top">
+        <div>Bienvenido,<br><strong><?= htmlspecialchars($UsuarioSesion) ?></strong></div>
         <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
     </div>
 </div>
 
-<!-- Contenido principal (iframe) -->
-<iframe src="" name="contentFrame" class="content-frame" id="contentFrame"></iframe>
+<!-- ================= CONTENIDO ================= -->
+<iframe name="contentFrame" class="content-frame"></iframe>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- BOTÓN MÓVIL -->
+<button id="toggleMenu" class="btn btn-primary d-md-none"
+        style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
+
 <script>
-    // Botón toggle sidebar en móviles
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'btn btn-primary d-md-none';
-    toggleBtn.textContent = '☰ Menú';
-    toggleBtn.style.position = 'fixed';
-    toggleBtn.style.top = '10px';
-    toggleBtn.style.left = '10px';
-    toggleBtn.style.zIndex = '1000';
-    document.body.appendChild(toggleBtn);
-
-    const sidebar = document.getElementById('sidebar');
-    toggleBtn.addEventListener('click', () => {
-        sidebar.classList.toggle('show');
-    });
-
-    // Cerrar sidebar al hacer click fuera en móviles
-    window.addEventListener('click', (e) => {
-        if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target) && sidebar.classList.contains('show')) {
-            sidebar.classList.remove('show');
-        }
-    });
+const sidebar = document.getElementById('sidebar');
+document.getElementById('toggleMenu').onclick = () => {
+    sidebar.classList.toggle('show');
+};
 </script>
 
 </body>

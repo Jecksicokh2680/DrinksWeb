@@ -31,7 +31,10 @@ if (isset($_POST['grabar'])) {
     $fecha = str_replace('-', '', $_POST['fecha']);
     $hora  = date("H:i:s");
     $tipo  = $_POST['tipo'];
+
+    // QUITAR SEPARADORES
     $monto = floatval(str_replace('.', '', $_POST['monto']));
+
     $desc  = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
 
     if ($tipo === 'F') $monto *= -1;
@@ -56,6 +59,7 @@ if (isset($_POST['editar'])) {
     $fecha = $_POST['fecha'];
     $hora  = $_POST['hora'];
     $tipo  = $_POST['tipo'];
+
     $monto = floatval(str_replace('.', '', $_POST['monto']));
     $desc  = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
 
@@ -183,7 +187,7 @@ a{text-decoration:none;font-weight:bold}
 <option value="F">Factura</option>
 <option value="P">Pago</option>
 </select>
-<input name="monto" placeholder="Monto" required>
+<input name="monto" class="monto" placeholder="Monto" required>
 <input name="descripcion" placeholder="Descripción">
 <button name="grabar">Grabar</button>
 </form>
@@ -213,19 +217,23 @@ a{text-decoration:none;font-weight:bold}
 <option value="P" <?= $a['TipoMonto']=='P'?'selected':'' ?>>P</option>
 </select>
 </td>
-<td><input name="monto" value="<?= abs($a['Monto']) ?>"></td>
-<td><input name="descripcion" value="<?= $a['Descripcion'] ?>"></td>
+<td>
+<input name="monto" class="monto"
+       value="<?= number_format(abs($a['Monto']),0,',','.') ?>">
+</td>
+<td style="width:40%">
+    <input name="descripcion"
+           value="<?= htmlspecialchars($a['Descripcion']) ?>"
+           style="width:100%">
+</td>
 <td>
 <input type="hidden" name="nit" value="<?= $a['Nit'] ?>">
 <input type="hidden" name="fecha" value="<?= $a['F_Creacion'] ?>">
 <input type="hidden" name="hora" value="<?= $a['H_Creacion'] ?>">
 <button class="btn-save" name="editar">💾</button>
 <a class="btn-del"
-   href="?proveedor=<?= $nit ?>&consultar=1
-         &borrar=1
-         &nit=<?= $a['Nit'] ?>
-         &f=<?= $a['F_Creacion'] ?>
-         &h=<?= $a['H_Creacion'] ?>"
+   href="?proveedor=<?= $nit ?>&consultar=1&borrar=1
+         &nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
    onclick="return confirm('¿Eliminar este registro?')">🗑️</a>
 </td>
 </tr>
@@ -246,5 +254,16 @@ a{text-decoration:none;font-weight:bold}
 <?php endif; ?>
 
 </div>
+
+<script>
+// FORMATEAR MILES EN INPUT
+document.querySelectorAll('.monto').forEach(input => {
+    input.addEventListener('input', () => {
+        let v = input.value.replace(/\D/g,'');
+        input.value = v.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+    });
+});
+</script>
+
 </body>
 </html>

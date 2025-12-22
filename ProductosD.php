@@ -1,6 +1,6 @@
 <?php
 // Incluye la conexión
-require 'ConnCentral.php'; 
+require 'ConnDrinks.php'; 
 
 // Variables de estado
 $conn_error = null;
@@ -229,7 +229,7 @@ if ($conn_error === null && !$is_ajax_filter && !$is_ajax_save) {
         </p>
     <?php else: ?>
         <p class="mensaje-status exito" id="connection-status-message">
-            ✅ **CONEXIÓN EXITOSA** a la base de datos Central.
+            ✅ **CONEXIÓN EXITOSA** a la base de datos Drinks.
         </p>
     <?php endif; ?>
     <div id="dynamic-message-area"></div>
