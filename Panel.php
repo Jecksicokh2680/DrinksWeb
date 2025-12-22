@@ -98,6 +98,7 @@ body {
 
         <?php if (Autorizacion($UsuarioSesion,'0001') === "SI"): ?>
             <a class="nav-link" href="ResumenVtas.php" target="contentFrame">🗂️ Resumen Ventas </a>
+            <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores </a>
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>
