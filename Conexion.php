@@ -7,9 +7,11 @@ $puerto  = 32768;
 
 $mysqli = new mysqli($host, $usuario, $pass, $db, $puerto);
 if ($mysqli->connect_error) {
-    die("Conexión fallidaaaaa: " . $mysqli->connect_error);
-} else {
-     //echo "✓ Conexión exitosa a la base de datosss\n";
+    $conn_error = "❌ La conexión a la base de datos (empresa001) falló: " . $mysqliPos->connect_error;
+   } else {
+    // $mysqliPos->set_charset("utf8mb4");
 }
-$mysqli->set_charset("utf8mb4");
+// Ahora, el script que incluye este archivo puede revisar la variable $conn_error
+global $mysqliWeb;  // empresa001
+$mysqliWeb = $mysqli;
 ?>

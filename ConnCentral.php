@@ -5,9 +5,7 @@ $usuario = "aws_user";
 $pass    = "root";
 $db      = "empresa001";
 $puerto  = 3307;
-global $mysqliPos;  // empresa001
-
-
+global $mysqliPos;  // empresa00
 $mysqliPos = new mysqli($host, $usuario, $pass, $db, $puerto);
 if ($mysqliPos->connect_error) {
     $conn_error = "❌ La conexión a la base de datos (empresa001) falló: " . $mysqliPos->connect_error;

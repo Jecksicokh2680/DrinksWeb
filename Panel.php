@@ -104,17 +104,19 @@ body {
     <nav class="nav flex-column px-2">
 
         <!-- OPCIONES BASICAS (TODOS) -->
-        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Registrar Transferencia</a>        
+        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>        
         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Mercancía</a>
+       
         <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
 
         <!-- OPCIONES SOLO ADMIN -->
         <?php if ($EsAdmin): ?>
             <hr class="text-white">
-
+            <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Mercancía</a>
             <a class="nav-link" href="ResumenVtas.php" target="contentFrame">📊 Resumen Ventas</a>
             <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">💰 Cartera Proveedores</a>
+            <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">💰 Cartera Bnma</a>
+             <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Valor Bodega</a>
 
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
@@ -125,6 +127,7 @@ body {
             <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Productos Central</a>
             <a class="nav-link" href="ProductosD.php" target="contentFrame">🗂️ Productos Drinks</a>
             <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorías</a>
+            <a class="nav-link" href="StockCentral.php" target="contentFrame">🗂️ Stock Bnma</a>
 
             <a class="nav-link" href="DashBoard1.php" target="contentFrame">📈 Control Central</a>
             <a class="nav-link" href="DashBoard2.php" target="contentFrame">📈 Control Drinks</a>
