@@ -112,23 +112,22 @@ body {
         <!-- OPCIONES SOLO ADMIN -->
         <?php if ($EsAdmin): ?>
             <hr class="text-white">
-            <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Mercancía</a>
-            <a class="nav-link" href="ResumenVtas.php" target="contentFrame">📊 Resumen Ventas</a>
+            <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Bnma</a>
+            <a class="nav-link" href="StockCentral.php" target="contentFrame">🗂️ Stock Bnma</a>
+            <a class="nav-link" href="Precios.php" target="contentFrame">🗂️ Precios Bnma </a>
+            <a class="nav-link" href="ResumenVtas.php" target="contentFrame">📊Ventas Bnma</a>
             <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">💰 Cartera Proveedores</a>
             <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">💰 Cartera Bnma</a>
              <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Valor Bodega</a>
-
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>
 
             <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">📄 Transfers Día</a>
 
-            <a class="nav-link" href="Productos.php" target="contentFrame">🗂️ Productos Central</a>
-            <a class="nav-link" href="ProductosD.php" target="contentFrame">🗂️ Productos Drinks</a>
-            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorías</a>
-            <a class="nav-link" href="StockCentral.php" target="contentFrame">🗂️ Stock Bnma</a>
 
+            <a class="nav-link" href="Categorias.php" target="contentFrame">🗂️ Categorías</a>
+            
             <a class="nav-link" href="DashBoard1.php" target="contentFrame">📈 Control Central</a>
             <a class="nav-link" href="DashBoard2.php" target="contentFrame">📈 Control Drinks</a>
             <a class="nav-link" href="BnmaTotal.php" target="contentFrame">📈 Control Ventas</a>

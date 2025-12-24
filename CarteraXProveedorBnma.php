@@ -1,223 +1,248 @@
 <?php
-require('Conexion.php');
+session_start();
 
-// Consulta SQL: proveedores con saldo distinto de cero
+if (empty($_SESSION['Usuario'])) {
+    header("Location: Login.php");
+    exit;
+}
+
+require_once("Conexion.php"); // $mysqli
+
 $sql = "
-SELECT 
-    t.Nit,
-    t.Nombre,
-    SUM(p.Monto) AS Saldo
-FROM 
-    terceros t
-INNER JOIN 
-    pagosproveedores p ON t.Nit = p.Nit 
-WHERE
-    t.Estado = '1' AND p.estado='1' AND t.Nombre IS NOT NULL AND t.Nombre != ''
-GROUP BY 
-    t.Nit, t.Nombre
-HAVING 
-    SUM(p.Monto) != 0
-ORDER BY 
-    Saldo DESC
+    SELECT 
+        t.CedulaNit AS Nit,
+        t.Nombre,
+        SUM(p.Monto) AS Saldo
+    FROM terceros t
+    INNER JOIN pagosproveedores p 
+        ON p.Nit = t.CedulaNit
+    WHERE
+        t.Estado = 1
+        AND p.Estado = '1'
+        AND t.Nombre IS NOT NULL
+        AND t.Nombre <> ''
+    GROUP BY 
+        t.CedulaNit, t.Nombre
+    HAVING 
+        SUM(p.Monto) <> 0
+    ORDER BY 
+        Saldo DESC
 ";
 
-$result = $mysqli->query($sql);
+$res = $mysqli->query($sql);
 
-$proveedores = [];
-$montos = [];
-$nits = [];
-$totalSaldo = 0;
+$rows = '';
+$labels = [];
+$values = [];
 
-if($result->num_rows > 0){
-    while($row = $result->fetch_assoc()){
-        $nits[] = $row['Nit'];
-        $proveedores[] = $row['Nombre'];
-        $montos[] = $row['Saldo'];
-        $totalSaldo += $row['Saldo'];
+$totalDeuda = 0;
+$totalFavor = 0;
+
+if ($res && $res->num_rows > 0) {
+    while ($r = $res->fetch_assoc()) {
+
+        $saldo = (float)$r['Saldo'];
+
+        if ($saldo > 0) {
+            $totalDeuda += $saldo;
+        } else {
+            $totalFavor += abs($saldo);
+        }
+
+        $labels[] = $r['Nombre'];
+        $values[] = round($saldo, 2);
+
+        $badge = $saldo > 0 
+            ? "<span class='badge badge-danger'>Por pagar</span>" 
+            : "<span class='badge badge-success'>A favor</span>";
+
+        $rows .= "
+        <tr>
+            <td>{$r['Nit']}</td>
+            <td>".htmlspecialchars($r['Nombre'])."</td>
+            <td class='text-right'>$ ".number_format($saldo,2,',','.')."</td>
+            <td class='text-center'>$badge</td>
+        </tr>";
     }
 }
-$mysqli->close();
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Proveedores con Saldo</title>
+<meta charset="utf-8">
+<title>Informe Gerencial - Proveedores</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
 <style>
 body {
-    font-family: Arial, sans-serif;
-    margin: 30px;
-    background-color: #f9f9f9;
-    text-align: center;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background:#eef1f5;
+    margin:0;
+    padding:30px;
 }
-h2 {
-    color: #333;
+.report {
+    background:#fff;
+    padding:30px;
+    border-radius:10px;
+    max-width:1200px;
+    margin:auto;
+    box-shadow:0 4px 15px rgba(0,0,0,.08);
 }
-.table-container {
-    overflow-x: auto;
-    margin: 0 auto 40px;
-    max-width: 800px;
+.header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:2px solid #dee2e6;
+    padding-bottom:15px;
 }
+.header h2 {
+    margin:0;
+}
+.date {
+    color:#6c757d;
+}
+.kpis {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:20px;
+    margin:30px 0;
+}
+.kpi {
+    padding:20px;
+    border-radius:8px;
+    color:#fff;
+}
+.kpi.deuda { background:#dc3545; }
+.kpi.favor { background:#28a745; }
+.kpi.neto { background:#343a40; }
+
+.kpi h4 {
+    margin:0;
+    font-size:14px;
+    font-weight:normal;
+    opacity:.9;
+}
+.kpi strong {
+    font-size:24px;
+}
+
 table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 40px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    background-color: white;
+    width:100%;
+    border-collapse:collapse;
+    margin-top:30px;
 }
 th, td {
-    border: 1px solid #ddd;
-    padding: 10px;
-    text-align: left;
+    padding:10px;
+    border-bottom:1px solid #dee2e6;
 }
 th {
-    background-color: #4CAF50;
-    color: white;
-    position: sticky;
-    top: 0;
+    background:#343a40;
+    color:#fff;
+    text-align:left;
 }
-tr:nth-child(even){background-color: #f2f2f2;}
-tr:hover {background-color: #e0f7fa;}
-tr.total-row {
-    background-color: #ffc107;
-    font-weight: bold;
+.text-right { text-align:right; }
+.text-center { text-align:center; }
+
+.badge {
+    padding:4px 10px;
+    border-radius:12px;
+    font-size:12px;
+    color:#fff;
 }
-/* Botón cerrar */
-.btn-cerrar {
-    display: inline-block;
-    margin-bottom: 20px;
-    padding: 10px 25px;
-    background-color: #f44336;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-    transition: all 0.3s ease;
-    font-weight: bold;
+.badge-danger { background:#dc3545; }
+.badge-success { background:#28a745; }
+
+canvas {
+    margin-top:50px;
 }
-.btn-cerrar:hover {
-    background-color: #d32f2f;
-    box-shadow: 0 6px 10px rgba(0,0,0,0.3);
-    transform: translateY(-2px);
-}
-/* Contenedor del gráfico */
-.chart-container {
-    width: 100%;
-    max-width: 1100px;
-    height: 600px;
-    margin: 0 auto 50px;
+
+.footer {
+    margin-top:40px;
+    font-size:13px;
+    color:#6c757d;
+    text-align:right;
 }
 </style>
 </head>
+
 <body>
 
-<h2>Proveedores con Saldo</h2>
+<div class="report">
 
-<!-- Botón Cerrar -->
-<a href="#" class="btn-cerrar" onclick="window.close();">× Cerrar</a>
+    <div class="header">
+        <h2>📊 Informe Gerencial – Proveedores</h2>
+        <div class="date"><?= date('d/m/Y') ?></div>
+    </div>
 
-<?php if(count($proveedores) > 0): ?>
-<div class="table-container">
-<table>
-    <tr>
-        <th>Nit</th>
-        <th>Proveedor</th>
-        <th>Saldo</th>
-    </tr>
-    <?php foreach($proveedores as $i => $nombre): ?>
-    <tr>
-        <td><?= htmlspecialchars($nits[$i]) ?></td>
-        <td><?= htmlspecialchars($nombre) ?></td>
-        <td>$<?= number_format($montos[$i], 2, ',', '.') ?></td>
-    </tr>
-    <?php endforeach; ?>
-    <!-- Fila Total -->
-    <tr class="total-row">
-        <td colspan="2">TOTAL</td>
-        <td>$<?= number_format($totalSaldo, 2, ',', '.') ?></td>
-    </tr>
-</table>
-</div>
+    <!-- KPIs -->
+    <div class="kpis">
+        <div class="kpi deuda">
+            <h4>Total por Pagar</h4>
+            <strong>$ <?= number_format($totalDeuda,2,',','.') ?></strong>
+        </div>
+        <div class="kpi favor">
+            <h4>Total a Favor</h4>
+            <strong>$ <?= number_format($totalFavor,2,',','.') ?></strong>
+        </div>
+        <div class="kpi neto">
+            <h4>Saldo Neto</h4>
+            <strong>$ <?= number_format($totalDeuda - $totalFavor,2,',','.') ?></strong>
+        </div>
+    </div>
 
-<div class="chart-container">
-    <canvas id="saldoChart"></canvas>
+    <!-- Tabla -->
+    <table>
+        <thead>
+            <tr>
+                <th>NIT</th>
+                <th>Proveedor</th>
+                <th>Saldo Neto</th>
+                <th>Estado</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?= $rows ?>
+        </tbody>
+    </table>
+
+    <!-- Gráfica -->
+    <canvas id="grafica"></canvas>
+
+    <div class="footer">
+        Informe generado automáticamente – Sistema Financiero
+    </div>
 </div>
 
 <script>
-// Generar colores aleatorios
-function generarColores(n) {
-    let colores = [];
-    for (let i = 0; i < n; i++) {
-        colores.push('hsl(' + (i * 360 / n) + ', 70%, 50%)');
-    }
-    return colores;
-}
-
-const labels = <?= json_encode(array_map(function($i, $n){ return $i.' - '.$n; }, $nits, $proveedores)) ?>;
-const data = <?= json_encode($montos) ?>;
-const colores = generarColores(data.length);
-
-const ctx = document.getElementById('saldoChart').getContext('2d');
-const saldoChart = new Chart(ctx, {
-    type: 'bar', // vertical
+new Chart(document.getElementById('grafica'), {
+    type: 'bar',
     data: {
-        labels: labels,
+        labels: <?= json_encode($labels) ?>,
         datasets: [{
-            label: 'Saldo por Proveedor',
-            data: data,
-            backgroundColor: colores,
-            borderColor: colores,
-            borderWidth: 1
+            label: 'Saldo Neto por Proveedor',
+            data: <?= json_encode($values) ?>
         }]
     },
     options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            datalabels: {
-                anchor: 'end',
-                align: 'top',
-                color: '#000',
-                font: { weight: 'bold', size: 12 },
-                formatter: (value) => '$' + value.toLocaleString('es-CO', {minimumFractionDigits:2})
-            },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        return context.dataset.label + ': ' + context.raw.toLocaleString('es-CO', {style: 'currency', currency: 'COP'});
-                    }
+        responsive:true,
+        plugins:{
+            legend:{display:false},
+            tooltip:{
+                callbacks:{
+                    label: c =>
+                        '$ ' + c.raw.toLocaleString('es-CO',{minimumFractionDigits:2})
                 }
             }
         },
-        scales: {
-            y: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return '$' + value.toLocaleString('es-CO');
-                    }
-                }
-            },
-            x: {
-                ticks: {
-                    autoSkip: false,
-                    maxRotation: 45,
-                    minRotation: 0
-                }
-            }
+        scales:{
+            y:{ beginAtZero:true }
         }
-    },
-    plugins: [ChartDataLabels]
+    }
 });
 </script>
-
-<?php else: ?>
-<p>No hay proveedores con saldo.</p>
-<?php endif; ?>
 
 </body>
 </html>
