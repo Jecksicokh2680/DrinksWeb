@@ -37,6 +37,11 @@ function Autorizacion($User, $Solicitud) {
     }
     return "NO";
 }
+
+// Función auxiliar para dar formato de moneda rápidamente
+function fmoneda($valor) {
+    return number_format($valor, 0, ',', '.');
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -48,8 +53,9 @@ function Autorizacion($User, $Solicitud) {
 <style>
 body{font-family:Arial;margin:20px;font-size:14px}
 table{border-collapse:collapse;width:100%;min-width:980px}
-th,td{border:1px solid #ccc;padding:8px;white-space:nowrap}
-th{background:#f5f5f5;position:sticky;top:0}
+th,td{border:1px solid #ccc;padding:8px;white-space:nowrap; text-align:right;} /* Alineado a la derecha para números */
+th{background:#f5f5f5;position:sticky;top:0; text-align:center;}
+.text-left{text-align:left;} /* Para columnas de texto */
 .totales{background:#f0fff4;font-weight:800}
 .porc-pos{background:#e8f5e9;color:#20702a;font-weight:700;padding:4px 6px;border-radius:4px}
 .porc-neg{background:#fdecea;color:#8b1f1f;font-weight:700;padding:4px 6px;border-radius:4px}
@@ -61,7 +67,6 @@ th{background:#f5f5f5;position:sticky;top:0}
 
 <body>
 
-<a href="menu.php">⟵ Volver al menú</a>
 <h2>Consulta de Compras por Fecha</h2>
 
 <form method="GET">
@@ -194,7 +199,8 @@ if (!empty($_GET['Fecha'])) {
                 $dcto  = (float)$r['descuento'] / max($cant,1);
                 $neto  = $unit - $dcto;
                 $iva   = $neto * ((float)$r['porciva'] / 100);
-                $costo = $neto + $iva + (float)$r['ValICUIUni'];
+                $ibua  = (float)$r['ValICUIUni'];
+                $costo = $neto + $iva + $ibua;
                 $total = $costo * $cant;
 
                 $pv   = $ventasPromedio[$r['Barcode']] ?? 0;
@@ -207,22 +213,23 @@ if (!empty($_GET['Fecha'])) {
                 $sumVenta += $pv * $cant;
 
                 echo "<tr>
-                    <td>{$r['idcompra']}</td>
-                    <td>".htmlspecialchars($r['Barcode'])."</td>
-                    <td>".htmlspecialchars($r['descripcion'])."</td>
-                    <td>$cant</td>
-                    <td>$unit</td>
-                    <td>$dcto</td>
-                    <td>$neto</td>
-                    <td>$iva</td>
-                    <td>{$r['ValICUIUni']}</td>
-                    <td>$total</td>
-                    <td>$costo</td>";
+                    <td class='text-left'>{$r['idcompra']}</td>
+                    <td class='text-left'>".htmlspecialchars($r['Barcode'])."</td>
+                    <td class='text-left'>".htmlspecialchars($r['descripcion'])."</td>
+                    <td>" . number_format($cant, 0) . "</td>
+                    <td>" . fmoneda($unit) . "</td>
+                    <td>" . fmoneda($dcto) . "</td>
+                    <td>" . fmoneda($neto) . "</td>
+                    <td>" . fmoneda($iva) . "</td>
+                    <td>" . fmoneda($ibua) . "</td>
+                    <td>" . fmoneda($total) . "</td>
+                    <td>" . fmoneda($costo) . "</td>";
 
                 if ($Swich1 === "SI") {
                     $cls = ($porc >= 0) ? 'porc-pos' : 'porc-neg';
-                    echo "<td>$pv</td><td>$util</td>
-                          <td><span class='$cls'>".number_format($porc,1)."%</span></td>";
+                    echo "<td>" . fmoneda($pv) . "</td>
+                          <td>" . fmoneda($util) . "</td>
+                          <td style='text-align:center'><span class='$cls'>".number_format($porc,1)."%</span></td>";
                 }
 
                 echo "</tr>";
@@ -232,13 +239,14 @@ if (!empty($_GET['Fecha'])) {
             $clsTot  = ($porcTot >= 0) ? 'porc-pos' : 'porc-neg';
 
             echo "<tr class='totales'>
-                <td colspan='9'>TOTAL GENERAL</td>
-                <td>$sumTotal</td>
+                <td colspan='9' style='text-align:right'>TOTAL GENERAL</td>
+                <td>" . fmoneda($sumTotal) . "</td>
                 <td></td>";
 
             if ($Swich1 === "SI") {
-                echo "<td>$sumVenta</td><td>$sumUtil</td>
-                      <td><span class='$clsTot'>".number_format($porcTot,1)."%</span></td>";
+                echo "<td>" . fmoneda($sumVenta) . "</td>
+                      <td>" . fmoneda($sumUtil) . "</td>
+                      <td style='text-align:center'><span class='$clsTot'>".number_format($porcTot,1)."%</span></td>";
             }
 
             echo "</tr></tbody></table>";
