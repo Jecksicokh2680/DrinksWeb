@@ -212,6 +212,7 @@ if ($is_ajax_filter) {
             <tr data-barcode="' . htmlspecialchars($bc) . '">
                 <td style="font-weight: bold; font-size: 0.9em;">' . htmlspecialchars($bc) . '</td>
                 <td><input type="text" class="edit-descripcion" value="' . htmlspecialchars($p['descripcion']) . '" maxlength="80"></td>
+                <td class="dato-fijo">' . sprintf('%.2f', $p['costo']) . '</td>
                 
                 <!-- Central -->
                 <td style="background:#eaf2ff"><input type="number" class="edit-pv-c" value="' . sprintf('%.2f', $p['precioventa']) . '" step="0.01"></td>
@@ -315,6 +316,7 @@ if (!$is_ajax_filter && !$is_ajax_save) {
                 <tr>
                     <th>Barcode</th>
                     <th>Desc</th>
+                    <th title="Costo Ponderado">Ponderado</th>
                     <th title="Central: Precio Venta" style="background:#0056b3">C. Venta</th>
                     <th title="Central: Precio Esp 1" style="background:#0056b3">C. Esp1</th>
                     <th title="Central: Precio Esp 2" style="background:#0056b3">C. Esp2</th>
