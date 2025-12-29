@@ -119,7 +119,7 @@ body {
             <a class="nav-link" href="Compras.php" target="contentFrame">📊Compras Bnma</a>
             <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">💰 Cartera Proveedores</a>
             <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">💰 Cartera Bnma</a>
-             <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Valor Bodega</a>
+             <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Estado Bod BNMA</a>
             <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">👥 Usuarios</a>
             <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">📋 Autorizaciones</a>
             <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">🗂️ Auto. por Usuario</a>

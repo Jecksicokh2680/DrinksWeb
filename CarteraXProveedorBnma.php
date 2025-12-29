@@ -181,11 +181,12 @@ canvas {
     <div class="kpis">
         <div class="kpi deuda">
             <h4>Total por Pagar</h4>
-            <strong>$ <?= number_format($totalDeuda,2,',','.') ?></strong>
+            <strong>$ <?= number_format($totalDeuda- $totalFavor,2,',','.') ?></strong>
         </div>
         <div class="kpi favor">
             <h4>Total a Favor</h4>
-            <strong>$ <?= number_format($totalFavor,2,',','.') ?></strong>
+            
+            <strong>$ <?= number_format('0',2,',','.') ?></strong>
         </div>
         <div class="kpi neto">
             <h4>Saldo Neto</h4>
