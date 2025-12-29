@@ -194,7 +194,7 @@ a{text-decoration:none;font-weight:bold}
 <?php endif; ?>
 
 <?php if($abonos): ?>
-<div class="total">Total: <?= number_format($total,0,',','.') ?></div>
+<div class="total">Saldo Pte: <?= number_format($total,0,',','.') ?></div>
 
 <table>
 <tr>
