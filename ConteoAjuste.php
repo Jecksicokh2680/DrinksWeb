@@ -16,7 +16,7 @@ $usuario   = $_SESSION['Usuario'] ?? 'SISTEMA';
 $nit       = $_SESSION['NitEmpresa'] ?? '';
 $sucursal  = $_SESSION['NroSucursal'] ?? '';
 $idalmacen = 1; // ID del almacén que se está auditando (puedes dinamizarlo)
-
+date_default_timezone_set('America/Bogota');
 
 $mensaje   = "";
 

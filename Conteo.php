@@ -14,7 +14,7 @@ session_start();
 if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida");
 }
-
+date_default_timezone_set('America/Bogota');
 $usuario   = $_SESSION['Usuario'] ?? 'SISTEMA';
 $nit       = $_SESSION['NitEmpresa'] ?? '';
 $sucursal  = $_SESSION['NroSucursal'] ?? '';

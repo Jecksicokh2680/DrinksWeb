@@ -113,7 +113,7 @@ body {
         <?php if ($EsAdmin): ?>
             <hr class="text-white">
              <a class="nav-link" href="ResumenVtas.php" target="contentFrame">📊Ventas Bnma</a>
-             <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Estado Bod BNMA</a>
+             <a class="nav-link" href="ValorInventario.php" target="contentFrame">💰 Dashboard BNMA</a>
              <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">📦 Traslados Bnma</a>
             <a class="nav-link" href="StockCentral.php" target="contentFrame">🗂️ Stock Bnma</a>
             <a class="nav-link" href="Precios.php" target="contentFrame">🗂️ Precios Bnma </a>
