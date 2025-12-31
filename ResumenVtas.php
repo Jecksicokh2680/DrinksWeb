@@ -122,6 +122,8 @@ $totD = calcularTotalesSede($ventasD, $entregasDetD, $diaHoyStr, $esMesActual);
 // --- PREPARACIÓN DATOS GRÁFICA ---
 $mergedUsers = [];
 $sources = [$ventasC, $ventasD];
+$totalSalesByDay = array_fill(1, $ultimoDiaMes, 0);
+
 foreach($sources as $src) {
     foreach($src as $nit => $uData) {
         if(!isset($mergedUsers[$nit])) {
@@ -132,6 +134,7 @@ foreach($sources as $src) {
                 $d = (int)$dayStr;
                 if($d >= 1 && $d <= $ultimoDiaMes) {
                     $mergedUsers[$nit]['sales_by_day'][$d] += $amount;
+                    $totalSalesByDay[$d] += $amount;
                 }
             }
         }
@@ -309,6 +312,8 @@ $chartLabels = range(1, $ultimoDiaMes);
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const ctx = document.getElementById('salesChart').getContext('2d');
+            const dailyTotals = <?= json_encode(array_values($totalSalesByDay)) ?>;
+
             new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -337,15 +342,24 @@ $chartLabels = range(1, $ultimoDiaMes);
                         legend: { position: 'bottom' },
                         tooltip: {
                             modal: 'index',
-                            intersect: false, // Permite ver todos los stacks al pasar por la columna
+                            intersect: false, 
                             callbacks: {
                                 label: function(context) {
                                     let label = context.dataset.label || '';
                                     if (label) {
                                         label += ': ';
                                     }
-                                    if (context.parsed.y !== null) {
-                                        label += new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                    const value = context.parsed.y;
+                                    if (value !== null) {
+                                        label += new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value);
+                                        
+                                        // Calcular porcentaje
+                                        const dayIndex = context.dataIndex;
+                                        const total = dailyTotals[dayIndex];
+                                        if (total > 0) {
+                                            const percentage = ((value / total) * 100).toFixed(1);
+                                            label += ` (${percentage}%)`;
+                                        }
                                     }
                                     return label;
                                 }
