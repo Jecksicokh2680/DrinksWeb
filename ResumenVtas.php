@@ -118,6 +118,44 @@ function calcularTotalesSede($ventas, $entregasDet, $diaHoy, $esMesActual) {
 
 $totC = calcularTotalesSede($ventasC, $entregasDetC, $diaHoyStr, $esMesActual);
 $totD = calcularTotalesSede($ventasD, $entregasDetD, $diaHoyStr, $esMesActual);
+
+// --- PREPARACIÓN DATOS GRÁFICA ---
+$mergedUsers = [];
+$sources = [$ventasC, $ventasD];
+foreach($sources as $src) {
+    foreach($src as $nit => $uData) {
+        if(!isset($mergedUsers[$nit])) {
+            $mergedUsers[$nit] = ['name' => $uData['NOM'], 'sales_by_day' => array_fill(1, $ultimoDiaMes, 0)];
+        }
+        if(isset($uData['VENTAS'])) {
+            foreach($uData['VENTAS'] as $dayStr => $amount) {
+                $d = (int)$dayStr;
+                if($d >= 1 && $d <= $ultimoDiaMes) {
+                    $mergedUsers[$nit]['sales_by_day'][$d] += $amount;
+                }
+            }
+        }
+    }
+}
+
+// Colores para la gráfica
+$palette = [
+    '#3366CC','#DC3912','#FF9900','#109618','#990099','#3B3EAC','#0099C6','#DD4477',
+    '#66AA00','#B82E2E','#316395','#994499','#22AA99','#AAAA11','#6633CC','#E67300'
+];
+$chartDatasets = [];
+$pIdx = 0;
+
+foreach($mergedUsers as $u) {
+    $chartDatasets[] = [
+        'label' => $u['name'],
+        'data' => array_values($u['sales_by_day']),
+        'backgroundColor' => $palette[$pIdx % count($palette)],
+    ];
+    $pIdx++;
+}
+
+$chartLabels = range(1, $ultimoDiaMes);
 ?>
 
 <!DOCTYPE html>
@@ -258,6 +296,66 @@ $totD = calcularTotalesSede($ventasD, $entregasDetD, $diaHoyStr, $esMesActual);
     // --- DETALLE DRINKS ---
     dibujarDetalleCompleto("🍹 DRINKS: Detalle Ventas y Entregas", $ventasD, $entregasDetD, $diaHoyStr, $esMesActual, $hoyDiaNum, "#27ae60");
     ?>
+
+    <!-- GRÁFICA -->
+    <div class="section">
+        <h2>📈 Evolución Ventas Diarias (Global)</h2>
+        <div style="position: relative; height:450px; width:100%">
+            <canvas id="salesChart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('salesChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: <?= json_encode($chartLabels) ?>,
+                    datasets: <?= json_encode($chartDatasets) ?>
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { 
+                            stacked: true, 
+                            title: {display:true, text:'Día del Mes <?=$mes?>'} 
+                        },
+                        y: { 
+                            stacked: true, 
+                            title: {display:true, text:'Ventas ($)'},
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + new Intl.NumberFormat('es-CO').format(value/1000) + 'k';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            modal: 'index',
+                            intersect: false, // Permite ver todos los stacks al pasar por la columna
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
 
 </div>
 

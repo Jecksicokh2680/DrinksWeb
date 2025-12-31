@@ -9,7 +9,7 @@ if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php");
     exit;
 }
-
+date_default_timezone_set('America/Bogota');
 // -------------------------------------------------
 // PROVEEDORES
 // -------------------------------------------------
