@@ -1,19 +1,17 @@
 <?php
-require('ConnCentral.php'); // POS → $mysqliCentral
-require('Conexion.php');    // WEB → $mysqliWeb y $mysqli
+require('ConnCentral.php'); // $mysqliCentral
+require('ConnDrinks.php');  // $mysqliDrinks
+require('Conexion.php');    // $mysqliWeb + $mysqli
 
 session_start();
 
-$UsuarioSesion   = $_SESSION['Usuario']     ?? '';
-$NitSesion       = $_SESSION['NitEmpresa']  ?? '';
-$SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
-
-date_default_timezone_set('America/Bogota');
-
-if (empty($UsuarioSesion)) {
-    header("Location: Login.php?msg=Debe iniciar sesión");
+$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+if (!$UsuarioSesion) {
+    header("Location: Login.php");
     exit;
 }
+
+date_default_timezone_set('America/Bogota');
 
 Lista_Pedido();
 
@@ -23,299 +21,229 @@ Lista_Pedido();
 function Autorizacion($UsuarioSesion, $Solicitud) {
     global $mysqli;
 
-    if (!isset($_SESSION['Autorizaciones'])) {
-        $_SESSION['Autorizaciones'] = [];
-    }
+    $stmt = $mysqli->prepare("
+        SELECT Swich 
+        FROM autorizacion_tercero 
+        WHERE CedulaNit=? AND Nro_Auto=?
+    ");
+    if(!$stmt) return 'NO';
 
-    $key = $UsuarioSesion . '_' . $Solicitud;
-    if (isset($_SESSION['Autorizaciones'][$key])) {
-        return $_SESSION['Autorizaciones'][$key];
-    }
-
-    $stmt = $mysqli->prepare(
-        "SELECT Swich 
-         FROM autorizacion_tercero 
-         WHERE CedulaNit = ? AND Nro_Auto = ?"
-    );
-    if (!$stmt) return "NO";
-
-    $stmt->bind_param("ss", $UsuarioSesion, $Solicitud);
+    $stmt->bind_param("ss",$UsuarioSesion,$Solicitud);
     $stmt->execute();
-
-    $res = $stmt->get_result();
-    $permiso = ($row = $res->fetch_assoc()) ? ($row['Swich'] ?? 'NO') : 'NO';
-
-    $_SESSION['Autorizaciones'][$key] = $permiso;
-    $stmt->close();
-
-    return $permiso;
+    $res=$stmt->get_result();
+    return ($row=$res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
 /* =====================================================
-   LISTADO FACTURAS / PEDIDOS
+   CONSULTA BASE
 ===================================================== */
-function Lista_Pedido() {
+function obtenerDatos($cnx,$nombreSucursal,$fecha){
 
-    global $mysqliCentral, $mysqliWeb;
-    global $UsuarioSesion;
+$sql = "
+SELECT 
+    '$nombreSucursal' AS SUCURSAL,
+    FACTURAS.HORA,
+    T1.NOMBRES AS FACTURADOR,
+    FACTURAS.NUMERO AS DOCUMENTO,
+    PRODUCTOS.Barcode,
+    PRODUCTOS.Descripcion AS PRODUCTO,
+    DETFACTURAS.CANTIDAD,
+    DETFACTURAS.VALORPROD
+FROM FACTURAS
+INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA
+INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO
+INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR
+WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA=?
 
-    $hoy = date('Ymd');
+UNION ALL
 
-    $sql = "
-        SELECT 
-            TRIM(NOMBREPC) AS NOMBREPC,
-            FACTURAS.FECHA,
-            FACTURAS.HORA,
-            T1.NIT AS FACTURADOR_NIT,
-            T1.NOMBRES AS FACTURADOR,
-            T2.NOMBRES AS CLIENTE,
-            FACTURAS.NUMERO AS DOCUMENTO,
-            PRODUCTOS.Barcode,
-            PRODUCTOS.Descripcion AS PRODUCTO,
-            DETFACTURAS.CANTIDAD,
-            DETFACTURAS.VALORPROD,
-            FACTURAS.VALORTOTAL,
-            'FACTURA' AS TIPO_DOC
-        FROM FACTURAS
-        INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA = FACTURAS.IDFACTURA
-        INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETFACTURAS.IDPRODUCTO
-        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = FACTURAS.IDVENDEDOR
-        INNER JOIN TERCEROS T2 ON T2.IDTERCERO = FACTURAS.IDTERCERO
-        WHERE FACTURAS.IDFACTURA NOT IN (SELECT IDFACTURA FROM DEVVENTAS)
-          AND FACTURAS.ESTADO = '0'
-          AND FACTURAS.FECHA = ?
+SELECT 
+    '$nombreSucursal' AS SUCURSAL,
+    PEDIDOS.HORA,
+    T2.NOMBRES AS FACTURADOR,
+    PEDIDOS.NUMERO AS DOCUMENTO,
+    PRODUCTOS.Barcode,
+    PRODUCTOS.Descripcion AS PRODUCTO,
+    DETPEDIDOS.CANTIDAD,
+    DETPEDIDOS.VALORPROD
+FROM PEDIDOS
+INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO
+INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO
+INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO
+INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO
+WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA=?
+";
 
-        UNION ALL
+$stmt=$cnx->prepare($sql);
+$stmt->bind_param("ss",$fecha,$fecha);
+$stmt->execute();
+$res=$stmt->get_result();
 
-        SELECT 
-            '' AS NOMBREPC,
-            PEDIDOS.FECHA,
-            PEDIDOS.HORA,
-            T2.NIT AS FACTURADOR_NIT,
-            T2.NOMBRES AS FACTURADOR,
-            T1.NOMBRES AS CLIENTE,
-            PEDIDOS.NUMERO AS DOCUMENTO,
-            PRODUCTOS.Barcode,
-            PRODUCTOS.Descripcion AS PRODUCTO,
-            DETPEDIDOS.CANTIDAD,
-            DETPEDIDOS.VALORPROD,
-            PEDIDOS.VALORTOTAL,
-            'PEDIDO' AS TIPO_DOC
-        FROM PEDIDOS
-        INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO = DETPEDIDOS.IDPEDIDO
-        INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETPEDIDOS.IDPRODUCTO
-        INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO = PEDIDOS.IDUSUARIO
-        INNER JOIN TERCEROS T2 ON T2.IDTERCERO = V1.IDTERCERO
-        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = PEDIDOS.IDVENDEDOR
-        WHERE PEDIDOS.ESTADO = '0'
-          AND PEDIDOS.FECHA = ?
-    ";
+$rows=[];
+while($r=$res->fetch_assoc()){
+    $rows[]=$r;
+}
+return $rows;
+}
 
-    $stmt = $mysqliCentral->prepare($sql);
-    if (!$stmt) die("Error SQL: ".$mysqliCentral->error);
+/* =====================================================
+   LISTADO GENERAL
+===================================================== */
+function Lista_Pedido(){
 
-    $stmt->bind_param("ss", $hoy, $hoy);
-    $stmt->execute();
-    $res = $stmt->get_result();
+global $mysqliCentral,$mysqliDrinks,$mysqliWeb,$UsuarioSesion;
 
-    if ($res->num_rows == 0) {
-        echo "<h3>No existen facturas o pedidos para hoy.</h3>";
-        return;
+$hoy=date('Ymd');
+
+/* ====== CARGAR LAS DOS SUCURSALES ====== */
+$rows = array_merge(
+    obtenerDatos($mysqliCentral,'CENTRAL',$hoy),
+    obtenerDatos($mysqliDrinks,'DRINKS',$hoy)
+);
+
+if(!$rows){
+    echo "<h3>No hay información para hoy</h3>";
+    return;
+}
+
+/* ====== CATEGORÍAS ====== */
+$skus=array_unique(array_column($rows,'Barcode'));
+$categoria=$unicaja=[];
+
+if($skus){
+    $lista="'".implode("','",$skus)."'";
+
+    $q=$mysqliWeb->query("SELECT Sku,CodCat FROM catproductos WHERE Sku IN ($lista)");
+    while($c=$q->fetch_assoc()) $categoria[$c['Sku']]=$c['CodCat'];
+
+    $cats="'".implode("','",array_unique($categoria))."'";
+    $q2=$mysqliWeb->query("SELECT CodCat,Unicaja FROM categorias WHERE CodCat IN ($cats)");
+    while($u=$q2->fetch_assoc()) $uniCat[$u['CodCat']]=$u['Unicaja'];
+
+    foreach($categoria as $s=>$c){
+        $unicaja[$s]=$uniCat[$c] ?? 1;
     }
+}
 
-    $rows = [];
-    $barcodes = [];
+/* ====== FILTROS ====== */
+$fSuc=$_GET['sucursal']??'';
+$fFac=$_GET['facturador']??'';
+$fSku=$_GET['producto']??'';
+$fDoc=$_GET['documento']??'';
 
-    while ($r = $res->fetch_assoc()) {
-        $rows[] = $r;
-        $barcodes[] = $r['Barcode'];
-    }
-
-    $barcodes = array_values(array_unique($barcodes));
-    $categoriaCache = [];
-    $unicajaCacheBySku = [];
-
-    /* =======================
-       CATEGORÍAS / UNICAJA
-    ======================= */
-    if ($barcodes) {
-        $in = implode(',', array_fill(0, count($barcodes), '?'));
-
-        $stmtCat = $mysqliWeb->prepare(
-            "SELECT Sku, CodCat FROM catproductos WHERE Sku IN ($in)"
-        );
-        $stmtCat->execute($barcodes);
-        $resCat = $stmtCat->get_result();
-
-        $skuCat = [];
-        while ($c = $resCat->fetch_assoc()) {
-            $skuCat[$c['Sku']] = $c['CodCat'];
-        }
-        $stmtCat->close();
-
-        if ($skuCat) {
-            $codCats = array_values(array_unique(array_values($skuCat)));
-            $in2 = implode(',', array_fill(0, count($codCats), '?'));
-
-            $stmtUni = $mysqliWeb->prepare(
-                "SELECT CodCat, Unicaja FROM categorias WHERE CodCat IN ($in2)"
-            );
-            $stmtUni->execute($codCats);
-            $resUni = $stmtUni->get_result();
-
-            $uniCat = [];
-            while ($u = $resUni->fetch_assoc()) {
-                $uniCat[$u['CodCat']] = $u['Unicaja'];
-            }
-            $stmtUni->close();
-
-            foreach ($barcodes as $sku) {
-                $cat = $skuCat[$sku] ?? '';
-                $categoriaCache[$sku] = $cat;
-                $unicajaCacheBySku[$sku] = $uniCat[$cat] ?? 1;
-            }
-        }
-    }
-
-    /* =======================
-       FILTROS
-    ======================= */
-    $filtroFacturador = $_GET['facturador'] ?? '';
-    $filtroProducto   = $_GET['producto'] ?? ''; // SKU
-    $filtroDocumento  = $_GET['documento'] ?? '';
-
-    $facturadoresList = [];
-    $productosList = [];
-    $documentosList = [];
-
-    foreach ($rows as $r) {
-        $facturadoresList[$r['FACTURADOR']] = true;
-        $documentosList[$r['DOCUMENTO']] = true;
-
-        $sku = $r['Barcode'];
-        $productosList[$sku] = [
-            'producto' => $r['PRODUCTO'],
-            'sku' => $sku,
-            'cat' => $categoriaCache[$sku] ?? ''
-        ];
-    }
-
-    usort($productosList, function($a,$b){
-        return [$a['cat'],$a['sku']] <=> [$b['cat'],$b['sku']];
-    });
+$suc=$fac=$prod=$doc=[];
+foreach($rows as $r){
+    $suc[$r['SUCURSAL']]=true;
+    $fac[$r['FACTURADOR']]=true;
+    $prod[$r['Barcode']]=$r['PRODUCTO'];
+    $doc[$r['DOCUMENTO']]=true;
+}
 ?>
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Ejecución del día</title>
+<title>Ejecución diaria</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-body{font-family:Arial;font-size:15px}
+body{font-family:Arial;font-size:18px}
 table{border-collapse:collapse;width:100%}
-th,td{border:1px solid #ccc;padding:6px}
+th,td{border:1px solid #ccc;padding:10px}
 th{background:#eee;position:sticky;top:0}
-.center{text-align:center}
-.total-facturador{background:#c6e2ff;font-weight:bold}
-.gran-total{background:#c6f6c6;font-weight:bold}
+.total{background:#c6e2ff;font-weight:bold}
+.gran{background:#c6f6c6;font-weight:bold}
+select{font-size:16px}
 </style>
 </head>
 <body>
 
-<h2>Ejecución del día</h2>
+<h2>Ejecución del día – Central + Drinks</h2>
 
-<form method="get">
+<form>
+Sucursal:
+<select name="sucursal" onchange="this.form.submit()">
+<option value="">Todas</option>
+<?php foreach($suc as $k=>$_){ ?>
+<option <?=$k==$fSuc?'selected':''?>><?=$k?></option>
+<?php } ?>
+</select>
+
 Facturador:
 <select name="facturador" onchange="this.form.submit()">
 <option value="">Todos</option>
-<?php foreach($facturadoresList as $f=>$_){ ?>
-<option value="<?=$f?>" <?=($f==$filtroFacturador?'selected':'')?>>
-    <?=$f?>
-</option>
+<?php foreach($fac as $k=>$_){ ?>
+<option <?=$k==$fFac?'selected':''?>><?=$k?></option>
 <?php } ?>
 </select>
 
 Producto:
 <select name="producto" onchange="this.form.submit()">
 <option value="">Todos</option>
-<?php foreach($productosList as $p){ ?>
-<option value="<?=$p['sku']?>" <?=($p['sku']==$filtroProducto?'selected':'')?>>
-    [<?=$p['cat']?>] <?=$p['sku']?> - <?=$p['producto']?>
-</option>
+<?php foreach($prod as $k=>$v){ ?>
+<option value="<?=$k?>" <?=$k==$fSku?'selected':''?>><?=$k?> - <?=$v?></option>
 <?php } ?>
 </select>
 
 Documento:
 <select name="documento" onchange="this.form.submit()">
 <option value="">Todos</option>
-<?php foreach($documentosList as $d=>$_){ ?>
-<option value="<?=$d?>" <?=($d==$filtroDocumento?'selected':'')?>>
-    <?=$d?>
-</option>
+<?php foreach($doc as $k=>$_){ ?>
+<option <?=$k==$fDoc?'selected':''?>><?=$k?></option>
 <?php } ?>
 </select>
 </form>
 
 <table>
 <tr>
-<th>Facturador</th><th>Documento</th><th>Hora</th>
+<th>Sucursal</th><th>Facturador</th><th>Doc</th><th>Hora</th>
 <th>Cat</th><th>Sku</th><th>Producto</th>
-<th>Valor</th><th>Cajas</th><th>Unid</th><th>Subtotal</th>
+<th>Valor</th><th>Cajas</th><th>Und</th><th>Total</th>
 </tr>
 
 <?php
-$granTotal=0;
-$totFact=[];
-$docAnt='';
-$subDoc=0;
-
+$gran=0;$sub=0;$docAnt='';
 foreach($rows as $r){
 
-    if($filtroFacturador && $r['FACTURADOR']!=$filtroFacturador) continue;
-    if($filtroProducto && $r['Barcode']!=$filtroProducto) continue;
-    if($filtroDocumento && $r['DOCUMENTO']!=$filtroDocumento) continue;
+    if($fSuc && $r['SUCURSAL']!=$fSuc) continue;
+    if($fFac && $r['FACTURADOR']!=$fFac) continue;
+    if($fSku && $r['Barcode']!=$fSku) continue;
+    if($fDoc && $r['DOCUMENTO']!=$fDoc) continue;
 
     if($docAnt && $docAnt!=$r['DOCUMENTO']){
-        echo "<tr><td colspan=9><b>Subtotal $docAnt</b></td><td><b>".number_format($subDoc,0,'.','.')."</b></td></tr>";
-        $subDoc=0;
+        echo "<tr class=total><td colspan=10>Subtotal $docAnt</td><td>".number_format($sub,0,'.','.')."</td></tr>";
+        $sub=0;
     }
 
-    $uni = $unicajaCacheBySku[$r['Barcode']] ?? 1;
-    $cajas=floor($r['CANTIDAD']);
-    $unid=round(($r['CANTIDAD']-$cajas)*$uni);
-    $total=$r['CANTIDAD']*$r['VALORPROD'];
+    $uni=$unicaja[$r['Barcode']]??1;
+    $c=floor($r['CANTIDAD']);
+    $u=round(($r['CANTIDAD']-$c)*$uni);
+    $t=$r['CANTIDAD']*$r['VALORPROD'];
 
     echo "<tr>
+        <td>{$r['SUCURSAL']}</td>
         <td>{$r['FACTURADOR']}</td>
         <td>{$r['DOCUMENTO']}</td>
         <td>{$r['HORA']}</td>
-        <td>{$categoriaCache[$r['Barcode']]}</td>
+        <td>{$categoria[$r['Barcode']]}</td>
         <td>{$r['Barcode']}</td>
         <td>{$r['PRODUCTO']}</td>
         <td>".number_format($r['VALORPROD'],0,'.','.')."</td>
-        <td class=center>$cajas</td>
-        <td class=center>$unid</td>
-        <td>".number_format($total,0,'.','.')."</td>
+        <td>$c</td><td>$u</td>
+        <td>".number_format($t,0,'.','.')."</td>
     </tr>";
 
-    $granTotal+=$total;
-    $totFact[$r['FACTURADOR']] = ($totFact[$r['FACTURADOR']] ?? 0) + $total;
-    $subDoc+=$total;
+    $gran+=$t;
+    $sub+=$t;
     $docAnt=$r['DOCUMENTO'];
 }
 
 if($docAnt){
-    echo "<tr><td colspan=9><b>Subtotal $docAnt</b></td><td><b>".number_format($subDoc,0,'.','.')."</b></td></tr>";
-}
-
-if(Autorizacion($UsuarioSesion,'9999')=='SI'){
-    foreach($totFact as $f=>$t){
-        echo "<tr class=total-facturador><td colspan=9>TOTAL $f</td><td>".number_format($t,0,'.','.')."</td></tr>";
-    }
+    echo "<tr class=total><td colspan=10>Subtotal $docAnt</td><td>".number_format($sub,0,'.','.')."</td></tr>";
 }
 ?>
-<tr class="gran-total">
-<td colspan="9">GRAN TOTAL</td>
-<td><?=number_format($granTotal,0,'.','.')?></td>
+<tr class="gran">
+<td colspan="10">GRAN TOTAL</td>
+<td><?=number_format($gran,0,'.','.')?></td>
 </tr>
 </table>
 
