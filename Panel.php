@@ -160,6 +160,7 @@ body{
 </button>
 <div id="op" class="accordion-collapse collapse">
 <div class="accordion-body">
+<a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
 <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
 <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
 <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
@@ -207,7 +208,7 @@ body{
 <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Central</a>
 <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Drinks</a>
 <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Ventas</a>
-<a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
+
 </div>
 </div>
 </div>
