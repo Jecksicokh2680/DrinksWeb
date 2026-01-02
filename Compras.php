@@ -269,13 +269,15 @@ function precioProm($mysqli){
       FROM DETPEDIDOS D
       JOIN PEDIDOS PE ON PE.IDPEDIDO=D.IDPEDIDO
       JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
-      WHERE PE.ESTADO='0'
+      WHERE PE.ESTADO='0' AND STR_TO_DATE(PE.FECHA,'%Y%m%d') 
+              >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
       UNION ALL
       SELECT P.Barcode,D.CANTIDAD,D.VALORPROD
       FROM FACTURAS F
       JOIN DETFACTURAS D ON D.IDFACTURA=F.IDFACTURA
       JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
-      WHERE F.ESTADO='0'
+      WHERE F.ESTADO='0' AND STR_TO_DATE(F.FECHA,'%Y%m%d') 
+              >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
     )Q GROUP BY Q.Barcode";
     $out=[]; $r=$mysqli->query($sql);
     while($r && $x=$r->fetch_assoc()) $out[$x['Barcode']]=$x['pv'];
