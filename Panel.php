@@ -134,6 +134,7 @@ body {
             <a class="nav-link" href="DashBoard2.php" target="contentFrame">📈 Control Drinks</a>
             <a class="nav-link" href="BnmaTotal.php" target="contentFrame">📈 Control Ventas</a>
         <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">🧮 Conteo Web Ajuste</a>
+        <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listar Fact del Dia</a>
             <?php endif; ?>
 
     </nav>
