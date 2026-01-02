@@ -27,9 +27,6 @@ function Autorizacion($User, $Solicitud) {
     return ($res && $res->num_rows > 0) ? $res->fetch_assoc()['Swich'] : "NO";
 }
 
-/* ============================================
-   VALIDAR ADMIN
-============================================ */
 $EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 ?>
 <!doctype html>
@@ -37,67 +34,83 @@ $EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 <head>
 <meta charset="utf-8">
 <title>Panel de Usuario</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-body {
-    margin: 0;
-    display: flex;
-    min-height: 100vh;
-    font-family: Arial, sans-serif;
+body{
+    margin:0;
+    display:flex;
+    min-height:100vh;
+    font-family:Arial,sans-serif;
 }
-.sidebar {
-    width: 250px;
-    background-color: #0d6efd;
-    color: white;
-    display: flex;
-    flex-direction: column;
+.sidebar{
+    width:260px;
+    background:#0d6efd;
+    color:#fff;
+    display:flex;
+    flex-direction:column;
 }
-.sidebar .nav-link {
-    color: white;
-    padding: 6px 12px;
-    font-size: 14px;
+.sidebar .nav-link{
+    color:#fff;
+    padding:6px 14px;
+    font-size:14px;
 }
-.sidebar .nav-link:hover {
-    background-color: #084298;
+.sidebar .nav-link:hover{
+    background:#084298;
 }
-.sidebar .navbar-brand {
-    padding: 1rem;
-    font-weight: bold;
+.navbar-brand{
+    padding:1rem;
+    font-weight:bold;
+    text-align:center;
 }
-.content-frame {
-    flex-grow: 1;
-    border: none;
-    width: 100%;
-    height: 100vh;
+.content-frame{
+    flex-grow:1;
+    border:none;
+    width:100%;
+    height:100vh;
 }
-.accordion-button {
-    padding: 6px 12px;
-    font-size: 14px;
+
+/* Accordion */
+.accordion-button{
+    padding:6px 14px;
+    font-size:14px;
+    background:#0d6efd;
+    color:#fff;
 }
-.accordion-button:not(.collapsed) {
-    background-color: #084298;
-    color: white;
+.accordion-button:not(.collapsed){
+    background:#084298;
+    color:#fff;
 }
-.accordion-item {
-    background: transparent;
-    border: none;
+.accordion-item{
+    background:transparent;
+    border:none;
 }
-.accordion-body {
-    padding: 0;
+.accordion-body{
+    padding:0;
 }
-@media (max-width: 768px) {
-    .sidebar {
-        position: fixed;
-        left: -260px;
-        height: 100%;
-        z-index: 999;
-        transition: left 0.3s;
+
+/* Sub-acordeón */
+.sub-accordion .accordion-button{
+    background:#0b5ed7;
+    font-size:13px;
+    padding:6px 18px;
+}
+.sub-accordion .accordion-button:not(.collapsed){
+    background:#063f99;
+}
+
+@media (max-width:768px){
+    .sidebar{
+        position:fixed;
+        left:-270px;
+        top:0;
+        height:100%;
+        z-index:999;
+        transition:left .3s;
     }
-    .sidebar.show {
-        left: 0;
-    }
+    .sidebar.show{left:0;}
 }
 </style>
 </head>
@@ -107,101 +120,137 @@ body {
 <!-- ================= SIDEBAR ================= -->
 <div class="sidebar" id="sidebar">
 
-    <div class="navbar-brand text-white text-center">
-        Mi App
-    </div>
+<div class="navbar-brand">Mi App</div>
 
-    <div class="accordion accordion-flush px-2" id="menuAccordion">
+<div class="accordion accordion-flush px-2" id="menuPrincipal">
 
-        <!-- ================= SIN AUTORIZACIÓN ================= -->
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button collapsed text-white bg-primary"
-                        type="button" data-bs-toggle="collapse"
-                        data-bs-target="#menuBasico">
-                    🔓 Opciones básicas
-                </button>
-            </h2>
-            <div id="menuBasico" class="accordion-collapse collapse show">
-                <div class="accordion-body">
-                    <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
-                    <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-                    <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= SOLO ADMIN ================= -->
-        <?php if ($EsAdmin): ?>
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button collapsed text-white bg-primary"
-                        type="button" data-bs-toggle="collapse"
-                        data-bs-target="#menuAdmin">
-                    🔐 Administración
-                </button>
-            </h2>
-            <div id="menuAdmin" class="accordion-collapse collapse">
-                <div class="accordion-body">
-
-                    <!-- SUBGRUPO: OPERACIÓN -->
-                    <strong class="text-white px-2 d-block mt-2">📊 Operación</strong>
-                    <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
-                    <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
-                    <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
-                    <a class="nav-link" href="ListaFactDia.php" target="contentFrame">Facturas del Día</a>
-
-                    <!-- SUBGRUPO: INVENTARIO -->
-                    <strong class="text-white px-2 d-block mt-2">📦 Inventario</strong>
-                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Central</a>
-                    <a class="nav-link" href="ValorInventario.php" target="contentFrame">Valor Inventario</a>
-                    <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
-                    <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a>
-                    <a class="nav-link" href="Categorias.php" target="contentFrame">Categorías</a>
-                    <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
-
-                    <!-- SUBGRUPO: FINANZAS -->
-                    <strong class="text-white px-2 d-block mt-2">💰 Finanzas</strong>
-                    <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
-                    <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">Cartera BNMA</a>
-
-                    <!-- SUBGRUPO: CONTROL -->
-                    <strong class="text-white px-2 d-block mt-2">📈 Control</strong>
-                    <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Central</a>
-                    <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Drinks</a>
-                    <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Ventas</a>
-
-                    <!-- SUBGRUPO: CONFIGURACIÓN -->
-                    <strong class="text-white px-2 d-block mt-2">⚙️ Configuración</strong>
-                    <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Usuarios</a>
-                    <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
-                    <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
-
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-    </div>
-
-    <!-- ================= FOOTER ================= -->
-    <div class="mt-auto p-3 border-top text-center">
-        <div>Bienvenido<br><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
-        <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
-    </div>
+<!-- ================= BÁSICO ================= -->
+<div class="accordion-item">
+<h2 class="accordion-header">
+<button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#basico">
+🔓 Opciones básicas
+</button>
+</h2>
+<div id="basico" class="accordion-collapse collapse show">
+<div class="accordion-body">
+<a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
+<a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
+<a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
+</div>
+</div>
 </div>
 
-<!-- ================= CONTENIDO ================= -->
+<?php if ($EsAdmin): ?>
+<!-- ================= ADMIN ================= -->
+<div class="accordion-item">
+<h2 class="accordion-header">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#admin">
+🔐 Administración
+</button>
+</h2>
+<div id="admin" class="accordion-collapse collapse">
+<div class="accordion-body">
+
+<div class="accordion sub-accordion" id="adminSub">
+
+<!-- OPERACIÓN -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#op">
+📊 Operación
+</button>
+<div id="op" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
+<a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
+<a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
+<a class="nav-link" href="ListaFactDia.php" target="contentFrame">Facturas del Día</a>
+</div>
+</div>
+</div>
+
+<!-- INVENTARIO -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#inv">
+📦 Inventario
+</button>
+<div id="inv" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Central</a>
+<a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
+<a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a>
+<a class="nav-link" href="Categorias.php" target="contentFrame">Categorías</a>
+<a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
+</div>
+</div>
+</div>
+
+<!-- FINANZAS -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#fin">
+💰 Finanzas
+</button>
+<div id="fin" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
+<a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">Cartera BNMA</a>
+</div>
+</div>
+</div>
+
+<!-- CONTROL -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#ctrl">
+📈 Control
+</button>
+<div id="ctrl" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Central</a>
+<a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Drinks</a>
+<a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Ventas</a>
+<a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
+</div>
+</div>
+</div>
+
+<!-- CONFIGURACIÓN -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#conf">
+⚙️ Configuración
+</button>
+<div id="conf" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Usuarios</a>
+<a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
+<a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+<?php endif; ?>
+
+</div>
+
+<!-- FOOTER -->
+<div class="mt-auto p-3 border-top text-center">
+<div>Bienvenido<br><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
+<a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
+</div>
+
+</div>
+
 <iframe name="contentFrame" class="content-frame"></iframe>
 
-<!-- BOTÓN MÓVIL -->
 <button id="toggleMenu" class="btn btn-primary d-md-none"
-        style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
+style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-document.getElementById('toggleMenu').onclick = () => {
-    document.getElementById('sidebar').classList.toggle('show');
+document.getElementById('toggleMenu').onclick=()=>{
+document.getElementById('sidebar').classList.toggle('show');
 };
 </script>
 
