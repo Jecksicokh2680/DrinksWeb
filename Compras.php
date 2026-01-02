@@ -4,8 +4,9 @@ session_start();
 /* =========================
    CONEXIONES
 ========================= */
-require('Conexion.php');      // $mysqli  → BnmaWeb
-require('ConnCentral.php');   // $mysqliCentral → empresa001
+require('Conexion.php');        // $mysqliWeb
+require('ConnCentral.php');     // $mysqliCentral
+require('ConnDrinks.php');      // $mysqliDrinks
 
 /* =========================
    VALIDAR SESIÓN
@@ -17,242 +18,359 @@ if ($User === '') {
 }
 
 /* =========================
-   AUTORIZACIÓN (BnmaWeb)
+   AUTORIZACIÓN
 ========================= */
 function Autorizacion($User, $Solicitud) {
-    global $mysqli;
-
-    $stmt = $mysqli->prepare("
+    global $mysqliWeb;
+    $stmt = $mysqliWeb->prepare("
         SELECT Swich
         FROM autorizacion_tercero
-        WHERE CedulaNit = ? AND Nro_Auto = ?
+        WHERE CedulaNit=? AND Nro_Auto=?
         LIMIT 1
     ");
-    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->bind_param("ss",$User,$Solicitud);
     $stmt->execute();
-    $res = $stmt->get_result();
-
-    if ($res && $res->num_rows > 0) {
-        return $res->fetch_assoc()['Swich'];
-    }
-    return "NO";
+    $r = $stmt->get_result();
+    return ($r && $r->num_rows)?$r->fetch_assoc()['Swich']:"NO";
 }
 
-// Función auxiliar para dar formato de moneda rápidamente
-function fmoneda($valor) {
-    return number_format($valor, 0, ',', '.');
-}
+$PuedeVerUtil = (Autorizacion($User,'9999')==='SI');
+function fmoneda($v){ return number_format($v,0,',','.'); }
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Consulta Compras</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compras Gerenciales</title>
 
 <style>
-body{font-family:Arial;margin:20px;font-size:14px}
-table{border-collapse:collapse;width:100%;min-width:980px}
-th,td{border:1px solid #ccc;padding:8px;white-space:nowrap; text-align:right;} /* Alineado a la derecha para números */
-th{background:#f5f5f5;position:sticky;top:0; text-align:center;}
-.text-left{text-align:left;} /* Para columnas de texto */
-.totales{background:#f0fff4;font-weight:800}
-.porc-pos{background:#e8f5e9;color:#20702a;font-weight:700;padding:4px 6px;border-radius:4px}
-.porc-neg{background:#fdecea;color:#8b1f1f;font-weight:700;padding:4px 6px;border-radius:4px}
-.nav-proveedores{margin:15px 0;display:flex;flex-wrap:wrap;gap:8px}
-.nav-proveedores a{padding:6px 12px;border-radius:20px;background:#e3f2fd;color:#0d47a1;text-decoration:none;border:1px solid #bbdefb}
-.nav-proveedores a.active{background:#0d47a1;color:#fff;font-weight:600}
+/* =======================
+   BASE
+======================= */
+body{
+    font-family:Segoe UI,Arial;
+    margin:15px;
+    background:#f4f6f8;
+    font-size:16px;
+}
+
+h2{
+    font-size:26px;
+    margin-bottom:15px
+}
+
+/* =======================
+   CARD
+======================= */
+.card{
+    background:#fff;
+    padding:20px;
+    border-radius:14px;
+    box-shadow:0 6px 16px rgba(0,0,0,.10)
+}
+
+/* =======================
+   FILTROS
+======================= */
+.filters{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:14px;
+    margin-bottom:15px
+}
+
+label{
+    font-size:14px;
+    font-weight:700
+}
+
+select,input,button{
+    width:100%;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    font-size:16px
+}
+
+button{
+    background:#0d6efd;
+    color:#fff;
+    font-weight:700;
+    cursor:pointer
+}
+
+/* =======================
+   CONTENEDOR TABLA
+======================= */
+.table-container{
+    max-height:70vh;
+    overflow:auto;
+    border-radius:12px;
+    border:1px solid #ddd
+}
+
+/* =======================
+   TABLA
+======================= */
+table{
+    border-collapse:collapse;
+    width:100%;
+    min-width:1200px;
+    font-size:15px
+}
+
+th,td{
+    border:1px solid #ddd;
+    padding:8px 10px;
+    text-align:right;
+    white-space:nowrap
+}
+
+.text-left{text-align:left}
+
+/* =======================
+   CABECERA FIJA
+======================= */
+thead th{
+    position:sticky;
+    top:0;
+    z-index:10;
+    background:#f1f3f5;
+    font-size:15px;
+    font-weight:800;
+    text-align:center
+}
+
+/* =======================
+   ESTADOS
+======================= */
+.badge{
+    padding:4px 10px;
+    border-radius:14px;
+    color:#fff;
+    font-size:13px;
+    font-weight:700
+}
+.central{background:#0d6efd}
+.drinks{background:#198754}
+
+/* =======================
+   TOTALES
+======================= */
+.subtotal{
+    background:#eef6ff;
+    font-weight:800;
+    font-size:16px
+}
+
+.total{
+    background:#e6fffa;
+    font-weight:900;
+    font-size:17px
+}
+
+.porc-pos{color:#1b5e20;font-weight:800}
+.porc-neg{color:#b71c1c;font-weight:800}
+
+/* =======================
+   MOBILE
+======================= */
+@media(max-width:768px){
+    body{font-size:17px}
+    h2{font-size:22px}
+    table{font-size:16px}
+    th,td{padding:10px}
+}
 </style>
 </head>
 
 <body>
 
-<h2>Consulta de Compras por Fecha</h2>
+<div class="card">
+<h2>📊 Compras Gerenciales</h2>
 
-<form method="GET">
-    <label>Fecha:</label>
-    <input type="date" name="Fecha" required
-        value="<?= htmlspecialchars($_GET['Fecha'] ?? date('Y-m-d')) ?>">
-    <button type="submit">Consultar</button>
-</form>
+<form method="GET" class="filters">
+<div>
+<label>Fecha</label>
+<input type="date" name="Fecha" required
+value="<?=htmlspecialchars($_GET['Fecha']??date('Y-m-d'))?>">
+</div>
 
+<div>
+<label>Sucursal</label>
+<select name="Sucursal">
+<option value="AMBAS">Ambas</option>
+<option value="CENTRAL" <?=($_GET['Sucursal']??'')=='CENTRAL'?'selected':''?>>Central</option>
+<option value="DRINKS" <?=($_GET['Sucursal']??'')=='DRINKS'?'selected':''?>>Drinks</option>
+</select>
+</div>
+
+<div>
+<label>Proveedor</label>
+<select name="Proveedor">
+<option value="">Todos</option>
 <?php
-/* =========================
-   PROMEDIO ÚLTIMOS 30 DÍAS
-   (empresa001)
-========================= */
-$sqlProm = "
-SELECT 
-    TRIM(Q.Barcode) AS Barcode,
-    SUM(Q.CANTIDAD * Q.VALORPROD) / NULLIF(SUM(Q.CANTIDAD),0) AS Precio_Promedio
-FROM (
-    SELECT P.Barcode, D.CANTIDAD, D.VALORPROD
-    FROM DETPEDIDOS D
-    INNER JOIN PEDIDOS PE ON PE.IDPEDIDO = D.IDPEDIDO
-    INNER JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
-    WHERE PE.ESTADO='0'
-      AND PE.FECHA BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 30 DAY),'%Y%m%d')
-                       AND DATE_FORMAT(CURDATE(),'%Y%m%d')
-
-    UNION ALL
-
-    SELECT P.Barcode, D.CANTIDAD, D.VALORPROD
-    FROM FACTURAS F
-    INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
-    INNER JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
-    WHERE F.ESTADO='0'
-      AND F.IDFACTURA NOT IN (SELECT IDFACTURA FROM DEVVENTAS)
-      AND F.FECHA BETWEEN DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 30 DAY),'%Y%m%d')
-                       AND DATE_FORMAT(CURDATE(),'%Y%m%d')
-) Q
-GROUP BY Q.Barcode";
-
-$ventasPromedio = [];
-$resProm = $mysqliCentral->query($sqlProm);
-if ($resProm) {
-    while ($r = $resProm->fetch_assoc()) {
-        $ventasPromedio[$r['Barcode']] = (float)$r['Precio_Promedio'];
-    }
-}
-
-/* =========================
-   PROCESAR FECHA
-========================= */
 if (!empty($_GET['Fecha'])) {
+    $FechaSQL = DateTime::createFromFormat('Y-m-d', $_GET['Fecha'])->format('Ymd');
+    $Sucursal = $_GET['Sucursal'] ?? 'AMBAS';
 
-    $dt = DateTime::createFromFormat('Y-m-d', $_GET['Fecha']);
-    if (!$dt) die('Fecha inválida');
-
-    $FechaSQL    = $dt->format('Ymd');
-    $ProveedorSel = preg_replace('/[^0-9]/', '', $_GET['prov'] ?? '');
-
-    /* =========================
-       PROVEEDORES (BnmaWeb)
-    ========================= */
-    $sqlProv = "
-        SELECT DISTINCT T.NIT, CONCAT(T.nombres,' ',T.apellidos) AS FACT
-        FROM compras C
-        INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO
-        WHERE C.FECHA = '$FechaSQL'
-          AND C.ESTADO = '0'
-        ORDER BY T.NIT";
-
-    $resProv = $mysqliCentral->query($sqlProv);
-    if ($resProv && $resProv->num_rows > 0) {
-        echo "<div class='nav-proveedores'>";
-        while ($p = $resProv->fetch_assoc()) {
-            $act = ($ProveedorSel == $p['NIT']) ? "active" : "";
-            echo "<a class='$act' href='?Fecha={$_GET['Fecha']}&prov={$p['NIT']}'>"
-                .htmlspecialchars($p['FACT'])."</a>";
-        }
-        echo "</div>";
+    function proveedoresDia($mysqli,$FechaSQL){
+        return $mysqli->query("
+            SELECT DISTINCT T.NIT,
+                   CONCAT(T.nombres,' ',T.apellidos) prov
+            FROM compras C
+            INNER JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
+            WHERE C.FECHA='$FechaSQL'
+              AND C.ESTADO='0'
+            ORDER BY prov
+        ");
     }
 
-    if ($ProveedorSel !== '') {
+    $prov=[];
+    if($Sucursal!='DRINKS'){
+        $r=proveedoresDia($mysqliCentral,$FechaSQL);
+        while($r && $p=$r->fetch_assoc()) $prov[$p['NIT']]=$p['prov'];
+    }
+    if($Sucursal!='CENTRAL'){
+        $r=proveedoresDia($mysqliDrinks,$FechaSQL);
+        while($r && $p=$r->fetch_assoc()) $prov[$p['NIT']]=$p['prov'];
+    }
 
-        $Swich1 = Autorizacion($User, '9999');
-
-        /* =========================
-           CONSULTA PRINCIPAL
-           (empresa001)
-        ========================= */
-        $sql = "
-        SELECT 
-            C.idcompra,
-            P.Barcode,
-            P.descripcion,
-            D.CANTIDAD,
-            ROUND(D.VALOR) AS VALOR,
-            D.ValICUIUni,
-            D.descuento,
-            D.porciva
-        FROM compras C
-        INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO
-        INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra
-        INNER JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
-        WHERE C.FECHA = '$FechaSQL'
-          AND C.ESTADO = '0'
-          AND T.NIT = '$ProveedorSel'
-        ORDER BY C.idcompra, P.Barcode";
-
-        $res = $mysqliCentral->query($sql);
-
-        if ($res && $res->num_rows > 0) {
-
-            echo "<table><thead><tr>
-                <th>ID</th><th>Sku</th><th>Descripción</th><th>Cant</th>
-                <th>Unit</th><th>Dcto</th><th>Neto</th><th>Iva</th>
-                <th>IBua</th><th>Total</th><th>P.Compra</th>";
-
-            if ($Swich1 === "SI") {
-                echo "<th>P.Venta</th><th>Util</th><th>% Util</th>";
-            }
-
-            echo "</tr></thead><tbody>";
-
-            $sumTotal = $sumUtil = $sumCosto = $sumVenta = 0;
-
-            while ($r = $res->fetch_assoc()) {
-
-                $cant  = (float)$r['CANTIDAD'];
-                $unit  = (float)$r['VALOR'];
-                $dcto  = (float)$r['descuento'] / max($cant,1);
-                $neto  = $unit - $dcto;
-                $iva   = $neto * ((float)$r['porciva'] / 100);
-                $ibua  = (float)$r['ValICUIUni'];
-                $costo = $neto + $iva + $ibua;
-                $total = $costo * $cant;
-
-                $pv   = $ventasPromedio[$r['Barcode']] ?? 0;
-                $util = ($pv - $costo) * $cant;
-                $porc = ($costo > 0) ? (($pv - $costo) / $costo) * 100 : 0;
-
-                $sumTotal += $total;
-                $sumUtil  += $util;
-                $sumCosto += $costo * $cant;
-                $sumVenta += $pv * $cant;
-
-                echo "<tr>
-                    <td class='text-left'>{$r['idcompra']}</td>
-                    <td class='text-left'>".htmlspecialchars($r['Barcode'])."</td>
-                    <td class='text-left'>".htmlspecialchars($r['descripcion'])."</td>
-                    <td>" . number_format($cant, 0) . "</td>
-                    <td>" . fmoneda($unit) . "</td>
-                    <td>" . fmoneda($dcto) . "</td>
-                    <td>" . fmoneda($neto) . "</td>
-                    <td>" . fmoneda($iva) . "</td>
-                    <td>" . fmoneda($ibua) . "</td>
-                    <td>" . fmoneda($total) . "</td>
-                    <td>" . fmoneda($costo) . "</td>";
-
-                if ($Swich1 === "SI") {
-                    $cls = ($porc >= 0) ? 'porc-pos' : 'porc-neg';
-                    echo "<td>" . fmoneda($pv) . "</td>
-                          <td>" . fmoneda($util) . "</td>
-                          <td style='text-align:center'><span class='$cls'>".number_format($porc,1)."%</span></td>";
-                }
-
-                echo "</tr>";
-            }
-
-            $porcTot = ($sumCosto > 0) ? ($sumUtil / $sumCosto) * 100 : 0;
-            $clsTot  = ($porcTot >= 0) ? 'porc-pos' : 'porc-neg';
-
-            echo "<tr class='totales'>
-                <td colspan='9' style='text-align:right'>TOTAL GENERAL</td>
-                <td>" . fmoneda($sumTotal) . "</td>
-                <td></td>";
-
-            if ($Swich1 === "SI") {
-                echo "<td>" . fmoneda($sumVenta) . "</td>
-                      <td>" . fmoneda($sumUtil) . "</td>
-                      <td style='text-align:center'><span class='$clsTot'>".number_format($porcTot,1)."%</span></td>";
-            }
-
-            echo "</tr></tbody></table>";
-        }
+    foreach($prov as $nit=>$nom){
+        $sel=($_GET['Proveedor']??'')==$nit?'selected':'';
+        echo "<option value='$nit' $sel>$nom</option>";
     }
 }
 ?>
+</select>
+</div>
+
+<div>
+<label>&nbsp;</label>
+<button type="submit">Consultar</button>
+</div>
+</form>
+
+<?php
+if (!empty($_GET['Fecha'])) {
+
+$Proveedor=preg_replace('/[^0-9]/','',$_GET['Proveedor']??'');
+
+/* =========================
+   PRECIO PROMEDIO VENTA
+========================= */
+function precioProm($mysqli){
+    $sql="
+    SELECT Q.Barcode,
+    SUM(Q.CANTIDAD*Q.VALORPROD)/NULLIF(SUM(Q.CANTIDAD),0) pv
+    FROM(
+      SELECT P.Barcode,D.CANTIDAD,D.VALORPROD
+      FROM DETPEDIDOS D
+      JOIN PEDIDOS PE ON PE.IDPEDIDO=D.IDPEDIDO
+      JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
+      WHERE PE.ESTADO='0'
+      UNION ALL
+      SELECT P.Barcode,D.CANTIDAD,D.VALORPROD
+      FROM FACTURAS F
+      JOIN DETFACTURAS D ON D.IDFACTURA=F.IDFACTURA
+      JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
+      WHERE F.ESTADO='0'
+    )Q GROUP BY Q.Barcode";
+    $out=[]; $r=$mysqli->query($sql);
+    while($r && $x=$r->fetch_assoc()) $out[$x['Barcode']]=$x['pv'];
+    return $out;
+}
+
+$pvC=precioProm($mysqliCentral);
+$pvD=precioProm($mysqliDrinks);
+
+function compras($mysqli,$suc,$FechaSQL,$Proveedor){
+    $cond=$Proveedor?"AND T.NIT='$Proveedor'":"";
+    return $mysqli->query("
+    SELECT '$suc' sucursal,
+           C.idcompra,
+           CONCAT(T.nombres,' ',T.apellidos) prov,
+           P.Barcode,P.descripcion,
+           D.CANTIDAD,D.VALOR,D.descuento,
+           D.porciva,D.ValICUIUni
+    FROM compras C
+    JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
+    JOIN DETCOMPRAS D ON D.idcompra=C.idcompra
+    JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
+    WHERE C.FECHA='$FechaSQL'
+      AND C.ESTADO='0' $cond
+    ORDER BY prov,C.idcompra
+    ");
+}
+
+$res=[];
+if(($Sucursal??'AMBAS')!='DRINKS') $res[]=compras($mysqliCentral,'Central',$FechaSQL,$Proveedor);
+if(($Sucursal??'AMBAS')!='CENTRAL') $res[]=compras($mysqliDrinks,'Drinks',$FechaSQL,$Proveedor);
+
+echo "<div class='table-container'><table><thead><tr>
+<th>Suc</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
+<th>Cant</th><th>Costo</th><th>Total</th>";
+if($PuedeVerUtil) echo "<th>P.Venta</th><th>Util</th><th>%</th>";
+echo "</tr></thead><tbody>";
+
+$provAnt=''; $sub=0; $gran=0;
+
+foreach($res as $r){
+while($r && $x=$r->fetch_assoc()){
+
+$cant=$x['CANTIDAD'];
+$net=($x['VALOR']-($x['descuento']/max($cant,1)));
+$costo=$net+($net*$x['porciva']/100)+$x['ValICUIUni'];
+$total=$costo*$cant;
+
+$pv=($x['sucursal']=='Central')?($pvC[$x['Barcode']]??0):($pvD[$x['Barcode']]??0);
+$util=($pv-$costo)*$cant;
+$porc=$costo>0?(($pv-$costo)/$costo)*100:0;
+
+if($provAnt && $provAnt!=$x['prov']){
+echo "<tr class='subtotal'><td colspan='7'>Subtotal $provAnt</td>
+<td>".fmoneda($sub)."</td>";
+if($PuedeVerUtil) echo "<td colspan='3'></td>";
+echo "</tr>"; $sub=0;
+}
+
+$sub+=$total; $gran+=$total; $provAnt=$x['prov'];
+
+$cls=$x['sucursal']=='Central'?'central':'drinks';
+$clsP=$porc>=0?'porc-pos':'porc-neg';
+
+echo "<tr>
+<td><span class='badge $cls'>{$x['sucursal']}</span></td>
+<td>{$x['idcompra']}</td>
+<td class='text-left'>{$x['prov']}</td>
+<td class='text-left'>{$x['Barcode']}</td>
+<td class='text-left'>{$x['descripcion']}</td>
+<td>".number_format($cant,0)."</td>
+<td>".fmoneda($costo)."</td>
+<td>".fmoneda($total)."</td>";
+
+if($PuedeVerUtil){
+echo "<td>".fmoneda($pv)."</td>
+<td>".fmoneda($util)."</td>
+<td class='$clsP'>".number_format($porc,1)."%</td>";
+}
+echo "</tr>";
+}}
+
+echo "<tr class='subtotal'><td colspan='7'>Subtotal $provAnt</td>
+<td>".fmoneda($sub)."</td>";
+if($PuedeVerUtil) echo "<td colspan='3'></td>";
+echo "</tr>";
+
+echo "<tr class='total'><td colspan='7'>TOTAL GENERAL</td>
+<td>".fmoneda($gran)."</td>";
+if($PuedeVerUtil) echo "<td colspan='3'></td>";
+echo "</tr>";
+
+echo "</tbody></table></div>";
+}
+?>
+</div>
 </body>
 </html>
