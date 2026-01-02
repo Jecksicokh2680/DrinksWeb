@@ -140,7 +140,7 @@ function Lista_Pedido() {
     ======================= */
     if ($barcodes) {
         $in = implode(',', array_fill(0, count($barcodes), '?'));
-        
+
         $stmtCat = $mysqliWeb->prepare(
             "SELECT Sku, CodCat FROM catproductos WHERE Sku IN ($in)"
         );
@@ -181,7 +181,7 @@ function Lista_Pedido() {
        FILTROS
     ======================= */
     $filtroFacturador = $_GET['facturador'] ?? '';
-    $filtroProducto   = $_GET['producto'] ?? '';
+    $filtroProducto   = $_GET['producto'] ?? ''; // SKU
     $filtroDocumento  = $_GET['documento'] ?? '';
 
     $facturadoresList = [];
@@ -228,7 +228,9 @@ Facturador:
 <select name="facturador" onchange="this.form.submit()">
 <option value="">Todos</option>
 <?php foreach($facturadoresList as $f=>$_){ ?>
-<option <?=($f==$filtroFacturador?'selected':'')?> value="<?=$f?>"><?=$f?></option>
+<option value="<?=$f?>" <?=($f==$filtroFacturador?'selected':'')?>>
+    <?=$f?>
+</option>
 <?php } ?>
 </select>
 
@@ -236,8 +238,8 @@ Producto:
 <select name="producto" onchange="this.form.submit()">
 <option value="">Todos</option>
 <?php foreach($productosList as $p){ ?>
-<option <?=($p['producto']==$filtroProducto?'selected':'')?>>
-[<?=$p['cat']?>] <?=$p['sku']?> - <?=$p['producto']?>
+<option value="<?=$p['sku']?>" <?=($p['sku']==$filtroProducto?'selected':'')?>>
+    [<?=$p['cat']?>] <?=$p['sku']?> - <?=$p['producto']?>
 </option>
 <?php } ?>
 </select>
@@ -246,7 +248,9 @@ Documento:
 <select name="documento" onchange="this.form.submit()">
 <option value="">Todos</option>
 <?php foreach($documentosList as $d=>$_){ ?>
-<option <?=($d==$filtroDocumento?'selected':'')?> value="<?=$d?>"><?=$d?></option>
+<option value="<?=$d?>" <?=($d==$filtroDocumento?'selected':'')?>>
+    <?=$d?>
+</option>
 <?php } ?>
 </select>
 </form>
@@ -267,7 +271,7 @@ $subDoc=0;
 foreach($rows as $r){
 
     if($filtroFacturador && $r['FACTURADOR']!=$filtroFacturador) continue;
-    if($filtroProducto && $r['PRODUCTO']!=$filtroProducto) continue;
+    if($filtroProducto && $r['Barcode']!=$filtroProducto) continue;
     if($filtroDocumento && $r['DOCUMENTO']!=$filtroDocumento) continue;
 
     if($docAnt && $docAnt!=$r['DOCUMENTO']){
@@ -317,6 +321,4 @@ if(Autorizacion($UsuarioSesion,'9999')=='SI'){
 
 </body>
 </html>
-<?php
-}
-?>
+<?php } ?>
