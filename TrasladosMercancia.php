@@ -9,6 +9,17 @@ require_once("Conexion.php");      // $mysqliWeb
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 define('SUC_DEFAULT', '001');
+session_start();
+$UsuarioSesion   = $_SESSION['Usuario']     ?? '';
+$NitSesion       = $_SESSION['NitEmpresa']  ?? '';
+$SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
+
+$aut_0003 = Autorizacion($UsuarioSesion, '0003'); // Retorna "SI" o "NO"
+$aut_9999 = Autorizacion($UsuarioSesion, '9999');
+
+if ($aut_0003 !== "SI" && $aut_9999 !== "SI") {
+    die("<h2 style='color:red'>❌ No tiene autorización para acceder a esta página</h2>");
+}
 
 /* ============================================================
    PARÁMETROS DE BÚSQUEDA Y PAGINACIÓN
@@ -39,6 +50,25 @@ if ($categoria) {
     $resBC = $stmtCat->get_result();
     while ($r = $resBC->fetch_assoc()) $barcodesCat[] = $r['sku'];
     if (!$barcodesCat) $barcodesCat = ['__NONE__'];
+}
+function Autorizacion($User, $Solicitud) {
+    global $mysqli;
+    if (!isset($_SESSION['Autorizaciones'])) {
+        $_SESSION['Autorizaciones'] = [];
+    }
+    $key = $User . '_' . $Solicitud;
+    if (isset($_SESSION['Autorizaciones'][$key])) {
+        return $_SESSION['Autorizaciones'][$key];
+    }
+    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit = ? AND Nro_Auto = ?");
+    if (!$stmt) return "NO";
+    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $permiso = ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
+    $_SESSION['Autorizaciones'][$key] = $permiso;
+    $stmt->close();
+    return $permiso;
 }
 
 /* ============================================================

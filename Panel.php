@@ -137,6 +137,7 @@ body{
 <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
 <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
 <a class="nav-link" href="CierreCajero.php" target="contentFrame">🧮 Cierre Cajero</a>
+<a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 </div>
 </div>
 </div>
