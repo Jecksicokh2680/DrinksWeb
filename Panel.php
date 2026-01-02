@@ -136,6 +136,7 @@ body{
 <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
 <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
 <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
+<a class="nav-link" href="CierreCajero.php" target="contentFrame">🧮 Cierre Cajero</a>
 </div>
 </div>
 </div>
