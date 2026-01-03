@@ -111,7 +111,7 @@ if($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['mover'])){
 }
 
 /* ============================================================
-   CONSULTA DE PRODUCTOS (AJUSTADA: solo al buscar)
+   CONSULTA DE PRODUCTOS (Solo al buscar)
 ============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term = $_GET['term'] ?? '';
@@ -139,14 +139,13 @@ if($categoria){
     if(!$barcodesCat) $barcodesCat=['__NONE__'];
 }
 
-// AJUSTE: Solo ejecutar consulta si hay término de búsqueda o categoría seleccionada
+// Solo ejecutar consulta si hay término o categoría
 $central = [];
 $drinks  = [];
 $barcodes = [];
 $totalPages = 1;
 
 if($term !== '' || $categoria !== ''){
-
     $where = "p.estado='1' AND (p.descripcion LIKE ? OR p.barcode LIKE ?)";
     $params = [$like, $like];
     $types = "ss";
@@ -193,7 +192,6 @@ if($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['aprobar']) && $aut_9999==
     $id = (int)$_POST['idMov'];
     $nuevo = (int)$_POST['Aprobado'];
 
-    // Obtener datos del movimiento
     $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id")->fetch_assoc();
     if($res){
         $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
@@ -213,12 +211,14 @@ if($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['aprobar']) && $aut_9999==
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <title>Inventario Consolidado</title>
 <style>
+/* === Estilos base === */
 body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#f4f7f6; padding:20px;}
 .container{max-width:1500px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.1);}
 table{width:100%; border-collapse:collapse; margin-top:20px;}
@@ -254,7 +254,7 @@ td{border-bottom:1px solid #eee; padding:8px; text-align:center; font-size:13px;
 <button type="button" class="btn-move" style="background:#f39c12" onclick="document.getElementById('modal').style.display='block'">Ver Movimientos</button>
 </form>
 
-<?php if(!empty($barcodes)): // Solo mostrar tabla si hay resultados ?>
+<?php if(!empty($barcodes)): ?>
 <table>
 <thead>
 <tr>
@@ -319,7 +319,7 @@ foreach($barcodes as $b):
 <a href="?page=<?=$i?>&categoria=<?=$categoria?>&term=<?=$term?>" style="padding:8px 12px; border:1px solid #2980b9; text-decoration:none; color:<?=$i==$page?'#fff':'#2980b9'?>; background:<?=$i==$page?'#2980b9':'#fff'?>; border-radius:4px; margin:0 2px;"><?=$i?></a>
 <?php endfor; ?>
 </div>
-<?php endif; // fin tabla ?>
+<?php endif; ?>
 </div>
 
 <!-- Modal Movimientos -->
@@ -327,6 +327,7 @@ foreach($barcodes as $b):
 <div class="modal-content">
 <span class="close" onclick="document.getElementById('modal').style.display='none'">&times;</span>
 <h3>Histórico de Movimientos</h3>
+<button onclick="printMovimientos()" class="btn-move" style="background:#2980b9; margin-bottom:10px;">🖨 Imprimir Movimientos</button>
 <div class="scroll-table">
 <table border="1" style="width:100%; border-collapse:collapse;">
 <thead>
@@ -386,6 +387,33 @@ $disabled = ($r['Aprobado']==0) ? "disabled style='background:#eee; cursor:not-a
 // Cerrar modal al clic fuera
 window.onclick = function(event){
     if(event.target==document.getElementById('modal')) document.getElementById('modal').style.display="none";
+}
+
+// Imprimir movimientos con encabezado usuario/fecha-hora
+function printMovimientos(){
+    var contenido = document.querySelector('#modal .scroll-table').innerHTML;
+    var usuario = "<?= htmlspecialchars($UsuarioSesion) ?>";
+    var fechaHora = new Date().toLocaleString('es-CO', {hour12:false});
+
+    var vent = window.open('', 'Imprimir Movimientos', 'width=900,height=600');
+    vent.document.write('<html><head><title>Movimientos</title>');
+    vent.document.write('<style>');
+    vent.document.write('body{font-family:Segoe UI, Tahoma, Geneva, Verdana, sans-serif;}');
+    vent.document.write('table{width:100%;border-collapse:collapse;}');
+    vent.document.write('th,td{border:1px solid #000;padding:5px;text-align:center;font-size:12px;}');
+    vent.document.write('th{background:#ccc;}');
+    vent.document.write('.encabezado{margin-bottom:15px;}');
+    vent.document.write('.encabezado span{display:inline-block;margin-right:15px;font-weight:bold;}');
+    vent.document.write('</style>');
+    vent.document.write('</head><body>');
+    vent.document.write('<div class="encabezado">');
+    vent.document.write('<span>Usuario: ' + usuario + '</span>');
+    vent.document.write('<span>Fecha/Hora: ' + fechaHora + '</span>');
+    vent.document.write('</div>');
+    vent.document.write(contenido);
+    vent.document.write('</body></html>');
+    vent.document.close();
+    vent.print();
 }
 </script>
 </body>
