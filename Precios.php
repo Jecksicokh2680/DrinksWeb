@@ -211,7 +211,13 @@ if ($is_ajax_filter) {
             $html_filas .= '
             <tr data-barcode="' . htmlspecialchars($bc) . '">
                 <td style="font-weight: bold; font-size: 0.9em;">' . htmlspecialchars($bc) . '</td>
-                <td><input type="text" class="edit-descripcion" value="' . htmlspecialchars($p['descripcion']) . '" maxlength="80"></td>
+                <td>
+    <input type="text"
+           class="edit-descripcion"
+           value="' . htmlspecialchars($p['descripcion']) . '"
+           maxlength="120"
+           style="min-width: 350px;">
+</td>
                 <td class="dato-fijo">' . sprintf('%.2f', $p['costo']) . '</td>
                 
                 <!-- Central -->
