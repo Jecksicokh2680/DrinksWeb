@@ -117,7 +117,6 @@ body{
 
 <body>
 
-<!-- ================= SIDEBAR ================= -->
 <div class="sidebar" id="sidebar">
 
 <div class="navbar-brand">Mi App</div>
@@ -153,14 +152,14 @@ body{
 <div id="admin" class="accordion-collapse collapse">
 <div class="accordion-body">
 
-<div class="accordion sub-accordion" id="adminSub">
+<div class="accordion sub-accordion">
 
 <!-- OPERACIÓN -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#op">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminOp">
 📊 Operación
 </button>
-<div id="op" class="accordion-collapse collapse">
+<div id="adminOp" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
 <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
@@ -173,10 +172,10 @@ body{
 
 <!-- INVENTARIO -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#inv">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminInv">
 📦 Inventario
 </button>
-<div id="inv" class="accordion-collapse collapse">
+<div id="adminInv" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
@@ -189,10 +188,10 @@ body{
 
 <!-- FINANZAS -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#fin">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminFin">
 💰 Finanzas
 </button>
-<div id="fin" class="accordion-collapse collapse">
+<div id="adminFin" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
 <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">Cartera BNMA</a>
@@ -202,25 +201,24 @@ body{
 
 <!-- CONTROL -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#ctrl">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminCtrl">
 📈 Control
 </button>
-<div id="ctrl" class="accordion-collapse collapse">
+<div id="adminCtrl" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
 <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
 <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
-
 </div>
 </div>
 </div>
 
 <!-- CONFIGURACIÓN -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#conf">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminConf">
 ⚙️ Configuración
 </button>
-<div id="conf" class="accordion-collapse collapse">
+<div id="adminConf" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Usuarios</a>
 <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
@@ -233,19 +231,21 @@ body{
 </div>
 </div>
 </div>
-<!-- ESTADISTICA -->
+
+<!-- ================= ESTADÍSTICAS ================= -->
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#ctrl">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#estadisticas">
 📈 Estadísticas
 </button>
-<div id="ctrl" class="accordion-collapse collapse">
+<div id="estadisticas" class="accordion-collapse collapse">
 <div class="accordion-body">
-<a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">Lo mas Vendido</a>
+<a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">
+Lo más Vendido
+</a>
+</div>
+</div>
+</div>
 
-
-</div>
-</div>
-</div>
 <?php endif; ?>
 
 </div>
@@ -265,8 +265,8 @@ style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-document.getElementById('toggleMenu').onclick=()=>{
-document.getElementById('sidebar').classList.toggle('show');
+document.getElementById('toggleMenu').onclick = () => {
+    document.getElementById('sidebar').classList.toggle('show');
 };
 </script>
 
