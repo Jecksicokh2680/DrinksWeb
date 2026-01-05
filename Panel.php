@@ -178,7 +178,7 @@ body{
 </button>
 <div id="inv" class="accordion-collapse collapse">
 <div class="accordion-body">
-<a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Central</a>
+<a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a>
 <a class="nav-link" href="Categorias.php" target="contentFrame">Categorías</a>
