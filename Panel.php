@@ -180,7 +180,7 @@ body{
 <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a>
-<a class="nav-link" href="Categorias.php" target="contentFrame">Categorías</a>
+
 <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
 </div>
 </div>
@@ -224,6 +224,7 @@ body{
 <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
 <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
 <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Empresas Productoras</a>
+<a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
 </div>
 </div>
 </div>
