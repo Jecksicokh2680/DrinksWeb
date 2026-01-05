@@ -233,6 +233,19 @@ body{
 </div>
 </div>
 </div>
+<!-- ESTADISTICA -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#ctrl">
+📈 Estadísticas
+</button>
+<div id="ctrl" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">Lo mas Vendido</a>
+
+
+</div>
+</div>
+</div>
 <?php endif; ?>
 
 </div>
