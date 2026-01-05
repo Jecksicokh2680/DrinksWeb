@@ -223,6 +223,7 @@ body{
 <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Usuarios</a>
 <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
 <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
+<a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Empresas Productoras</a>
 </div>
 </div>
 </div>
