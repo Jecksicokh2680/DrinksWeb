@@ -2,40 +2,80 @@
 require 'Conexion.php';
 session_start();
 
-/* =========================
+/* =====================================================
    SEGURIDAD
-========================= */
+===================================================== */
 if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php");
     exit;
 }
 
-/* =========================
-   CONSULTA
-========================= */
-$sql = "
-SELECT 
-    c.CodCat,
-    c.Nombre,
-    e.Nombre AS Empresa,
-    c.Tipo,
-    c.SegWebF,
-    c.SegWebT,
-    c.Unicaja,
-    c.Estado
-FROM categorias c
-LEFT JOIN empresas_productoras e ON c.IdEmpresa = e.IdEmpresa
-ORDER BY c.Nombre
-";
+/* =====================================================
+   CSRF
+===================================================== */
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
 
-$res = $mysqli->query($sql);
+/* =====================================================
+   FUNCIONES
+===================================================== */
+function check_csrf($p, $s) {
+    if (!$p || !hash_equals($s, $p)) {
+        http_response_code(403);
+        die("CSRF inválido");
+    }
+}
+
+/* =====================================================
+   PROCESAR CREACIÓN
+===================================================== */
+$mensaje = "";
+
+if (isset($_POST['crear'])) {
+    check_csrf($_POST['csrf_token'], $csrf_token);
+
+    $nombre = trim($_POST['Nombre']);
+
+    if ($nombre === '') {
+        $mensaje = "❌ El nombre es obligatorio";
+    } else {
+        $stmt = $mysqli->prepare("
+            INSERT INTO empresas_productoras (Nombre)
+            VALUES (?)
+        ");
+        $stmt->bind_param("s", $nombre);
+
+        if ($stmt->execute()) {
+            $mensaje = "✅ Empresa creada correctamente";
+        } else {
+            $mensaje = "❌ Error: " . $stmt->error;
+        }
+        $stmt->close();
+    }
+}
+
+/* =====================================================
+   LISTADO
+===================================================== */
+$empresas = [];
+$res = $mysqli->query("
+    SELECT IdEmpresa, Nombre
+    FROM empresas_productoras
+    ORDER BY Nombre
+");
+
+while ($r = $res->fetch_assoc()) {
+    $empresas[] = $r;
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Categorías</title>
+<title>Empresas Productoras</title>
 
 <style>
 :root{
@@ -43,85 +83,76 @@ $res = $mysqli->query($sql);
 --card:#ffffff;
 --pri:#1f3c88;
 --line:#e5e7eb;
---header:#0f172a;
+--ok:#198754;
+--err:#dc3545;
 }
 *{box-sizing:border-box}
-
 body{
 margin:0;
 font-family:Segoe UI,Roboto,Arial;
 background:var(--bg);
 color:#111;
 }
-
-/* ================= HEADER FIJO ================= */
-.header{
-position:fixed;
-top:0; left:0; right:0;
-height:64px;
-background:var(--header);
-color:#fff;
-display:flex;
-align-items:center;
-padding:0 20px;
-font-size:18px;
-font-weight:600;
-z-index:1000;
-box-shadow:0 4px 12px rgba(0,0,0,.2);
-}
-
-/* ================= CONTENIDO ================= */
 .container{
-max-width:1200px;
+max-width:900px;
 margin:auto;
-padding:90px 20px 20px;
+padding:20px;
 }
-
 .card{
 background:var(--card);
 border-radius:14px;
 padding:20px;
 box-shadow:0 8px 24px rgba(0,0,0,.06);
+margin-bottom:25px;
 }
-
-/* ================= TABLA ================= */
-.table-wrap{
-max-height:480px;
-overflow:auto;
-border-radius:12px;
+h2{
+margin:0 0 15px;
+color:var(--pri);
+font-size:20px;
 }
+form{
+display:grid;
+grid-template-columns:1fr auto;
+gap:12px;
+}
+input,button{
+padding:12px;
+font-size:15px;
+border-radius:10px;
+border:1px solid var(--line);
+}
+button{
+background:var(--pri);
+color:#fff;
+border:none;
+cursor:pointer;
+}
+.mensaje{
+margin-bottom:15px;
+font-weight:600;
+}
+.mensaje.ok{color:var(--ok)}
+.mensaje.err{color:var(--err)}
 
 table{
 width:100%;
 border-collapse:collapse;
-white-space:nowrap;
 }
-
-thead th{
-position:sticky;
-top:0;
-background:#111827;
-color:#fff;
-z-index:20;
-font-size:13px;
-text-transform:uppercase;
-letter-spacing:.4px;
-border-bottom:2px solid #000;
-}
-
 th,td{
-padding:10px 12px;
+padding:12px;
 border-bottom:1px solid var(--line);
 text-align:left;
 }
-
-/* ================= RESPONSIVE ================= */
+th{
+background:#111827;
+color:#fff;
+font-size:14px;
+}
 @media(max-width:640px){
-
-.table-wrap{max-height:none}
-
+form{
+grid-template-columns:1fr;
+}
 table thead{display:none}
-
 table tr{
 display:block;
 margin-bottom:12px;
@@ -129,14 +160,12 @@ border:1px solid var(--line);
 border-radius:10px;
 padding:10px;
 }
-
 table td{
 display:flex;
 justify-content:space-between;
 padding:6px 0;
 border:none;
 }
-
 table td::before{
 content:attr(data-label);
 font-weight:600;
@@ -147,55 +176,50 @@ color:#374151;
 </head>
 
 <body>
+<div class="container">
 
-<div class="header">
-📊 Listado de Categorías
+<div class="card">
+<h2>🏢 Crear Empresa Productora</h2>
+
+<?php if ($mensaje): ?>
+<p class="mensaje <?= strpos($mensaje,'✅')!==false?'ok':'err' ?>">
+    <?= htmlspecialchars($mensaje) ?>
+</p>
+<?php endif; ?>
+
+<form method="post">
+<input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+<input type="text" name="Nombre" placeholder="Nombre de la empresa" required>
+<button name="crear">Crear</button>
+</form>
 </div>
 
-<div class="container">
 <div class="card">
+<h2>📋 Empresas Registradas</h2>
 
-<div class="table-wrap">
 <table>
 <thead>
 <tr>
-<th>Código</th>
-<th>Nombre</th>
+<th>ID</th>
 <th>Empresa</th>
-<th>Tipo</th>
-<th>SegF</th>
-<th>SegT</th>
-<th>Unicaja</th>
-<th>Estado</th>
 </tr>
 </thead>
 <tbody>
-
-<?php if ($res && $res->num_rows > 0): ?>
-<?php while ($r = $res->fetch_assoc()): ?>
+<?php foreach ($empresas as $e): ?>
 <tr>
-<td data-label="Código"><?= htmlspecialchars($r['CodCat']) ?></td>
-<td data-label="Nombre"><?= htmlspecialchars($r['Nombre']) ?></td>
-<td data-label="Empresa"><?= htmlspecialchars($r['Empresa'] ?? '—') ?></td>
-<td data-label="Tipo"><?= htmlspecialchars($r['Tipo']) ?></td>
-<td data-label="SegF"><?= htmlspecialchars($r['SegWebF']) ?></td>
-<td data-label="SegT"><?= htmlspecialchars($r['SegWebT']) ?></td>
-<td data-label="Unicaja"><?= $r['Unicaja'] ?></td>
-<td data-label="Estado"><?= $r['Estado'] ?></td>
+<td data-label="ID"><?= $e['IdEmpresa'] ?></td>
+<td data-label="Empresa"><?= htmlspecialchars($e['Nombre']) ?></td>
 </tr>
-<?php endwhile; ?>
-<?php else: ?>
-<tr>
-<td colspan="8">No hay categorías registradas</td>
-</tr>
-<?php endif; ?>
-
+<?php endforeach; ?>
 </tbody>
 </table>
+
+<?php if (empty($empresas)): ?>
+<p>No hay empresas registradas.</p>
+<?php endif; ?>
+
 </div>
 
 </div>
-</div>
-
 </body>
 </html>

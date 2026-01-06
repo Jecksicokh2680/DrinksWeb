@@ -90,11 +90,10 @@ if (isset($_POST['crear'])) {
         $d['Unicaja'], $d['Estado'], $d['Tipo']
     );
 
-    if ($stmt->execute()) {
-        $mensaje = "✅ Categoría {$d['CodCat']} creada correctamente";
-    } else {
-        $mensaje = "❌ Error: " . $stmt->error;
-    }
+    $mensaje = $stmt->execute()
+        ? "Categoría {$d['CodCat']} creada correctamente"
+        : "Error: ".$stmt->error;
+
     $stmt->close();
 }
 
@@ -127,7 +126,7 @@ if (isset($_POST['actualizar'])) {
 
     $stmt->execute();
     $stmt->close();
-    $mensaje = "✏️ Categoría {$d['CodCat']} actualizada";
+    $mensaje = "Categoría {$d['CodCat']} actualizada";
 }
 
 /* ============================================================
@@ -136,23 +135,13 @@ if (isset($_POST['actualizar'])) {
 $categorias = [];
 $tipo_map = get_tipo_map();
 
-$sql = "
-SELECT
-    c.CodCat,
-    c.Nombre,
-    c.IdEmpresa,
-    e.Nombre AS Empresa,
-    c.SegWebF,
-    c.SegWebT,
-    c.Unicaja,
-    c.Estado,
-    c.Tipo
+$res = $mysqli->query("
+SELECT c.*, e.Nombre AS Empresa
 FROM categorias c
 LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa
 ORDER BY c.CodCat
-";
+");
 
-$res = $mysqli->query($sql);
 while ($r = $res->fetch_assoc()) {
     $r['Tipo_Completo'] = $tipo_map[$r['Tipo']] ?? $r['Tipo'];
     $categorias[] = $r;
@@ -162,15 +151,104 @@ while ($r = $res->fetch_assoc()) {
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Gestión de Categorías</title>
+<title>Gestión Gerencial de Categorías</title>
+
 <style>
-body{font-family:Segoe UI;background:#f4f6f9;padding:20px}
-.card{background:#fff;padding:20px;border-radius:10px;max-width:1200px;margin:auto}
-table{width:100%;border-collapse:collapse;margin-top:20px}
-th,td{padding:8px;border-bottom:1px solid #ddd;text-align:center}
-th{background:#343a40;color:#fff}
-.fila-inactiva{background:#ffe6e6}
+:root{
+--bg:#f3f6fb;
+--card:#ffffff;
+--pri:#0f2a44;
+--sec:#1e5aa8;
+--line:#e5e7eb;
+--ok:#198754;
+--warn:#ffc107;
+--err:#dc3545;
+--muted:#6b7280;
+}
+*{box-sizing:border-box}
+body{
+margin:0;
+font-family:Segoe UI,Roboto,Arial;
+background:var(--bg);
+color:#111;
+padding:25px;
+}
+.card{
+background:var(--card);
+padding:22px;
+border-radius:16px;
+max-width:1400px;
+margin:0 auto 28px;
+box-shadow:0 12px 30px rgba(0,0,0,.08);
+}
+.header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:15px;
+}
+h2{
+margin:0;
+color:var(--pri);
+font-weight:600;
+}
+.sub{
+font-size:13px;
+color:var(--muted);
+}
+input,select,button{
+padding:8px 10px;
+border-radius:8px;
+border:1px solid var(--line);
+font-size:13px;
+}
+button{
+background:var(--sec);
+color:#fff;
+border:none;
+cursor:pointer;
+padding:9px 14px;
+}
+button:hover{opacity:.9}
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:15px;
+font-size:13px;
+}
+th{
+background:var(--pri);
+color:#fff;
+padding:10px;
+text-transform:uppercase;
+font-size:12px;
+}
+td{
+padding:8px;
+border-bottom:1px solid var(--line);
+text-align:center;
+}
+.badge{
+padding:4px 8px;
+border-radius:20px;
+font-size:11px;
+font-weight:600;
+}
+.activo{background:#e7f6ec;color:var(--ok)}
+.inactivo{background:#fdeaea;color:var(--err)}
+.fila-inactiva{opacity:.55}
+#filtro{
+width:260px;
+}
+.mensaje{
+margin:10px 0;
+padding:10px;
+border-left:4px solid var(--sec);
+background:#eef3fb;
+border-radius:8px;
+}
 </style>
+
 <script>
 function filtrar(){
     let f=document.getElementById("filtro").value.toLowerCase();
@@ -180,11 +258,18 @@ function filtrar(){
 }
 </script>
 </head>
+
 <body>
 
 <div class="card">
-<h2>➕ Crear Categoría</h2>
-<?php if ($mensaje) echo "<p><b>$mensaje</b></p>"; ?>
+<div class="header">
+<div>
+<h2>Gestión Gerencial de Categorías</h2>
+<div class="sub">Administración estratégica de clasificación de productos</div>
+</div>
+</div>
+
+<?= $mensaje ? "<div class='mensaje'>$mensaje</div>" : "" ?>
 
 <form method="post">
 <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
@@ -194,16 +279,16 @@ Nombre <input name="Nombre" required>
 
 Empresa
 <select name="IdEmpresa">
-    <option value="">-- Sin empresa --</option>
-    <?php foreach($empresas as $e): ?>
-        <option value="<?= $e['IdEmpresa'] ?>"><?= $e['Nombre'] ?></option>
-    <?php endforeach; ?>
+<option value="">-- Sin empresa --</option>
+<?php foreach($empresas as $e): ?>
+<option value="<?= $e['IdEmpresa'] ?>"><?= $e['Nombre'] ?></option>
+<?php endforeach; ?>
 </select>
 
 Tipo
-<select name="Tipo" required>
+<select name="Tipo">
 <?php foreach(TIPOS_CATEGORIA as $t): ?>
-    <option value="<?= $t ?>"><?= $t ?></option>
+<option value="<?= $t ?>"><?= $t ?></option>
 <?php endforeach; ?>
 </select>
 
@@ -213,17 +298,19 @@ SegT <input type="checkbox" name="SegWebT">
 
 Estado
 <select name="Estado">
-    <option value="1">Activo</option>
-    <option value="0">Inactivo</option>
+<option value="1">Activo</option>
+<option value="0">Inactivo</option>
 </select>
 
-<button name="crear">Crear</button>
+<button name="crear">Crear Categoría</button>
 </form>
 </div>
 
 <div class="card">
-<h2>📋 Categorías</h2>
+<div class="header">
+<h2>Listado de Categorías</h2>
 <input id="filtro" placeholder="Buscar..." onkeyup="filtrar()">
+</div>
 
 <table id="tabla">
 <thead>
@@ -259,6 +346,9 @@ Estado
 <td><input type="number" name="Unicaja" value="<?= $c['Unicaja'] ?>"></td>
 
 <td>
+<span class="badge <?= $c['Estado']=='1'?'activo':'inactivo' ?>">
+<?= $c['Estado']=='1'?'Activo':'Inactivo' ?>
+</span>
 <select name="Estado">
 <option value="1" <?= $c['Estado']=='1'?'selected':'' ?>>Activo</option>
 <option value="0" <?= $c['Estado']=='0'?'selected':'' ?>>Inactivo</option>

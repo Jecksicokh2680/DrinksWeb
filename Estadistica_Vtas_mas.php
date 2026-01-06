@@ -12,20 +12,24 @@ $dbDrinks  = $mysqliPos;
 $dbWeb     = $mysqliWeb;
 
 /* =====================================================
-   MAPEO SKU → CATEGORÍA
+   MAPEO SKU → CATEGORÍA + EMPRESA
 ===================================================== */
 function cargarCategorias($dbWeb){
     $map = [];
 
     $sql = "
-        SELECT cp.sku, c.nombre AS categoria
+        SELECT cp.sku, c.nombre AS categoria, e.Nombre AS empresa
         FROM catproductos cp
         INNER JOIN categorias c ON c.codcat = cp.codcat
+        LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa
     ";
     $res = $dbWeb->query($sql);
 
     while($res && $r = $res->fetch_assoc()){
-        $map[trim($r['sku'])] = trim($r['categoria']);
+        $map[trim($r['sku'])] = [
+            'categoria' => trim($r['categoria']),
+            'empresa'   => trim($r['empresa'] ?? 'SIN EMPRESA')
+        ];
     }
     return $map;
 }
@@ -86,7 +90,7 @@ function obtenerProductosHoy($db){
 ===================================================== */
 function top18($arr){
     usort($arr, fn($a,$b)=>$b['total'] <=> $a['total']);
-    return array_slice($arr, 0, 18);
+    return array_slice($arr, 0, 20);
 }
 
 function money($v){
@@ -114,8 +118,9 @@ table{width:100%;border-collapse:collapse}
 th,td{border:1px solid #ddd;padding:6px}
 th{background:#2c3e50;color:#fff}
 td{text-align:right}
-td:nth-child(1),td:nth-child(2){text-align:left}
+td:nth-child(1),td:nth-child(2),td:nth-child(3){text-align:left}
 h2,h3{margin:6px 0}
+.inactivo{color:red;font-weight:bold;}
 </style>
 </head>
 
@@ -129,16 +134,26 @@ h2,h3{margin:6px 0}
 <!-- CENTRAL -->
 <div>
 <h3>🏢 Central</h3>
+<?php 
+$totalCantCentral = array_sum(array_column($topCentral,'cant'));
+$totalMontoCentral = array_sum(array_column($topCentral,'total'));
+?>
+<p><strong>Total Cantidad:</strong> <?=$totalCantCentral?> &nbsp; | &nbsp; <strong>Total $:</strong> $ <?=money($totalMontoCentral)?></p>
+
 <table>
 <tr>
+<th>Empresa</th>
 <th>Categoría</th>
 <th>Producto</th>
 <th>Cantidad</th>
 <th>Total</th>
 </tr>
-<?php foreach($topCentral as $p): ?>
+<?php foreach($topCentral as $p): 
+    $cat = $categorias[$p['barcode']] ?? ['categoria'=>'SIN CATEGORÍA','empresa'=>'SIN EMPRESA'];
+?>
 <tr>
-<td><?=$categorias[$p['barcode']] ?? 'SIN CATEGORÍA'?></td>
+<td><?=$cat['empresa']?></td>
+<td><?=$cat['categoria']?></td>
 <td><?=$p['producto']?></td>
 <td><?=$p['cant']?></td>
 <td>$ <?=money($p['total'])?></td>
@@ -150,16 +165,26 @@ h2,h3{margin:6px 0}
 <!-- DRINKS -->
 <div>
 <h3>🍹 Drinks</h3>
+<?php 
+$totalCantDrinks = array_sum(array_column($topDrinks,'cant'));
+$totalMontoDrinks = array_sum(array_column($topDrinks,'total'));
+?>
+<p><strong>Total Cantidad:</strong> <?=$totalCantDrinks?> &nbsp; | &nbsp; <strong>Total $:</strong> $ <?=money($totalMontoDrinks)?></p>
+
 <table>
 <tr>
+<th>Empresa</th>
 <th>Categoría</th>
 <th>Producto</th>
 <th>Cantidad</th>
 <th>Total</th>
 </tr>
-<?php foreach($topDrinks as $p): ?>
+<?php foreach($topDrinks as $p): 
+    $cat = $categorias[$p['barcode']] ?? ['categoria'=>'SIN CATEGORÍA','empresa'=>'SIN EMPRESA'];
+?>
 <tr>
-<td><?=$categorias[$p['barcode']] ?? 'SIN CATEGORÍA'?></td>
+<td><?=$cat['empresa']?></td>
+<td><?=$cat['categoria']?></td>
 <td><?=$p['producto']?></td>
 <td><?=$p['cant']?></td>
 <td>$ <?=money($p['total'])?></td>
