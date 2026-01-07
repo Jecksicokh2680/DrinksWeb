@@ -202,20 +202,6 @@ body{font-family:"Segoe UI",Arial,sans-serif;margin:0;padding:20px;background:#e
 .button{padding:8px 12px;background:#1f2d3d;color:#fff;border:none;border-radius:6px;cursor:pointer;margin-right:6px;}
 .input-edit{width:100%;padding:5px;border:1px solid #ccc;border-radius:4px;}
 .btn-save{background:#0b63a3;color:#fff;border:none;padding:5px 8px;border-radius:4px;cursor:pointer;}
-
-/* MODAL RESPONSIVE */
-#modal-precierre {display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;}
-#modal-precierre-content {
-    background:#fff;margin:5% auto;padding:20px;border-radius:10px;max-width:500px;position:relative;
-    width:90%;
-    box-sizing:border-box;
-}
-#modal-precierre table{width:100%;border-collapse:collapse;margin-top:10px;}
-#modal-precierre table td, #modal-precierre table th{padding:6px;border-bottom:1px solid #eee;}
-#modal-precierre button{margin-right:6px;margin-top:6px;padding:6px 10px;border-radius:5px;}
-#modal-precierre span.close-modal{position:absolute;top:10px;right:14px;font-size:22px;font-weight:bold;cursor:pointer;}
-#modal-precierre .header-info{font-size:14px;margin-bottom:10px;color:#333;}
-@media(max-width:480px){#modal-precierre-content{padding:15px;}}
 </style>
 <script>
 function toUpperCaseInput(ev){ ev.target.value=ev.target.value.toUpperCase(); }
@@ -231,20 +217,21 @@ function guardarEgreso(id){
 }
 
 // MODAL PRECierre
-function mostrarModalPrecierre(ventas, egresos, transfer, permiso, fecha, facturador){
-    document.getElementById('modal-fecha').innerText = fecha;
-    document.getElementById('modal-hora').innerText = new Date().toLocaleTimeString('es-CO',{hour12:false});
-    document.getElementById('modal-facturador').innerText = facturador;
-
+function mostrarModalPrecierre(ventas, egresos, transfer, permiso){
     let txtVentas = permiso==='SI' ? "$"+ventas.toLocaleString('es-CO') : "XXXX";
     let saldo = ventas - egresos - transfer;
     document.getElementById('modal-ventas').innerText = txtVentas;
     document.getElementById('modal-egresos').innerText = "$"+egresos.toLocaleString('es-CO');
     document.getElementById('modal-transfer').innerText = "$"+transfer.toLocaleString('es-CO');
-    document.getElementById('modal-saldo').innerText = "$"+saldo.toLocaleString('es-CO');
-    document.getElementById('modal-saldo').style.backgroundColor = (saldo>=0)?'#0abf53':'#d93025';
-    document.getElementById('modal-saldo').style.color='white';
-
+    if(saldo!==null){
+        document.getElementById('modal-saldo').innerText = "$"+saldo.toLocaleString('es-CO');
+        document.getElementById('modal-saldo').style.backgroundColor = (saldo>=0)?'#0abf53':'#d93025';
+        document.getElementById('modal-saldo').style.color='white';
+    }else{
+        document.getElementById('modal-saldo').innerText = "--";
+        document.getElementById('modal-saldo').style.backgroundColor='#999';
+        document.getElementById('modal-saldo').style.color='white';
+    }
     document.getElementById('modal-precierre').style.display='block';
 }
 function cerrarModal(){ document.getElementById('modal-precierre').style.display='none'; }
@@ -281,17 +268,7 @@ $sel=($optVal===$UsuarioFact)?'selected':'';
 
 <?php if($UsuarioFact!==''): ?>
 <div class="panel">
-<button class="button" 
-onclick="mostrarModalPrecierre(
-    <?=$totalVentas?>,
-    <?=$totalEgresos?>,
-    <?=$totalTransfer?>,
-    '<?=$permiso9999?>',
-    '<?=htmlspecialchars($fecha_input)?>',
-    '<?=htmlspecialchars($ventasRow['FACTURADOR']??$UsuarioFact)?>'
-)">
-📝 Ver Precierre
-</button>
+<button class="button" onclick="mostrarModalPrecierre(<?=$totalVentas?>,<?=$totalEgresos?>,<?=$totalTransfer?>,'<?=$permiso9999?>')">📝 Ver Precierre</button>
 <button class="button" onclick="window.print()">✅ Imprimir Cierre Definitivo</button>
 </div>
 
@@ -363,23 +340,17 @@ while($eg=$resEgresos->fetch_assoc()){
 <?php endif; ?>
 
 <!-- MODAL PRECierre -->
-<div id="modal-precierre">
-  <div id="modal-precierre-content">
-    <span class="close-modal" onclick="cerrarModal()">&times;</span>
+<div id="modal-precierre" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);">
+  <div id="modal-precierre-content" style="background:#fff;margin:10% auto;padding:20px;border-radius:10px;max-width:400px;position:relative;">
+    <span style="position:absolute;top:10px;right:14px;font-size:22px;font-weight:bold;cursor:pointer;" onclick="cerrarModal()">&times;</span>
     <h2>📝 Precierre</h2>
-    <div class="header-info">
-        Fecha: <span id="modal-fecha"></span><br>
-        Hora: <span id="modal-hora"></span><br>
-        Facturador: <span id="modal-facturador"></span>
-    </div>
-    <table>
+    <table style="width:100%;border-collapse:collapse;margin-top:10px;">
       <tr><td>Ventas</td><td id="modal-ventas">0</td></tr>
       <tr><td>Egresos</td><td id="modal-egresos">0</td></tr>
-      <tr><td>Transferencias</td><td id="modal-transfer">
       <tr><td>Transferencias</td><td id="modal-transfer">0</td></tr>
       <tr><th>Saldo</th><th id="modal-saldo">0</th></tr>
     </table>
-    <div style="margin-top:12px;text-align:right;">
+    <div style="margin-top:12px;">
       <button onclick="imprimirModal()">🖨 Imprimir Precierre</button>
       <button onclick="cerrarModal()">❌ Cerrar</button>
     </div>

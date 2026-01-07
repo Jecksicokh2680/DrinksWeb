@@ -204,7 +204,10 @@ if ($is_ajax_filter) {
         foreach ($productosCentral as $p) {
             $bc = $p['barcode'];
             $pDrinks = $preciosDrinks[$bc] ?? ['precioventa'=>0, 'precioespecial1'=>0, 'precioespecial2'=>0];
-
+            $varCentral = (($p['precioventa'] - $p['costo']) / $p['costo']) * 100;  
+            $markupCentral = ($p['costo'] > 0)    ? (($p['precioventa'] / $p['costo']) - 1) * 100    : 0;
+            $markupDrinks = ($p['costo'] > 0)    ? (($pDrinks['precioventa'] / $p['costo']) - 1) * 100    : 0;
+            $varDrinks  = (($pDrinks['precioventa'] - $p['costo']) / $p['costo']) * 100;
             $estado_select_1 = $p['estado'] == 1 ? 'selected' : '';
             $estado_select_0 = $p['estado'] == 0 ? 'selected' : '';
 
@@ -229,7 +232,9 @@ if ($is_ajax_filter) {
                 <td style="background:#fff4e6"><input type="number" class="edit-pv-d" value="' . sprintf('%.2f', $pDrinks['precioventa']) . '" step="0.01"></td>
                 <td style="background:#fff4e6"><input type="number" class="edit-pe1-d" value="' . sprintf('%.2f', $pDrinks['precioespecial1']) . '" step="0.01"></td>
                 <td style="background:#fff4e6"><input type="number" class="edit-pe2-d" value="' . sprintf('%.2f', $pDrinks['precioespecial2']) . '" step="0.01"></td>
-
+                <td style="background:#eaf2ff">' . sprintf('%.2f', $markupCentral) . '</td>
+                <td style="background:#fff4e6">' . sprintf('%.2f', $markupDrinks ) . '</td>
+                
                 <td>
                     <select class="edit-estado">
                         <option value="1" ' . $estado_select_1 . '>Activo</option>
@@ -329,6 +334,9 @@ if (!$is_ajax_filter && !$is_ajax_save) {
                     <th title="Drinks: Precio Venta" style="background:#e65100">D. Venta</th>
                     <th title="Drinks: Precio Esp 1" style="background:#e65100">D. Esp1</th>
                     <th title="Drinks: Precio Esp 2" style="background:#e65100">D. Esp2</th>
+                    <th title="Variación Central vs Costo" style="background:#003f7f">Var C</th>
+                    <th title="Variación Drinks vs Costo" style="background:#003f7f">Var D</th> 
+                
                     <th>Estado</th>
                     <th>Acción</th>
                 </tr>

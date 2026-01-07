@@ -20,13 +20,21 @@ if (empty($_SESSION['csrf_token'])) {
 $csrf_token = $_SESSION['csrf_token'];
 
 /* ============================================================
-   CONSTANTES
+   TIPOS DE CATEGORÍA
 ============================================================ */
 const TIPOS_CATEGORIA = [
     "Cerveza", "Gaseosa", "Agua", "Jugo", "Hidratante",
     "Energizante", "Dulceria", "Maltas", "Papeleria",
     "Suero", "Aseo", "Elementos"
 ];
+
+function get_tipo_map(): array {
+    $map = [];
+    foreach (TIPOS_CATEGORIA as $t) {
+        $map[substr($t,0,2)] = $t; // Código => Nombre completo
+    }
+    return $map;
+}
 
 /* ============================================================
    FUNCIONES
@@ -38,14 +46,6 @@ function check_csrf(string $posted, string $session) {
     }
 }
 
-function get_tipo_map(): array {
-    $map = [];
-    foreach (TIPOS_CATEGORIA as $t) {
-        $map[substr($t, 0, 2)] = $t;
-    }
-    return $map;
-}
-
 function collect_category_data(bool $is_creation = false): array {
     return [
         'CodCat'     => $is_creation ? strtoupper(trim($_POST['CodCat'])) : trim($_POST['CodCat']),
@@ -55,7 +55,7 @@ function collect_category_data(bool $is_creation = false): array {
         'SegWebT'    => isset($_POST['SegWebT']) ? '1' : '0',
         'Unicaja'    => intval($_POST['Unicaja'] ?? 1),
         'Estado'     => ($_POST['Estado'] ?? '1') === '1' ? '1' : '0',
-        'Tipo'       => substr(trim($_POST['Tipo']), 0, 2)
+        'Tipo'       => substr(trim($_POST['Tipo']), 0, 2) // Guardar solo 2 letras
     ];
 }
 
@@ -130,10 +130,10 @@ if (isset($_POST['actualizar'])) {
 }
 
 /* ============================================================
-   LISTADO
+   LISTADO DE CATEGORÍAS
 ============================================================ */
 $categorias = [];
-$tipo_map = get_tipo_map();
+$tipo_map = get_tipo_map(); // Código => Nombre completo
 
 $res = $mysqli->query("
 SELECT c.*, e.Nombre AS Empresa
@@ -152,103 +152,26 @@ while ($r = $res->fetch_assoc()) {
 <head>
 <meta charset="utf-8">
 <title>Gestión Gerencial de Categorías</title>
-
 <style>
-:root{
---bg:#f3f6fb;
---card:#ffffff;
---pri:#0f2a44;
---sec:#1e5aa8;
---line:#e5e7eb;
---ok:#198754;
---warn:#ffc107;
---err:#dc3545;
---muted:#6b7280;
-}
-*{box-sizing:border-box}
-body{
-margin:0;
-font-family:Segoe UI,Roboto,Arial;
-background:var(--bg);
-color:#111;
-padding:25px;
-}
-.card{
-background:var(--card);
-padding:22px;
-border-radius:16px;
-max-width:1400px;
-margin:0 auto 28px;
-box-shadow:0 12px 30px rgba(0,0,0,.08);
-}
-.header{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:15px;
-}
-h2{
-margin:0;
-color:var(--pri);
-font-weight:600;
-}
-.sub{
-font-size:13px;
-color:var(--muted);
-}
-input,select,button{
-padding:8px 10px;
-border-radius:8px;
-border:1px solid var(--line);
-font-size:13px;
-}
-button{
-background:var(--sec);
-color:#fff;
-border:none;
-cursor:pointer;
-padding:9px 14px;
-}
+body{font-family:Segoe UI,Arial,sans-serif;background:#f3f6fb;padding:25px}
+.card{background:#fff;padding:22px;border-radius:16px;max-width:1400px;margin:0 auto 28px;box-shadow:0 12px 30px rgba(0,0,0,.08);}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;}
+h2{margin:0;color:#0f2a44;font-weight:600;}
+.sub{font-size:13px;color:#6b7280;}
+input,select,button{padding:8px 10px;border-radius:8px;border:1px solid #e5e7eb;font-size:13px;}
+button{background:#1e5aa8;color:#fff;border:none;cursor:pointer;padding:9px 14px;}
 button:hover{opacity:.9}
-table{
-width:100%;
-border-collapse:collapse;
-margin-top:15px;
-font-size:13px;
-}
-th{
-background:var(--pri);
-color:#fff;
-padding:10px;
-text-transform:uppercase;
-font-size:12px;
-}
-td{
-padding:8px;
-border-bottom:1px solid var(--line);
-text-align:center;
-}
-.badge{
-padding:4px 8px;
-border-radius:20px;
-font-size:11px;
-font-weight:600;
-}
-.activo{background:#e7f6ec;color:var(--ok)}
-.inactivo{background:#fdeaea;color:var(--err)}
+table{width:100%;border-collapse:collapse;margin-top:15px;font-size:13px;}
+th{background:#0f2a44;color:#fff;padding:10px;text-transform:uppercase;font-size:12px;}
+td{padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;}
+td:nth-child(2),td:nth-child(3),td:nth-child(4){text-align:left}
+.badge{padding:4px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.activo{background:#e7f6ec;color:#198754}
+.inactivo{background:#fdeaea;color:#dc3545}
 .fila-inactiva{opacity:.55}
-#filtro{
-width:260px;
-}
-.mensaje{
-margin:10px 0;
-padding:10px;
-border-left:4px solid var(--sec);
-background:#eef3fb;
-border-radius:8px;
-}
+#filtro{width:260px;}
+.mensaje{margin:10px 0;padding:10px;border-left:4px solid #1e5aa8;background:#eef3fb;border-radius:8px;}
 </style>
-
 <script>
 function filtrar(){
     let f=document.getElementById("filtro").value.toLowerCase();
@@ -258,7 +181,6 @@ function filtrar(){
 }
 </script>
 </head>
-
 <body>
 
 <div class="card">
@@ -288,7 +210,7 @@ Empresa
 Tipo
 <select name="Tipo">
 <?php foreach(TIPOS_CATEGORIA as $t): ?>
-<option value="<?= $t ?>"><?= $t ?></option>
+<option value="<?= substr($t,0,2) ?>"><?= $t ?></option>
 <?php endforeach; ?>
 </select>
 
@@ -340,7 +262,15 @@ Estado
 </select>
 </td>
 
-<td><?= $c['Tipo_Completo'] ?></td>
+<!-- Tipo editable: mostrar nombre completo, guardar 2 letras -->
+<td>
+<select name="Tipo">
+<?php foreach(TIPOS_CATEGORIA as $t): ?>
+<option value="<?= substr($t,0,2) ?>" <?= $c['Tipo']==substr($t,0,2)?'selected':'' ?>><?= $t ?></option>
+<?php endforeach; ?>
+</select>
+</td>
+
 <td><input type="checkbox" name="SegWebF" <?= $c['SegWebF']=='1'?'checked':'' ?>></td>
 <td><input type="checkbox" name="SegWebT" <?= $c['SegWebT']=='1'?'checked':'' ?>></td>
 <td><input type="number" name="Unicaja" value="<?= $c['Unicaja'] ?>"></td>
