@@ -83,7 +83,7 @@ $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inacti
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label small fw-bold">Salario Mensual</label>
-                        <input type="number" name="salario" class="form-control" required placeholder="1300000">
+                        <input type="number" name="salario" class="form-control" required placeholder="1.750.905">
                     </div>
                 </div>
 
