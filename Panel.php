@@ -33,7 +33,7 @@ $EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Panel de Usuario</title>
+<title>Panel de Usuario - 2026</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -119,11 +119,10 @@ body{
 
 <div class="sidebar" id="sidebar">
 
-<div class="navbar-brand">Mi App</div>
+<div class="navbar-brand">SISTEMA DRINKS</div>
 
 <div class="accordion accordion-flush px-2" id="menuPrincipal">
 
-<!-- ================= BÁSICO ================= -->
 <div class="accordion-item">
 <h2 class="accordion-header">
 <button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#basico">
@@ -142,7 +141,6 @@ body{
 </div>
 
 <?php if ($EsAdmin): ?>
-<!-- ================= ADMIN ================= -->
 <div class="accordion-item">
 <h2 class="accordion-header">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#admin">
@@ -154,7 +152,6 @@ body{
 
 <div class="accordion sub-accordion">
 
-<!-- OPERACIÓN -->
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminOp">
 📊 Operación
@@ -170,7 +167,6 @@ body{
 </div>
 </div>
 
-<!-- INVENTARIO -->
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminInv">
 📦 Inventario
@@ -180,13 +176,11 @@ body{
 <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a>
-
 <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
 </div>
 </div>
 </div>
 
-<!-- FINANZAS -->
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminFin">
 💰 Finanzas
@@ -199,7 +193,6 @@ body{
 </div>
 </div>
 
-<!-- CONTROL -->
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminCtrl">
 📈 Control
@@ -213,7 +206,19 @@ body{
 </div>
 </div>
 
-<!-- CONFIGURACIÓN -->
+<div class="accordion-item">
+<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminNomina">
+💼 Nómina
+</button>
+<div id="adminNomina" class="accordion-collapse collapse">
+<div class="accordion-body">
+<a class="nav-link" href="CrearColaborador.php" target="contentFrame">Crear Colaborador</a>
+<a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
+<a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+</div>
+</div>
+</div>
+
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminConf">
 ⚙️ Configuración
@@ -234,7 +239,6 @@ body{
 </div>
 </div>
 
-<!-- ================= ESTADÍSTICAS ================= -->
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#estadisticas">
 📈 Estadísticas
@@ -252,7 +256,6 @@ Lo más Vendido
 
 </div>
 
-<!-- FOOTER -->
 <div class="mt-auto p-3 border-top text-center">
 <div>Bienvenido<br><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
 <a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>

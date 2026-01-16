@@ -124,7 +124,7 @@ if ($is_ajax_filter) {
     header('Content-Type: application/json');
 
     if (!$connCentral || $errorCentral) {
-         echo json_encode(['html' => '<tr><td colspan="11" class="mensaje-status error">Error conexión Central</td></tr>']);
+         echo json_encode(['html' => '<tr><td colspan="13" class="mensaje-status error">Error conexión Central</td></tr>']);
          exit;
     }
 
@@ -181,7 +181,7 @@ if ($is_ajax_filter) {
         }
         $stmt->close();
     } else {
-        $html_filas = '<tr><td colspan="11">Error SQL Central: ' . $connCentral->error . '</td></tr>';
+        $html_filas = '<tr><td colspan="13">Error SQL Central: ' . $connCentral->error . '</td></tr>';
     }
 
     // 2. Obtener datos de DRINKS (Supplementary)
@@ -199,7 +199,7 @@ if ($is_ajax_filter) {
 
     // 3. Renderizar
     if (empty($productosCentral) && empty($html_filas)) {
-        $html_filas = '<tr><td colspan="11" style="text-align: center;">No se encontraron productos.</td></tr>';
+        $html_filas = '<tr><td colspan="13" style="text-align: center;">No se encontraron productos.</td></tr>';
     } else {
         foreach ($productosCentral as $p) {
             $bc = $p['barcode'];
@@ -343,7 +343,7 @@ if (!$is_ajax_filter && !$is_ajax_save) {
             </thead>
             <tbody id="tabla_productos">
                 <tr>
-                    <td colspan="9" class="loading">Cargando productos...</td>
+                    <td colspan="" class="loading">Cargando productos...</td>
                 </tr>
             </tbody>
         </table>
