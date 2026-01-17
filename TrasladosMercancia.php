@@ -4,18 +4,18 @@ require_once("ConnDrinks.php");    // $mysqliDrinks
 require_once("Conexion.php");      // $mysqliWeb
 
 /* ============================================================
-   CONFIGURACIÓN DE EMPRESAS (NITs Proporcionados)
+    CONFIGURACIÓN DE EMPRESAS
 ============================================================ */
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 define('SUC_DEFAULT', '001');
 
 session_start();
-$UsuarioSesion   = $_SESSION['Usuario']     ?? '';
+$UsuarioSesion   = $_SESSION['Usuario']    ?? '';
 $NitSesion       = $_SESSION['NitEmpresa']  ?? '';
 $SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
 
-$aut_0003 = Autorizacion($UsuarioSesion, '0003'); // Retorna "SI" o "NO"
+$aut_0003 = Autorizacion($UsuarioSesion, '0003'); 
 $aut_9999 = Autorizacion($UsuarioSesion, '9999');
 
 if ($aut_0003 !== "SI" && $aut_9999 !== "SI") {
@@ -23,7 +23,7 @@ if ($aut_0003 !== "SI" && $aut_9999 !== "SI") {
 }
 
 /* ============================================================
-   FUNCIONES
+    FUNCIONES
 ============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
@@ -43,7 +43,7 @@ function Autorizacion($User, $Solicitud) {
 }
 
 function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $mysqliCentral, $mysqliDrinks, $mysqliWeb) {
-    if($cantidad <= 0) return ['error'=>'Cantidad inválida'];
+    if($cantidad == 0) return ['error'=>'La cantidad no puede ser cero']; 
     if($origen === $destino) return ['error'=>'El origen y destino deben ser diferentes'];
 
     $dbOrig = ($origen == "Central") ? $mysqliCentral : $mysqliDrinks;
@@ -51,12 +51,11 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
     $dbDest = ($destino == "Central") ? $mysqliCentral : $mysqliDrinks;
     $nitDest = ($destino == "Central") ? NIT_CENTRAL : NIT_DRINKS;
 
-    $stmtO = $dbOrig->prepare("SELECT p.idproducto, IFNULL(i.cantidad,0) as stock FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto WHERE p.barcode=?");
+    $stmtO = $dbOrig->prepare("SELECT p.idproducto FROM productos p WHERE p.barcode=?");
     $stmtO->bind_param("s", $barcode);
     $stmtO->execute();
     $dataO = $stmtO->get_result()->fetch_assoc();
     if(!$dataO) return ['error'=>'Producto no existe en origen'];
-    if($dataO['stock'] < $cantidad) return ['error'=>'Stock insuficiente (Disp: '.$dataO['stock'].')'];
 
     $stmtD = $dbDest->prepare("SELECT idproducto FROM productos WHERE barcode=?");
     $stmtD->bind_param("s", $barcode);
@@ -69,12 +68,10 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
         $mysqliDrinks->begin_transaction();
         $mysqliWeb->begin_transaction();
 
-        // 1. Restar Origen
         $upO = $dbOrig->prepare("UPDATE inventario SET cantidad = cantidad - ? WHERE idproducto = ?");
         $upO->bind_param("di", $cantidad, $dataO['idproducto']);
         $upO->execute();
 
-        // 2. Sumar Destino
         $checkD = $dbDest->prepare("SELECT idproducto FROM inventario WHERE idproducto = ?");
         $checkD->bind_param("i", $idDest);
         $checkD->execute();
@@ -86,11 +83,10 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
         $upD->bind_param("di", $cantidad, $idDest);
         $upD->execute();
 
-        // 3. Log
-        $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado) VALUES (?, ?, 'ADMIN', 'SALE', ?, ?, ?, ?, ?, 1)";
+        $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?, 1)";
         $suc = SUC_DEFAULT;
         $stmtLog = $mysqliWeb->prepare($sqlLog);
-        $stmtLog->bind_param("sssddss", $nitOrig, $suc, $barcode, $cantidad, $nitDest, $suc, $observacion);
+        $stmtLog->bind_param("ssssddss", $nitOrig, $suc, $UsuarioSesion, $barcode, $cantidad, $nitDest, $suc, $observacion);
         $stmtLog->execute();
 
         $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
@@ -102,319 +98,211 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
 }
 
 /* ============================================================
-   POST: Movimiento
+    POST: Movimiento y Aprobaciones
 ============================================================ */
-if($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['mover'])){
-    $obs = !empty($_POST['observacion']) ? $_POST['observacion'] : "Traspaso manual web";
-    $res = moverInventario($_POST['barcode'], $_POST['cantidad'], $_POST['origen'], $_POST['destino'], $obs, $mysqliCentral, $mysqliDrinks, $mysqliWeb);
-    $msg = isset($res['error']) ? "<p style='color:red; font-weight:bold;'>❌ {$res['error']}</p>" : "<p style='color:green; font-weight:bold;'>✅ Movimiento registrado correctamente</p>";
+if($_SERVER['REQUEST_METHOD']=='POST'){
+    if(isset($_POST['mover'])){
+        $obs = !empty($_POST['observacion']) ? $_POST['observacion'] : "Traspaso manual";
+        $res = moverInventario($_POST['barcode'], (float)$_POST['cantidad'], $_POST['origen'], $_POST['destino'], $obs, $mysqliCentral, $mysqliDrinks, $mysqliWeb);
+        $msg = isset($res['error']) ? "<p style='color:red; font-weight:bold;'>❌ {$res['error']}</p>" : "<p style='color:green; font-weight:bold;'>✅ Movimiento registrado</p>";
+    }
+    
+    if(isset($_POST['aprobar']) && $aut_9999=="SI"){
+        $id = (int)$_POST['idMov'];
+        $nuevo = (int)$_POST['Aprobado'];
+        $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id")->fetch_assoc();
+        if($res && $nuevo == 0 && $res['Aprobado'] == 1){
+            // Lógica de reversión simple
+            $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+            $destDb = ($res['NitEmpresa_Dest']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+            $idO = $origDb->query("SELECT idproducto FROM productos WHERE barcode='{$res['barcode']}'")->fetch_assoc()['idproducto'];
+            $idD = $destDb->query("SELECT idproducto FROM productos WHERE barcode='{$res['barcode']}'")->fetch_assoc()['idproducto'];
+            $origDb->query("UPDATE inventario SET cantidad=cantidad+{$res['cant']} WHERE idproducto=$idO");
+            $destDb->query("UPDATE inventario SET cantidad=cantidad-{$res['cant']} WHERE idproducto=$idD");
+            $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0 WHERE idMov=$id");
+        }
+    }
 }
 
 /* ============================================================
-   CONSULTA DE PRODUCTOS (Solo al buscar)
+    CONSULTA DE PRODUCTOS Y TRASLADOS (FILTROS)
 ============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term = $_GET['term'] ?? '';
+$f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
+$f_fin = $_GET['f_fin'] ?? date('Y-m-d');
 $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = 15;
 $offset = ($page-1)*$limit;
-$like = "%$term%";
 
 // Categorías
 $cats=[]; $resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1' ORDER BY CodCat ASC");
 while($c=$resCat->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 
-// Relación SKU -> Categoría
+// Relación Producto-Categoría
 $prodCat=[]; $resPC = $mysqliWeb->query("SELECT sku,CodCat FROM catproductos");
 while($r=$resPC->fetch_assoc()) $prodCat[$r['sku']]=$r['CodCat'];
 
-// Barcodes de categoría
-$barcodesCat=[];
-if($categoria){
-    $stmtCat = $mysqliWeb->prepare("SELECT sku FROM catproductos WHERE CodCat=?");
-    $stmtCat->bind_param("s",$categoria);
-    $stmtCat->execute();
-    $resBC = $stmtCat->get_result();
-    while($r=$resBC->fetch_assoc()) $barcodesCat[]=$r['sku'];
-    if(!$barcodesCat) $barcodesCat=['__NONE__'];
-}
-
-// Solo ejecutar consulta si hay término o categoría
-$central = [];
-$drinks  = [];
-$barcodes = [];
-$totalPages = 1;
-
+// Consulta principal de productos (se mantiene igual a tu lógica original pero optimizada)
+$barcodes = []; $central = []; $drinks = []; $totalPages = 1;
 if($term !== '' || $categoria !== ''){
-    $where = "p.estado='1' AND (p.descripcion LIKE ? OR p.barcode LIKE ?)";
-    $params = [$like, $like];
-    $types = "ss";
-
-    if(!empty($barcodesCat)){
-        $placeholders = implode(',', array_fill(0, count($barcodesCat), '?'));
-        $where .= " AND p.barcode IN ($placeholders)";
-        foreach($barcodesCat as $b){ $params[]=$b; $types.="s"; }
+    $like = "%$term%";
+    $where = "p.estado='1' AND (p.descripcion LIKE '$like' OR p.barcode LIKE '$like')";
+    if($categoria){
+        $resBC = $mysqliWeb->query("SELECT sku FROM catproductos WHERE CodCat='$categoria'");
+        $skus = []; while($r=$resBC->fetch_assoc()) $skus[]="'".$r['sku']."'";
+        if($skus) $where .= " AND p.barcode IN (".implode(',',$skus).")";
+        else $where .= " AND 1=0";
     }
+    
+    $resCount = $mysqliCentral->query("SELECT COUNT(DISTINCT barcode) as total FROM productos p WHERE $where");
+    $totalPages = ceil(($resCount->fetch_assoc()['total'] ?? 0) / $limit);
 
-    $sqlCount = "SELECT COUNT(DISTINCT p.barcode) total FROM productos p WHERE $where";
-    $stmtCnt = $mysqliCentral->prepare($sqlCount);
-    $stmtCnt->bind_param($types, ...$params);
-    $stmtCnt->execute();
-    $totalRows = $stmtCnt->get_result()->fetch_assoc()['total'];
-    $totalPages = max(1, ceil($totalRows/$limit));
-
-    $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) cantidad 
-            FROM productos p LEFT JOIN inventario i ON p.idproducto=i.idproducto 
-            WHERE $where 
-            GROUP BY p.barcode,p.descripcion 
-            ORDER BY p.barcode ASC 
-            LIMIT $limit OFFSET $offset";
-
-    function fetchResults($db, $sql, $params, $types){
-        $stmt = $db->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $data=[];
-        foreach($stmt->get_result() as $r) $data[$r['barcode']]=$r;
-        return $data;
-    }
-
-    $central = fetchResults($mysqliCentral, $sql, $params, $types);
-    $drinks  = fetchResults($mysqliDrinks, $sql, $params, $types);
+    $sql = "SELECT p.barcode, p.descripcion, IFNULL(i.cantidad,0) cantidad FROM productos p LEFT JOIN inventario i ON p.idproducto=i.idproducto WHERE $where LIMIT $limit OFFSET $offset";
+    $rc = $mysqliCentral->query($sql); while($r=$rc->fetch_assoc()) $central[$r['barcode']]=$r;
+    $rd = $mysqliDrinks->query($sql);  while($r=$rd->fetch_assoc()) $drinks[$r['barcode']]=$r;
     $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
-    usort($barcodes, function($a,$b) use($prodCat){ return ($prodCat[$a]??'SIN')<=>($prodCat[$b]??'SIN'); });
 }
 
-/* ============================================================
-   POST: Actualizar Aprobado / Reversión
-============================================================ */
-if($_SERVER['REQUEST_METHOD']=='POST' && isset($_POST['aprobar']) && $aut_9999=="SI"){
-    $id = (int)$_POST['idMov'];
-    $nuevo = (int)$_POST['Aprobado'];
-
-    $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id")->fetch_assoc();
-    if($res){
-        $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
-        $destDb = ($res['NitEmpresa_Dest']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
-
-        $cantidad = $res['cant'];
-        $idOrig = $origDb->query("SELECT idproducto FROM productos WHERE barcode='{$res['barcode']}'")->fetch_assoc()['idproducto'];
-        $idDest = $destDb->query("SELECT idproducto FROM productos WHERE barcode='{$res['barcode']}'")->fetch_assoc()['idproducto'];
-
-        if($nuevo==1){
-            $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=1 WHERE idMov=$id");
-        }else{
-            $origDb->query("UPDATE inventario SET cantidad=cantidad+$cantidad WHERE idproducto=$idOrig");
-            $destDb->query("UPDATE inventario SET cantidad=cantidad-$cantidad WHERE idproducto=$idDest");
-            $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0 WHERE idMov=$id");
-        }
-    }
-}
+// Consulta de Movimientos para el Modal
+$sqlMovs = "SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' ORDER BY fecha DESC LIMIT 500";
+$resMov = $mysqliWeb->query($sqlMovs);
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Inventario Consolidado</title>
+<title>Gestión de Inventario Pro</title>
 <style>
-/* === Estilos base === */
-body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#f4f7f6; padding:20px;}
-.container{max-width:1500px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.1);}
-table{width:100%; border-collapse:collapse; margin-top:20px;}
-th{background:#2c3e50; color:white; padding:12px; font-size:13px; text-transform: uppercase;}
-td{border-bottom:1px solid #eee; padding:8px; text-align:center; font-size:13px;}
-.subtotal{background:#f8f9fa; font-weight:bold; color: #34495e;}
-.btn-move{background:#27ae60; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold;}
-.btn-move:hover{background:#219150;}
-.input-s{padding:5px; border:1px solid #ccc; border-radius:4px; font-size:12px;}
-.total-col{background:#ebf5fb; font-weight:bold;}
-/* Modal */
-.modal{display:none; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; overflow:auto; background:rgba(0,0,0,0.5);}
-.modal-content{background:#fff; margin:50px auto; padding:20px; border-radius:8px; max-width:95%; max-height:80%; overflow:auto;}
-.close{float:right; font-size:22px; font-weight:bold; cursor:pointer;}
-.scroll-table{overflow:auto; max-height:500px;}
+    body{font-family:sans-serif; background:#f4f7f6; padding:20px; font-size: 13px;}
+    .container{max-width:1500px; margin:auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+    table{width:100%; border-collapse:collapse; margin-top:20px;}
+    th{background:#2c3e50; color:white; padding:10px;}
+    td{border-bottom:1px solid #eee; padding:8px; text-align:center;}
+    .btn-move{background:#27ae60; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold;}
+    .input-s{padding:5px; border:1px solid #ccc; border-radius:4px;}
+    .modal{display:<?= isset($_GET['f_inicio']) ? 'block' : 'none' ?>; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5);}
+    .modal-content{background:#fff; margin:30px auto; padding:20px; border-radius:8px; width:90%; max-height:85vh; overflow-y:auto;}
+    .close{float:right; font-size:24px; cursor:pointer; font-weight:bold;}
+    .negativo{ color: red; font-weight: bold; }
 </style>
 </head>
 <body>
+
 <div class="container">
-<h2>📦 Gestión de Inventario: Central + Drinks</h2>
-<?php if(isset($msg)) echo $msg; ?>
+    <h2>📦 Gestión de Inventario (Traslados y Correcciones)</h2>
+    <?php if(isset($msg)) echo $msg; ?>
 
-<form method="GET" style="display:flex; gap:10px; margin-bottom:20px; background: #eee; padding: 15px; border-radius: 5px;">
-<select name="categoria" class="input-s">
-<option value="">Todas las categorías</option>
-<?php foreach ($cats as $k=>$v): ?>
-<option value="<?= $k ?>" <?= $categoria==$k?'selected':'' ?>><?= "$k - $v" ?></option>
-<?php endforeach; ?>
-</select>
-<input type="text" name="term" placeholder="Buscar por nombre o barcode..." value="<?= htmlspecialchars($term) ?>" class="input-s" style="flex-grow:1">
-<button type="submit" class="btn-move" style="background:#2980b9">🔍 Buscar</button>
-<a href="?" style="text-decoration:none; color:#666; padding:7px;">Limpiar</a>
-<button type="button" class="btn-move" style="background:#f39c12" onclick="document.getElementById('modal').style.display='block'">Ver Movimientos</button>
-</form>
+    <form method="GET" style="display:flex; gap:10px; margin-bottom:20px; background:#eee; padding:15px; border-radius:5px;">
+        <select name="categoria" class="input-s">
+            <option value="">Todas las categorías</option>
+            <?php foreach($cats as $k=>$v) echo "<option value='$k' ".($categoria==$k?'selected':'').">$k - $v</option>"; ?>
+        </select>
+        <input type="text" name="term" placeholder="Buscar producto..." value="<?= htmlspecialchars($term) ?>" class="input-s" style="flex-grow:1">
+        <button type="submit" class="btn-move" style="background:#2980b9">🔍 Buscar</button>
+        <button type="button" class="btn-move" style="background:#f39c12" onclick="document.getElementById('modal').style.display='block'">📅 Ver Historial</button>
+        <a href="?" style="padding:8px;">Limpiar</a>
+    </form>
 
-<?php if(!empty($barcodes)): ?>
-<table>
-<thead>
-<tr>
-<th>CodCat</th>
-<th>Nombre Categoría</th>
-<th>Barcode</th>
-<th style="text-align:left">Producto</th>
-<th>Drinks</th>
-<th>Central</th>
-<th class="total-col">Total</th>
-<th>Traspaso / Observación</th>
-</tr>
-</thead>
-<tbody>
-<?php
-$lastCat = ''; $sD = $sC = $sT = 0;
-foreach($barcodes as $b):
-    $cC = $central[$b] ?? null;
-    $cD = $drinks[$b] ?? null;
-    $vC = $cC['cantidad']??0;
-    $vD = $cD['cantidad']??0;
-    $vT = $vC+$vD;
-    $cat = $prodCat[$b]??'SIN';
-    $catNom = $cats[$cat]??'Sin Categoría';
-
-    if($lastCat!=='' && $lastCat!==$cat){
-        echo "<tr class='subtotal'><td colspan='4' style='text-align:right'>SUBTOTAL {$lastCat} ({$cats[$lastCat]}) →</td><td>".number_format($sD,2)."</td><td>".number_format($sC,2)."</td><td class='total-col'>".number_format($sT,2)."</td><td></td></tr>";
-        $sD=$sC=$sT=0;
-    }
-    $sD+=$vD; $sC+=$vC; $sT+=$vT; $lastCat=$cat;
-?>
-<tr>
-<td><?= $cat ?></td>
-<td><?= $catNom ?></td>
-<td><code><?= $b ?></code></td>
-<td style="text-align:left"><?= htmlspecialchars($cC['descripcion']??$cD['descripcion']??'N/A') ?></td>
-<td style="color:blue; font-weight:bold"><?= number_format($vD,2) ?></td>
-<td style="color:green; font-weight:bold"><?= number_format($vC,2) ?></td>
-<td class="total-col"><?= number_format($vT,2) ?></td>
-<td>
-<form method="POST" style="display:flex; gap:5px; justify-content:center; align-items:center;">
-<input type="hidden" name="barcode" value="<?= $b ?>">
-<input type="number" name="cantidad" step="0.001" style="width:60px" class="input-s" placeholder="Cant." required>
-<select name="origen" class="input-s"><option value="Central">Cen</option><option value="Drinks">Dri</option></select>
-<span>→</span>
-<select name="destino" class="input-s"><option value="Drinks">Dri</option><option value="Central">Cen</option></select>
-<input type="text" name="observacion" placeholder="Motivo..." class="input-s" style="width:180px">
-<button type="submit" name="mover" class="btn-move">Mover</button>
-</form>
-</td>
-</tr>
-<?php endforeach; ?>
-<?php if($lastCat!==''): ?>
-<tr class="subtotal"><td colspan="4" style="text-align:right">SUBTOTAL <?= $lastCat ?> (<?= $cats[$lastCat] ?>) →</td><td><?= number_format($sD,2) ?></td><td><?= number_format($sC,2) ?></td><td class="total-col"><?= number_format($sT,2) ?></td><td></td></tr>
-<?php endif; ?>
-</tbody>
-</table>
-
-<!-- Paginación -->
-<div style="margin-top:25px; text-align:center;">
-<?php for($i=1;$i<=$totalPages;$i++): ?>
-<a href="?page=<?=$i?>&categoria=<?=$categoria?>&term=<?=$term?>" style="padding:8px 12px; border:1px solid #2980b9; text-decoration:none; color:<?=$i==$page?'#fff':'#2980b9'?>; background:<?=$i==$page?'#2980b9':'#fff'?>; border-radius:4px; margin:0 2px;"><?=$i?></a>
-<?php endfor; ?>
-</div>
-<?php endif; ?>
+    <?php if($barcodes): ?>
+    <table>
+        <thead>
+            <tr>
+                <th>Categoría</th><th>Barcode</th><th style="text-align:left">Producto</th>
+                <th>Drinks</th><th>Central</th><th>Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach($barcodes as $b): 
+                $vC = $central[$b]['cantidad'] ?? 0;
+                $vD = $drinks[$b]['cantidad'] ?? 0;
+            ?>
+            <tr>
+                <td><?= $prodCat[$b] ?? '---' ?></td>
+                <td><code><?= $b ?></code></td>
+                <td style="text-align:left"><?= htmlspecialchars($central[$b]['descripcion'] ?? $drinks[$b]['descripcion'] ?? 'N/A') ?></td>
+                <td style="color:blue; font-weight:bold"><?= number_format($vD,2) ?></td>
+                <td style="color:green; font-weight:bold"><?= number_format($vC,2) ?></td>
+                <td>
+                    <form method="POST" style="display:flex; gap:5px; justify-content:center;">
+                        <input type="hidden" name="barcode" value="<?= $b ?>">
+                        <input type="number" name="cantidad" step="0.001" style="width:70px" class="input-s" placeholder="Cant." required>
+                        <select name="origen" class="input-s"><option value="Central">Cen</option><option value="Drinks">Dri</option></select>
+                        <select name="destino" class="input-s"><option value="Drinks">Dri</option><option value="Central">Cen</option></select>
+                        <input type="text" name="observacion" placeholder="Obs..." class="input-s" style="width:120px">
+                        <button type="submit" name="mover" class="btn-move">Mover</button>
+                    </form>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
 </div>
 
-<!-- Modal Movimientos -->
 <div id="modal" class="modal">
-<div class="modal-content">
-<span class="close" onclick="document.getElementById('modal').style.display='none'">&times;</span>
-<h3>Histórico de Movimientos</h3>
-<button onclick="printMovimientos()" class="btn-move" style="background:#2980b9; margin-bottom:10px;">🖨 Imprimir Movimientos</button>
-<div class="scroll-table">
-<table border="1" style="width:100%; border-collapse:collapse;">
-<thead>
-<tr>
-<th>ID</th>
-<th>Usuario</th>
-<th>Barcode</th>
-<th>Cant</th>
-<th>Tipo</th>
-<th>Origen</th>
-<th>Destino</th>
-<th>Obs.</th>
-<th>Aprobado</th>
-<th>Fecha</th>
-</tr>
-</thead>
-<tbody>
-<?php
-$resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos ORDER BY fecha DESC LIMIT 500");
-while($r=$resMov->fetch_assoc()):
-?>
-<tr>
-<td><?= $r['idMov'] ?></td>
-<td><?= $r['usuario_Orig'] ?></td>
-<td><?= $r['barcode'] ?></td>
-<td><?= number_format($r['cant'],2) ?></td>
-<td><?= $r['tipo'] ?></td>
-<td><?= $r['NitEmpresa_Orig'] ?></td>
-<td><?= $r['NitEmpresa_Dest'] ?></td>
-<td><?= htmlspecialchars($r['Observacion']) ?></td>
-<td>
-<?php if($aut_9999=="SI"): 
-$disabled = ($r['Aprobado']==0) ? "disabled style='background:#eee; cursor:not-allowed' title='Movimiento reversado'" : "";
-?>
-<form method="POST" style="margin:0;">
-<input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
-<select name="Aprobado" onchange="this.form.submit()" <?= $disabled ?>>
-<option value="1" <?= $r['Aprobado']==1?'selected':'' ?>>✔</option>
-<option value="0" <?= $r['Aprobado']==0?'selected':'' ?>>✖</option>
-</select>
-<input type="hidden" name="aprobar">
-</form>
-<?php else: ?>
-<?= $r['Aprobado']==1?'✔':'✖' ?>
-<?php endif; ?>
-</td>
-<td><?= $r['fecha'] ?></td>
-</tr>
-<?php endwhile; ?>
-</tbody>
-</table>
-</div>
-</div>
+    <div class="modal-content">
+        <span class="close" onclick="document.getElementById('modal').style.display='none'">&times;</span>
+        <h3>🗓 Historial de Movimientos</h3>
+        
+        <form method="GET" style="background:#f9f9f9; padding:15px; border:1px solid #ddd; display:flex; gap:15px; align-items:flex-end; margin-bottom:15px;">
+            <input type="hidden" name="categoria" value="<?= $categoria ?>">
+            <input type="hidden" name="term" value="<?= $term ?>">
+            <div>
+                <label style="display:block; font-size:11px;">Desde:</label>
+                <input type="date" name="f_inicio" value="<?= $f_inicio ?>" class="input-s">
+            </div>
+            <div>
+                <label style="display:block; font-size:11px;">Hasta:</label>
+                <input type="date" name="f_fin" value="<?= $f_fin ?>" class="input-s">
+            </div>
+            <button type="submit" class="btn-move" style="background:#34495e">Filtrar Fecha</button>
+            <button type="button" onclick="printMovimientos()" class="btn-move" style="background:#2980b9">🖨 Imprimir</button>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th><th>Usuario</th><th>Barcode</th><th>Cantidad</th><th>Origen</th><th>Destino</th><th>Observación</th><th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while($r = $resMov->fetch_assoc()): ?>
+                <tr>
+                    <td><?= $r['fecha'] ?></td>
+                    <td><?= $r['usuario_Orig'] ?></td>
+                    <td><?= $r['barcode'] ?></td>
+                    <td class="<?= $r['cant'] < 0 ? 'negativo' : '' ?>"><?= number_format($r['cant'],2) ?></td>
+                    <td><?= $r['NitEmpresa_Orig'] ?></td>
+                    <td><?= $r['NitEmpresa_Dest'] ?></td>
+                    <td><?= htmlspecialchars($r['Observacion']) ?></td>
+                    <td>
+                        <?php if($aut_9999=="SI" && $r['Aprobado']==1): ?>
+                            <form method="POST" onsubmit="return confirm('¿Reversar movimiento?')">
+                                <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
+                                <input type="hidden" name="Aprobado" value="0">
+                                <button type="submit" name="aprobar" style="cursor:pointer; background:none; border:none;">✅</button>
+                            </form>
+                        <?php else: echo $r['Aprobado']==1 ? '✅' : '❌ Reversado'; endif; ?>
+                    </td>
+                </tr>
+                <?php endwhile; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-// Cerrar modal al clic fuera
-window.onclick = function(event){
-    if(event.target==document.getElementById('modal')) document.getElementById('modal').style.display="none";
-}
-
-// Imprimir movimientos con encabezado usuario/fecha-hora
 function printMovimientos(){
-    var contenido = document.querySelector('#modal .scroll-table').innerHTML;
-    var usuario = "<?= htmlspecialchars($UsuarioSesion) ?>";
-    var fechaHora = new Date().toLocaleString('es-CO', {hour12:false});
-
-    var vent = window.open('', 'Imprimir Movimientos', 'width=900,height=600');
-    vent.document.write('<html><head><title>Movimientos</title>');
-    vent.document.write('<style>');
-    vent.document.write('body{font-family:Segoe UI, Tahoma, Geneva, Verdana, sans-serif;}');
-    vent.document.write('table{width:100%;border-collapse:collapse;}');
-    vent.document.write('th,td{border:1px solid #000;padding:5px;text-align:center;font-size:12px;}');
-    vent.document.write('th{background:#ccc;}');
-    vent.document.write('.encabezado{margin-bottom:15px;}');
-    vent.document.write('.encabezado span{display:inline-block;margin-right:15px;font-weight:bold;}');
-    vent.document.write('</style>');
-    vent.document.write('</head><body>');
-    vent.document.write('<div class="encabezado">');
-    vent.document.write('<span>Usuario: ' + usuario + '</span>');
-    vent.document.write('<span>Fecha/Hora: ' + fechaHora + '</span>');
-    vent.document.write('</div>');
-    vent.document.write(contenido);
-    vent.document.write('</body></html>');
-    vent.document.close();
-    vent.print();
+    var div = document.querySelector("#modal table").outerHTML;
+    var win = window.open('', '', 'height=700,width=900');
+    win.document.write('<html><head><title>Reporte</title><style>table{width:100%;border-collapse:collapse;} th,td{border:1px solid #000;padding:5px;font-size:10px;}</style></head><body>');
+    win.document.write('<h2>Reporte de Movimientos</h2>' + div);
+    win.document.close();
+    win.print();
 }
 </script>
+
 </body>
 </html>

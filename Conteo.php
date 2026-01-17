@@ -1,71 +1,67 @@
 <?php
 /* ============================================================
-   1. ConexionES Y CONFIGURACIÓN
+   1. CONEXIONES Y CONFIGURACIÓN
 ============================================================ */
-require_once("ConnCentral.php"); // POS ($mysqliPos) -> Stock real
-require_once("Conexion.php");    // ADM ($mysqli)    -> Log de conteos
+require_once("ConnCentral.php"); // $mysqliCentral
+require_once("ConnDrinks.php");  // $mysqliDrinks
+require_once("Conexion.php");    // ADM ($mysqli) -> Log de conteos
+
 session_start();
 
-// Variables de Sesión
+// Definición de las sedes (NITs proporcionados)
+define('NIT_CENTRAL', '86057267-8');
+define('NIT_DRINKS',  '901724534-7');
 
 /* ============================================
-   VALIDAR SESIÓN
+   LÓGICA DE CAMBIO DE SEDE MANUAL
 ============================================ */
-if (!isset($_SESSION['Usuario'])) {
-    die("Sesión no válida");
+if (isset($_GET['cambiar_nit'])) {
+    $nuevo_nit = $_GET['cambiar_nit'];
+    if ($nuevo_nit == NIT_CENTRAL || $nuevo_nit == NIT_DRINKS) {
+        $_SESSION['NitEmpresa'] = $nuevo_nit;
+        $_SESSION['NroSucursal'] = '001';
+        unset($_SESSION['Autorizaciones']); // Limpiar caché de permisos
+        header("Location: " . strtok($_SERVER["REQUEST_URI"], '?')); // Limpiar URL
+        exit;
+    }
 }
+
+if (!isset($_SESSION['Usuario'])) {
+    die("Sesión no válida. Por favor inicie sesión.");
+}
+
 date_default_timezone_set('America/Bogota');
-$usuario   = $_SESSION['Usuario'] ?? 'SISTEMA';
-$nit       = $_SESSION['NitEmpresa'] ?? '';
-$sucursal  = $_SESSION['NroSucursal'] ?? '';
-$idalmacen = 1; // ID del almacén que se está auditando (puedes dinamizarlo)
 
+$usuario    = $_SESSION['Usuario'] ?? 'SISTEMA';
+$nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL; // Central por defecto
+$sucursal   = $_SESSION['NroSucursal'] ?? '001';
+$idalmacen  = 1; 
 
-$FechaActual = date('Y-m-d');
+// Selección dinámica de conexión según la sede activa
+$mysqliSede = ($nitSesion == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
+$nombreSede = ($nitSesion == NIT_DRINKS) ? "DRINKS" : "CENTRAL";
 
 $categoriaSel = $_POST['categoria'] ?? '';
 $mensaje = "";
 
-/* ============================================
-   CSRF TOKEN (UNO POR SESIÓN)
-============================================ */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 /* ============================================
-   CATEGORÍAS YA CONTADAS HOY
-============================================ */
-$contados = [];
-$resCont = $mysqli->query("
-    SELECT DISTINCT CodCat
-    FROM conteoweb
-    WHERE DATE(fecha_conteo)=CURDATE()
-      AND estado='A'
-");
-while ($r = $resCont->fetch_assoc()) {
-    $contados[] = $r['CodCat'];
-}
-
-/* ============================================
-   FUNCIÓN AUTORIZACIÓN
+   AUTORIZACIONES
 ============================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
-    $res = $mysqli->query("
-        SELECT Swich
-        FROM autorizacion_tercero
-        WHERE cedulaNit='$User' AND Nro_Auto='$Solicitud'
-    ");
-    return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
+    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
+    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    return ($row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
-/* ============================================
-   AUTORIZACIONES
-============================================ */
-$AUT_STOCK    = Autorizacion($usuario, '1800');
-$AUT_CORREGIR = Autorizacion($usuario, '9999');
 $AUT_BORRAR   = Autorizacion($usuario, '1810');
+$AUT_CORREGIR = Autorizacion($usuario, '9999');
 $AUT_SEMAFORO = Autorizacion($usuario, '1800');
 $AUT_VERSTOCK = Autorizacion($usuario, '1801');
 
@@ -73,340 +69,215 @@ $AUT_VERSTOCK = Autorizacion($usuario, '1801');
    BORRAR CONTEO
 ============================================ */
 if (isset($_POST['borrar_conteo']) && $AUT_BORRAR === 'SI') {
-
-    if (
-        empty($_POST['csrf_token']) ||
-        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
-    ) {
-        die("CSRF inválido");
-    }
-
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) die("CSRF inválido");
     $idConteo = intval($_POST['id_conteo']);
-
-    $stmt = $mysqli->prepare("
-        UPDATE conteoweb
-        SET estado='X'
-        WHERE id=?  AND estado='A'
-    ");
+    $stmt = $mysqli->prepare("UPDATE conteoweb SET estado='X' WHERE id=? AND estado='A'");
     $stmt->bind_param("i", $idConteo);
     $stmt->execute();
-    $stmt->close();
-
-     // $mensaje = "🗑️ Conteo anulado correctamente";
+    $mensaje = "🗑️ Conteo anulado correctamente";
 }
 
 /* ============================================
-   CATEGORÍAS
+   LISTADO DE CATEGORÍAS (Y validación de contadas)
 ============================================ */
+$contados = [];
+$resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND NitEmpresa=?");
+$resCont->bind_param("s", $nitSesion);
+$resCont->execute();
+$resResult = $resCont->get_result();
+while ($r = $resResult->fetch_assoc()) $contados[] = $r['CodCat'];
+
 $categorias = [];
-$res = $mysqli->query("
-    SELECT CodCat, Nombre, unicaja
-    FROM categorias
-    WHERE Estado='1' AND (SegWebT+SegWebF)>=1
-    ORDER BY CodCat
-");
-while ($r = $res->fetch_assoc()) {
-    $categorias[$r['CodCat']] = $r;
-}
+$res = $mysqli->query("SELECT CodCat, Nombre, unicaja FROM categorias WHERE Estado='1' AND (SegWebT+SegWebF)>=1 ORDER BY CodCat");
+while ($r = $res->fetch_assoc()) $categorias[$r['CodCat']] = $r;
 
 /* ============================================
-   STOCK SISTEMA
+   CÁLCULO STOCK SISTEMA (Sede actual)
 ============================================ */
 $totalCategoria = 0;
 $unicajaSel = 0;
 
 if ($categoriaSel && isset($categorias[$categoriaSel])) {
-
     $unicajaSel = $categorias[$categoriaSel]['unicaja'];
-
-    $stmt = $mysqli->prepare("
-        SELECT Sku FROM catproductos
-        WHERE CodCat=? AND Estado='1'
-    ");
+    $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $categoriaSel);
     $stmt->execute();
-    $res = $stmt->get_result();
-
+    $resSkus = $stmt->get_result();
     $skus = [];
-    while ($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
-    $stmt->close();
+    while ($r = $resSkus->fetch_assoc()) $skus[] = $r['Sku'];
 
     if ($skus) {
         $ph = implode(',', array_fill(0, count($skus), '?'));
         $tp = str_repeat('s', count($skus));
-
-        $stmt = $mysqliPos->prepare("
-            SELECT IFNULL(i.cantidad,0) stock
-            FROM productos p
-            LEFT JOIN inventario i
-              ON i.idproducto=p.idproducto
-             AND i.idalmacen=?
-            WHERE p.barcode IN ($ph)
-        ");
-        $stmt->bind_param("i".$tp, $idalmacen, ...$skus);
-        $stmt->execute();
-        $res = $stmt->get_result();
-
-        while ($r = $res->fetch_assoc()) {
-            $totalCategoria += $r['stock'];
-        }
-        $stmt->close();
+        $stmtStock = $mysqliSede->prepare("SELECT IFNULL(SUM(i.cantidad),0) as total FROM productos p LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=? WHERE p.barcode IN ($ph)");
+        $stmtStock->bind_param("i".$tp, $idalmacen, ...$skus);
+        $stmtStock->execute();
+        $totalCategoria = $stmtStock->get_result()->fetch_assoc()['total'] ?? 0;
     }
 }
 
-/* ============================================
-   GUARDAR CONTEO
-============================================ */
 /* ============================================
    GUARDAR CONTEO
 ============================================ */
 if (isset($_POST['guardar_conteo'])) {
-
-    // Validar CSRF
-    if (
-        empty($_POST['csrf_token']) ||
-        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
-    ) {
-        die("Acción no autorizada");
-    }
-
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) die("Acción no autorizada");
+    
     $codCat        = $_POST['CodCat'];
     $cajas         = floatval($_POST['cajas']);
     $unidades      = floatval($_POST['unidades']);
     $unicaja       = floatval($_POST['unicaja']);
-    $stockSistema  = floatval($_POST['stock_sistema']); // siempre se envía calculado
+    $stockSistema  = floatval($_POST['stock_sistema']);
 
-    // Calcular stock físico y diferencia
     $stockFisico = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
     $diferencia  = $stockFisico - $stockSistema;
 
-    // Verificar si ya se contó hoy
-    $stmt = $mysqli->prepare("
-        SELECT id 
-        FROM conteoweb
-        WHERE CodCat=? AND NitEmpresa=? AND NroSucursal=? 
-          AND estado='A' AND DATE(fecha_conteo)=CURDATE()
-        LIMIT 1
-    ");
-    $stmt->bind_param("sss", $codCat, $nit, $sucursal);
-    $stmt->execute();
-    $stmt->store_result();
+    $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
+    $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
 
-    if ($stmt->num_rows > 0) {
-        // $mensaje = "⚠️ Esta categoría ya fue contada hoy";
-        $stmt->close();
-    } else {
-        $stmt->close();
-
-        // Insertar el conteo
-        $stmt = $mysqli->prepare("
-            INSERT INTO conteoweb
-            (CodCat, stock_sistema, stock_fisico, diferencia,
-             NitEmpresa, NroSucursal, usuario, estado)
-            VALUES (?,?,?,?,?,?,?,'A')
-        ");
-        $stmt->bind_param(
-            "sdddsss",
-            $codCat,
-            $stockSistema,
-            $stockFisico,
-            $diferencia,
-            $nit,
-            $sucursal,
-            $usuario
-        );
-
-        if ($stmt->execute()) {
-           // $mensaje = "✅ Conteo guardado correctamente";
-        } else {
-            $mensaje = "❌ Error al guardar el conteo: " . $stmt->error;
-        }
-
-        $stmt->close();
+    if ($stmt->execute()) {
+        $mensaje = "✅ Conteo guardado en $nombreSede";
+        $categoriaSel = ""; // Limpiar
     }
 }
 
 /* ============================================
-   CONTEOS DEL DÍA
+   HISTORIAL DEL DÍA
 ============================================ */
 $conteos = [];
-$res = $mysqli->query("
-    SELECT c.*, cat.Nombre,DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora
-    FROM conteoweb c
-    INNER JOIN categorias cat ON cat.CodCat=c.CodCat
-    WHERE 
-      -- c.NitEmpresa='$nit'
-      -- AND c.NroSucursal='$sucursal' AND
-       c.estado='A'
-      AND DATE(c.fecha_conteo)=CURDATE()
-    ORDER BY c.fecha_conteo DESC
-");
-while ($r = $res->fetch_assoc()) {
-    $conteos[] = $r;
-}
+$res = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE c.NitEmpresa=? AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
+$res->bind_param("s", $nitSesion);
+$res->execute();
+$resultConteos = $res->get_result();
+while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 ?>
 
-
 <!DOCTYPE html>
-<html lang=\"es\">
+<html lang="es">
 <head>
-<meta charset=\"utf-8\">
-<title>Conteo por Categoría</title>
-<style>
-    .select-categoria{
-    width:100%;
-    padding:14px;
-    font-size:18px;
-    border-radius:10px;
-    border:1px solid #cfd6e0;
-    background:#fff;
-}
-
-/* Más grande en móvil */
-@media(max-width:700px){
-    .select-categoria{
-        font-size:22px;
-        padding:16px;
-    }
-}
-
-.conteo-grande{
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: .5px;
-}
-
-input[name="cajas"], input[name="unidades"] {
-    width: 100%;          /* Ocupan todo el ancho disponible */
-    padding: 24px;        /* Más alto */
-    font-size: 26px;      /* Texto grande */
-    border-radius: 12px;  /* Bordes redondeados */
-    border: 2px solid #cfd6e0; /* Borde visible */
-    box-sizing: border-box;
-    transition: all 0.3s;
-}
-
-/* Cambio de color y sombra al enfocar */
-input[name="cajas"]:focus,
-input[name="unidades"]:focus {
-    border-color: #28a745;
-    outline: none;
-    box-shadow: 0 0 8px rgba(40,167,69,0.6);
-}
-
-/* Responsive en móvil */
-@media(max-width:700px){
-    input[name="cajas"], input[name="unidades"] {
-        padding: 28px;
-        font-size: 28px;
-    }
-}
-
-
-
-body{font-family:Segoe UI;background:#eef2f7}
-.card{max-width:1100px;margin:25px auto;background:#fff;padding:20px;border-radius:14px}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:8px;border-bottom:1px solid #e4e8f0}
-th{background:#f1f4f9}
-.btn-del{background:#dc3545;color:#fff;border:none;padding:6px 10px;border-radius:6px}
-.msg{background:#e7f3ff;padding:10px;border-radius:8px;margin-bottom:10px}
-.semaforo{width:14px;height:14px;border-radius:50%;display:inline-block}
-.verde{background:#28a745}
-.rojo{background:#dc3545}
-.amarillo{background:#ffc107}
-</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conteo - <?= $nombreSede ?></title>
+    <style>
+        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px;}
+        .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
+        .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; }
+        .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; }
+        .sede-btn.active { background:#2c3e50; color:#fff; }
+        .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:20px; cursor:pointer;}
+        .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
+        label{display:block; font-weight:bold; margin-bottom:5px; color:#444;}
+        input[type="number"] { width:100%; padding:15px; font-size:28px; border-radius:10px; border:2px solid #eee; text-align:center; box-sizing:border-box;}
+        input[type="number"]:focus{ border-color:#28a745; outline:none; background:#f9fff9;}
+        .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:22px; cursor:pointer; font-weight:bold; transition:0.2s;}
+        .btn-save:hover{ background:#218838; transform:scale(1.01); }
+        table{width:100%; border-collapse:collapse; margin-top:30px;}
+        th,td{padding:12px; border-bottom:1px solid #f0f0f0; text-align:left;}
+        th{background:#f8f9fa; color:#666; font-size:12px; text-transform:uppercase;}
+        .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
+        .verde{background:#28a745;} .rojo{background:#dc3545;} .amarillo{background:#ffc107;}
+        .btn-del{background:#ff4757; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer;}
+    </style>
 </head>
 <body>
 
 <div class="card">
-<h3>Conteo físico por categoría</h3>
+    <div class="sede-selector">
+        <span style="font-size:12px; font-weight:bold; color:#777;">📍 SEDE ACTUAL:</span>
+        <a href="?cambiar_nit=<?= NIT_CENTRAL ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
+        <a href="?cambiar_nit=<?= NIT_DRINKS ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
+    </div>
 
-<?php if($mensaje): ?><div class="msg"><?= $mensaje ?></div><?php endif; ?>
+    <h3>Inventario Físico: <?= $nombreSede ?></h3>
+    
+    <?php if($mensaje): ?>
+        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #28a745;">
+            <?= $mensaje ?>
+        </div>
+    <?php endif; ?>
 
-<form method="POST">
-<select name="categoria" class="select-categoria" onchange="this.form.submit()">
+    <form method="POST">
+        <label>Seleccionar Categoría:</label>
+        <select name="categoria" class="select-categoria" onchange="this.form.submit()">
+            <option value="">-- Buscar Categoría --</option>
+            <?php foreach($categorias as $c): 
+                $ya = in_array($c['CodCat'], $contados);
+            ?>
+            <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $ya?'disabled style="color:#ccc;"':'' ?>>
+                <?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $ya?' (YA CONTADA)':'' ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+    </form>
 
-<option value="">Seleccione categoría</option>
-<?php foreach($categorias as $c):
-    $ya = in_array($c['CodCat'], $contados);
-?>
-<option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $ya?'disabled':'' ?>>
-<?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $ya?' (YA CONTADA)':'' ?>
-</option>
-<?php endforeach; ?>
-</select>
-</form>
+    <?php if($categoriaSel): ?>
+        <div style="background:#f8f9fa; padding:20px; border-radius:12px; border:1px dashed #ccc;">
+            <?php if($AUT_VERSTOCK==='SI'): ?>
+                <p style="margin:0 0 15px 0; font-size:18px;">📋 Stock en Sistema: <strong><?= number_format($totalCategoria,2) ?></strong></p>
+            <?php endif; ?>
 
-<?php if($categoriaSel): ?>
-<?php if($AUT_VERSTOCK==='SI'): ?>
-    <p><b>Stock sistema:</b> <?= number_format($totalCategoria,3) ?></p>
-<?php endif; ?>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                <input type="hidden" name="CodCat" value="<?= $categoriaSel ?>">
+                <input type="hidden" name="unicaja" value="<?= $unicajaSel ?>">
+                <input type="hidden" name="stock_sistema" value="<?= $totalCategoria ?>">
 
-<form method="POST">
-<input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-<input type="hidden" name="CodCat" value="<?= $categoriaSel ?>">
-<input type="hidden" name="unicaja" value="<?= $unicajaSel ?>">
-<input type="hidden" name="stock_sistema" value="<?= $totalCategoria ?>">
+                <div class="grid">
+                    <div>
+                        <label>Cajas</label>
+                        <input type="number" step="0.001" name="cajas" placeholder="0" required autofocus>
+                    </div>
+                    <div>
+                        <label>Unidades</label>
+                        <input type="number" step="0.001" name="unidades" placeholder="0" required>
+                    </div>
+                </div>
+                <button type="submit" name="guardar_conteo" class="btn-save">REGISTRAR CONTEO</button>
+            </form>
+        </div>
+    <?php endif; ?>
 
-<div class="grid">
-<input type="number" step="0.001" name="cajas" placeholder="Cajas" required>
-<input type="number" step="0.001" name="unidades" placeholder="Unidades" required>
+    <?php if($conteos): ?>
+        <div style="margin-top:40px;">
+            <h4 style="margin-bottom:10px; color:#2c3e50; border-bottom:2px solid #eee; padding-bottom:5px;">Resumen de Hoy</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hora</th><th>Categoría</th><th>Físico</th><th>Estado</th>
+                        <?php if($AUT_CORREGIR==='SI'): ?><th>Dif</th><?php endif; ?>
+                        <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($conteos as $c): 
+                        $dif = (float)$c['diferencia'];
+                        $color = ($dif == 0) ? 'verde' : (($dif < 0) ? 'rojo' : 'amarillo');
+                    ?>
+                    <tr>
+                        <td style="color:#999; font-size:11px;"><?= $c['hora'] ?></td>
+                        <td><strong><?= $c['CodCat'] ?></strong></td>
+                        <td style="font-size:15px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
+                        <td align="center"><span class="semaforo <?= $color ?>"></span></td>
+                        <?php if($AUT_CORREGIR==='SI'): ?>
+                            <td style="color:<?= $dif<0?'#dc3545':'#28a745' ?>; font-weight:bold;">
+                                <?= ($dif > 0 ? '+': '') . number_format($dif,2) ?>
+                            </td>
+                        <?php endif; ?>
+                        <?php if($AUT_BORRAR==='SI'): ?>
+                        <td>
+                            <form method="POST" onsubmit="return confirm('¿Anular este conteo?')">
+                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
+                                <button name="borrar_conteo" class="btn-del">🗑</button>
+                            </form>
+                        </td>
+                        <?php endif; ?>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </div>
-<button name="guardar_conteo" 
-        style="font-size:24px; padding:16px 32px; border-radius:12px; background:#28a745; color:#fff; border:none; cursor:pointer;">
-    Guardar conteo
-</button>
-</form>
-<?php endif; ?>
-</div>
-
-<?php if($conteos): ?>
-<div class="card">
-    <div style="margin:15px 0">
-    <button type="button" onclick="location.reload()" style="font-size:16px;padding:8px 14px">
-        🔄 Refrescar
-    </button>
-</div>
-<h3>Conteos del día</h3>
-<table>
-<tr>
-<th>Fecha</th><th>Usuario</th><th>Categoría</th><th>Conteo</th><th>Semáforo</th>
-<?php if($AUT_CORREGIR==='SI'): ?> <th>Stock</th><th>Dif</th><?php endif; ?>
-<?php if($AUT_BORRAR ==='SI'): ?><th>Acción</th><?php endif; ?>
-</tr>
-
-<?php foreach($conteos as $c):
-$color = ($AUT_SEMAFORO==='SI')
-    ? (($c['diferencia'] < 0) ? 'rojo' : 'verde')
-    : 'amarillo';
-?>
-<tr>
-<td><?= $c['hora'] ?></td>
-<td><?= $c['usuario'] ?></td>
-<td class="conteo-grande"><?= $c['CodCat'].' - '.$c['Nombre'] ?></td>
-<td align="right" class="conteo-grande" ><?= number_format($c['stock_fisico'],3) ?></td>
-<td align="center"><span class="semaforo <?= $color ?>"></span></td>
-<?php if($AUT_CORREGIR==='SI'): ?>
-<td><?= number_format($c['stock_sistema'],3) ?></td>
-<td class="conteo-grande"><?= number_format($c['diferencia'],3) ?></td>
-<?php endif; ?>
-
-<?php if($AUT_BORRAR==='SI'): ?>
-<td>
-<form method="POST">
-<input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-<input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
-<button name="borrar_conteo" class="btn-del">🗑</button>
-</form>
-</td>
-<?php endif; ?>
-</tr>
-<?php endforeach; ?>
-</table>
-</div>
-<?php endif; ?>
 
 </body>
 </html>
