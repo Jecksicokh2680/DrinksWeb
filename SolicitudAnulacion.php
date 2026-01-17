@@ -9,7 +9,7 @@ require_once 'Conexion.php';
 $Usuario     = $_SESSION['Usuario']    ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
 $NroSucursal = $_SESSION['NroSucursal'] ?? '001';
-
+date_default_timezone_set('America/Bogota');
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
     header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
