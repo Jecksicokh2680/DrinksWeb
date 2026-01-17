@@ -4,7 +4,7 @@
 ============================================================ */
 $session_timeout  = 3600;
 $inactive_timeout = 1800;
-
+date_default_timezone_set('America/Bogota'); // Hora oficial Bogotá
 ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);
 
