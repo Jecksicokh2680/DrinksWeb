@@ -4,16 +4,16 @@ date_default_timezone_set('America/Bogota');
 require_once 'Conexion.php'; 
 
 /* ============================================================
-   ASIGNACIÓN DE VARIABLES DE SESIÓN (Basado en tus parámetros)
+   ASIGNACIÓN DE VARIABLES DE SESIÓN
 ============================================================ */
 $Usuario     = $_SESSION['Usuario']     ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa']  ?? 'SIN_NIT';
 $NroSucursal = $_SESSION['NroSucursal'] ?? '001';
 
-// Cambio de sede por parte del Gerente
+// Cambio de sede (Abierto para todos los usuarios)
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
-    header("Location: " . strtok($_SERVER["PHP_SELF"], '?'));
+    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
     exit;
 }
 
@@ -52,7 +52,7 @@ function VerificarAnulacion($NroDoc, $sede) {
 }
 
 /* ============================================================
-   PROCESAR ACCIONES (Grabar, Bodega, Gerencia)
+   PROCESAR ACCIONES
 ============================================================ */
 if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
@@ -68,30 +68,31 @@ if (isset($_POST['grabar'])) {
     $ft = date('Y-m-d H:i:s');
     $stmt->bind_param("ssssssdss", $fh, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $_POST['motivo'], $reemplazo);
     $stmt->execute();
-    header("Location: " . $_SERVER['PHP_SELF']); exit;
+    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?')); exit;
 }
 
 if (isset($_GET['accion']) && isset($_GET['factura'])) {
     $factTarget = $_GET['factura'];
     $fechaRef   = $_GET['f'] ?? date('Y-m-d');
     $ahora      = date('Y-m-d H:i:s');
+    $sedeAccion = $_GET['s'] ?? $NroSucursal; // Sede donde se originó la factura
     
     if ($_GET['accion'] == 'bodega' && Autorizacion($Usuario, '0004') === 'SI') {
         $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET JefeBodCheck='1', NitJefeBod=?, FH_JefeBodCheck=? WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-        $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $NroSucursal);
+        $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $sedeAccion);
         $stmt->execute();
     }
     
     if ($_GET['accion'] == 'gerencia' && Autorizacion($Usuario, '2010') === 'SI') {
-        if (VerificarAnulacion($factTarget, $NroSucursal) == 1) {
+        if (VerificarAnulacion($factTarget, $sedeAccion) == 1) {
             $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=? WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-            $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $NroSucursal);
+            $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $sedeAccion);
             $stmt->execute();
         } else {
             header("Location: ?error=no_anulado"); exit;
         }
     }
-    header("Location: " . $_SERVER['PHP_SELF']); exit;
+    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?')); exit;
 }
 
 // Datos para la vista
@@ -99,7 +100,7 @@ $dbSede = conectarPOS($NroSucursal);
 $fHoy   = date('Ymd');
 $esGerente = (Autorizacion($Usuario, '2010') === 'SI');
 $esBodega  = (Autorizacion($Usuario, '0004') === 'SI');
-$nombreSede = ($NroSucursal == '002') ? 'SEDE DRINKS' : 'SEDE CENTRAL';
+$nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
 $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fHoy' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fHoy' ORDER BY NUMERO DESC";
 $listaDocs = $dbSede->query($queryDocs);
@@ -111,25 +112,26 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Control de Anulaciones - <?= $nombreSede ?></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Anulaciones</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .table-xs { font-size: 0.75rem; }
-        .header-bar { background: linear-gradient(90deg, #212529 0%, #343a40 100%); color: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .header-bar { background: #1a1d20; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; border-bottom: 3px solid #0d6efd; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
-        .badge-wait { font-size: 0.65rem; color: #dc3545; font-weight: bold; display: block; margin-top: 2px; }
-        .search-box { max-width: 300px; }
+        .badge-sede { font-size: 0.7rem; padding: 4px 8px; }
+        .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; margin-top: 3px; }
+        .search-container { max-width: 350px; }
     </style>
 </head>
 <body class="bg-light">
-
-<div class="container-fluid px-4 py-3">
+<div class="container-fluid px-4 py-4">
 
     <?php if(isset($_GET['error'])): ?>
         <div class="alert alert-danger alert-dismissible fade show shadow-sm">
             <?php 
-                if($_GET['error'] == 'mismo_documento') echo "⚠️ El documento de reemplazo no puede ser igual al anulado.";
-                if($_GET['error'] == 'no_anulado') echo "⚠️ Primero debes anular el documento en el POS físico.";
+                if($_GET['error'] == 'mismo_documento') echo "⚠️ Los números de documento no pueden ser idénticos.";
+                if($_GET['error'] == 'no_anulado') echo "⚠️ El documento debe ser anulado primero en el sistema POS.";
             ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
@@ -137,99 +139,91 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 
     <div class="header-bar d-flex justify-content-between align-items-center shadow-sm">
         <div class="d-flex align-items-center">
-            <div class="header-info text-center">
-                <small class="text-secondary d-block">USUARIO</small>
-                <span class="fw-bold"><?= $Usuario ?></span>
-            </div>
-            <div class="header-info text-center">
-                <small class="text-secondary d-block">SUCURSAL ACTUAL</small>
-                <span class="badge bg-primary"><?= $nombreSede ?></span>
-            </div>
+            <div class="header-info"><small class="text-secondary d-block">USUARIO CONECTADO</small><span class="fw-bold text-info"><?= $Usuario ?></span></div>
+            <div class="header-info"><small class="text-secondary d-block">TRABAJANDO EN</small><span class="fw-bold"><?= $nombreSedeActual ?></span></div>
         </div>
-
-        <div class="d-flex align-items-center gap-3">
-            <?php if($esGerente): ?>
-                <div>
-                    <label class="small text-secondary d-block text-end">CAMBIAR SEDE:</label>
-                    <select class="form-select form-select-sm" onchange="location.href='?setSede='+this.value">
-                        <option value="001" <?= ($NroSucursal=='001')?'selected':'' ?>>CENTRAL</option>
-                        <option value="002" <?= ($NroSucursal=='002')?'selected':'' ?>>DRINKS</option>
-                    </select>
-                </div>
-            <?php endif; ?>
-            <button class="btn btn-outline-light btn-sm mt-3" onclick="location.reload()">🔄</button>
+        <div class="text-end">
+            <small class="text-secondary d-block">CAMBIAR DE SEDE</small>
+            <select class="form-select form-select-sm bg-dark text-white border-secondary" onchange="location.href='?setSede='+this.value">
+                <option value="001" <?= ($NroSucursal=='001')?'selected':'' ?>>001 - CENTRAL</option>
+                <option value="002" <?= ($NroSucursal=='002')?'selected':'' ?>>002 - DRINKS</option>
+            </select>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-white fw-bold">Nueva Solicitud de Anulación</div>
-        <div class="card-body">
-            <form method="post" id="formAnulacion">
-                <input type="hidden" name="FactAnular" id="FactAnular">
-                <input type="hidden" name="ValorAnular" id="ValorAnular">
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold">1. Documento a Anular</label>
-                        <select class="form-select form-select-sm select-search" id="selAnular" required>
-                            <option value="">-- Seleccione factura --</option>
-                            <?php foreach($docsArray as $d): ?>
-                                <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>">
-                                    <?= $d['NUMERO'] ?> | $<?= number_format($d['VALORTOTAL'],0) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold">2. Documento que Reemplaza</label>
-                        <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
-                            <option value="">-- Seleccione factura --</option>
-                            <?php foreach($docsArray as $d): ?>
-                                <option value="<?= $d['NUMERO'] ?>">
-                                    <?= $d['NUMERO'] ?> | $<?= number_format($d['VALORTOTAL'],0) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label small fw-bold">3. Motivo Detallado</label>
-                        <input type="text" name="motivo" class="form-control form-control-sm" required placeholder="Ej: Error en medio de pago">
-                    </div>
-                    <div class="col-md-2 align-self-end">
-                        <button type="submit" name="grabar" class="btn btn-dark btn-sm w-100 fw-bold">REGISTRAR</button>
-                    </div>
+    <div class="card p-3 shadow-sm border-0 mb-4">
+        <form method="post" id="formAnulacion">
+            <input type="hidden" name="FactAnular" id="FactAnular">
+            <input type="hidden" name="ValorAnular" id="ValorAnular">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="small fw-bold">Doc. a Anular (Sede <?= $nombreSedeActual ?>)</label>
+                    <select class="form-select form-select-sm" id="selAnular" required>
+                        <option value="">-- Seleccione --</option>
+                        <?php foreach($docsArray as $d): ?>
+                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>">
+                                <?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-            </form>
-        </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold">Doc. Reemplaza</label>
+                    <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
+                        <option value="">-- Seleccione --</option>
+                        <?php foreach($docsArray as $d): ?>
+                            <option value="<?= $d['NUMERO'] ?>">
+                                <?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="small fw-bold">Motivo</label>
+                    <input type="text" name="motivo" class="form-control form-control-sm" required placeholder="¿Por qué se anula?">
+                </div>
+                <div class="col-md-2 align-self-end">
+                    <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">GRABAR</button>
+                </div>
+            </div>
+        </form>
     </div>
 
     <div class="card shadow-sm border-0">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-            <span class="fw-bold text-uppercase">Solicitudes del Día - <?= $nombreSede ?></span>
-            <input type="text" id="tablaFiltro" class="form-control form-control-sm search-box" placeholder="🔍 Buscar por factura o motivo...">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold">LISTADO GLOBAL DE SOLICITUDES - HOY</h6>
+            <div class="search-container">
+                <input type="text" id="inputFiltro" class="form-control form-control-sm" placeholder="🔍 Buscar sede, factura o motivo...">
+            </div>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover table-xs align-middle text-center mb-0" id="tablaDatos">
-                <thead class="table-light">
+            <table class="table table-hover table-xs align-middle text-center mb-0" id="tablaPrincipal">
+                <thead class="table-dark">
                     <tr>
                         <th>HORA</th>
-                        <th>FACT. ANULAR</th>
+                        <th>SEDE</th>
+                        <th>DOC. ANULAR</th>
                         <th>VALOR</th>
-                        <th class="table-warning">FACT. REEMPLAZA</th>
+                        <th class="table-warning text-dark">DOC. REEMPLAZA</th>
                         <th>MOTIVO</th>
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody class="bg-white">
                     <?php
                     $fH = date('Y-m-d');
-                    $resH = $mysqli->query("SELECT * FROM solicitud_anulacion WHERE F_Creacion = '$fH' AND NroSucursal = '$NroSucursal' ORDER BY FH_CajeroCheck DESC");
+                    // Consulta todas las sedes para que la tabla sea informativa
+                    $resH = $mysqli->query("SELECT * FROM solicitud_anulacion WHERE F_Creacion = '$fH' ORDER BY FH_CajeroCheck DESC");
                     while ($r = $resH->fetch_assoc()): 
-                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $NroSucursal);
+                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
+                        $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
+                        $colorSede = ($r['NroSucursal'] == '002') ? 'bg-purple text-white' : 'bg-info text-dark';
                     ?>
                     <tr>
                         <td class="text-muted"><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
+                        <td><span class="badge badge-sede <?= ($r['NroSucursal']=='002')?'bg-dark':'bg-secondary' ?>"><?= $txtSede ?></span></td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
                         <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0) ?></td>
                         <td class="fw-bold text-primary"><?= $r['NroFactReemplaza'] ?></td>
@@ -237,17 +231,17 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <td>
                             <input class="form-check-input" type="checkbox" 
                                 <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : 
-                                    (($esBodega) ? 'onclick="confirmar(\'bodega\', \''.$r['NroFactAnular'].'\')"' : 'disabled') ?>>
+                                    (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['NroSucursal']}')\"" : 'disabled') ?>>
                         </td>
                         <td>
                             <?php if ($r['GerenteCheck'] == '1'): ?>
                                 <input class="form-check-input" type="checkbox" checked disabled>
                             <?php elseif ($esGerente && $anuladoPOS == 1): ?>
-                                <input class="form-check-input border-primary" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>')">
+                                <input class="form-check-input border-primary" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>')">
                             <?php else: ?>
                                 <input class="form-check-input" type="checkbox" disabled>
                                 <?php if($esGerente && $anuladoPOS == 0): ?>
-                                    <span class="badge-wait">PENDIENTE POS</span>
+                                    <span class="badge-wait">ESPERANDO POS</span>
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>
@@ -265,13 +259,12 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 </div>
 
 <script>
-    // Filtro de búsqueda en la tabla
-    document.getElementById('tablaFiltro').addEventListener('keyup', function() {
-        const value = this.value.toLowerCase();
-        const rows = document.querySelectorAll('#tablaDatos tbody tr');
-        
-        rows.forEach(row => {
-            row.style.display = row.innerText.toLowerCase().includes(value) ? '' : 'none';
+    // Filtro de búsqueda global
+    document.getElementById('inputFiltro').addEventListener('keyup', function() {
+        let texto = this.value.toLowerCase();
+        let filas = document.querySelectorAll('#tablaPrincipal tbody tr');
+        filas.forEach(fila => {
+            fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
         });
     });
 
@@ -283,26 +276,25 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
         document.getElementById('FactAnular').value = o.value;
         document.getElementById('ValorAnular').value = o.dataset.valor || '0';
         if (selReemplaza.value === o.value && o.value !== "") {
-            alert("⚠️ No puede ser el mismo documento.");
+            alert("⚠️ No pueden ser iguales.");
             this.value = "";
         }
     });
 
     selReemplaza.addEventListener('change', function() {
         if (this.value === selAnular.value && this.value !== "") {
-            alert("⚠️ No puede ser el mismo documento.");
+            alert("⚠️ No pueden ser iguales.");
             this.value = "";
         }
     });
 
-    function confirmar(tipo, fact) {
-        if (confirm(`¿Desea autorizar la solicitud de la factura ${fact}?`)) {
-            window.location.href = `?accion=${tipo}&factura=${fact}`;
+    function confirmar(tipo, fact, sede) {
+        if (confirm(`¿Autorizar ${tipo} para la factura ${fact} en sede ${sede}?`)) {
+            window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}`;
         } else {
             event.target.checked = false;
         }
     }
 </script>
-
 </body>
 </html>
