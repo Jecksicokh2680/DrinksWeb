@@ -95,9 +95,9 @@ if (!empty($_GET['cedula'])) {
         .bg-festivo { background-color: #ff00ff !important; color: white !important; font-weight: bold; }
         .bg-dia { background-color: #ffff00 !important; font-weight: bold; color: #000; }
         .bg-vacio { background-color: #00ff00; font-weight: bold; color: #000; }
+        .bg-bloqueado { background-color: #e9ecef !important; color: #adb5bd !important; }
         .input-cron { width: 38px; border: 1px solid #ddd; text-align: center; font-size: 0.75rem; padding: 2px; }
         .table-xs { font-size: 0.75rem; }
-        /* Estilo para que Select2 se vea como Bootstrap 5 */
         .select2-container--default .select2-selection--single { height: 38px; border: 1px solid #dee2e6; padding-top: 5px; }
     </style>
 </head>
@@ -120,7 +120,6 @@ if (!empty($_GET['cedula'])) {
                     <select name="cedula" id="buscar_colaborador" class="form-select border-primary shadow-sm">
                         <option value="">-- Buscar por Cédula o Nombre --</option>
                         <?php
-                        // Traer activos de local y cruzar nombres de central
                         $list = $mysqli->query("SELECT CedulaNit FROM colaborador WHERE NitEmpresa = '$NitEmpresa' AND estado = 'ACTIVO'");
                         while($row = $list->fetch_assoc()) {
                             $c_nit = $row['CedulaNit'];
@@ -174,8 +173,9 @@ if (!empty($_GET['cedula'])) {
                                     $fechaUnix = mktime(0, 0, 0, $mesActual, $i, $anioActual);
                                     $nomDia = $nombresDias[date('w', $fechaUnix)];
                                     $esFest = (date('w', $fechaUnix) == 0 || ($mesActual==1 && ($i==1 || $i==12)));
+                                    $es31 = ($i == 31);
                                 ?>
-                                <th class="<?= $esFest ? 'bg-festivo' : 'bg-dia' ?>"><?= str_pad($i, 2, "0", STR_PAD_LEFT) ?><br><?= $nomDia ?></th>
+                                <th class="<?= $es31 ? 'bg-bloqueado' : ($esFest ? 'bg-festivo' : 'bg-dia') ?>"><?= str_pad($i, 2, "0", STR_PAD_LEFT) ?><br><?= $nomDia ?></th>
                                 <?php endfor; ?>
                                 <th class="bg-dark text-white">CANT.</th>
                             </tr>
@@ -192,8 +192,12 @@ if (!empty($_GET['cedula'])) {
                             foreach($filas as $lbl => $dt): ?>
                             <tr>
                                 <td class="text-start ps-2 fw-bold"><?= $lbl ?></td>
-                                <?php for($i=$inicio; $i<=$fin; $i++): ?>
-                                    <td><input type="number" step="0.5" class="input-cron" name="cron[<?= $dt['code'] ?>][<?= $i ?>]" value="<?= $dt['init'] ?>"></td>
+                                <?php for($i=$inicio; $i<=$fin; $i++): 
+                                    $es31 = ($i == 31);
+                                ?>
+                                    <td class="<?= $es31 ? 'bg-bloqueado' : '' ?>">
+                                        <input type="number" step="0.5" class="input-cron" name="cron[<?= $dt['code'] ?>][<?= $i ?>]" value="<?= $es31 ? '' : $dt['init'] ?>" <?= $es31 ? 'disabled' : '' ?>>
+                                    </td>
                                 <?php endfor; ?>
                                 <td class="bg-light fw-bold" id="total_<?= $dt['code'] ?>">0</td>
                             </tr>
@@ -305,7 +309,6 @@ if (!empty($_GET['cedula'])) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// Inicializar Buscador Select2
 $(document).ready(function() {
     $('#buscar_colaborador').select2();
 });
@@ -336,7 +339,8 @@ function sumarCronograma() {
     const filas = { 'd_lab': 'inp_d_lab', 'r_noc': 'rn', 'ext': 'hed', 'h_df': 'dom', 'rn_df': 'rndf' };
     for (let key in filas) {
         let total = 0;
-        document.querySelectorAll(`input[name^="cron[${key}]"]`).forEach(i => total += parseFloat(i.value) || 0);
+        // Solo sumar inputs que no estén deshabilitados (excluyendo el día 31)
+        document.querySelectorAll(`input[name^="cron[${key}]"]:not(:disabled)`).forEach(i => total += parseFloat(i.value) || 0);
         let elT = document.getElementById(`total_${key}`); if(elT) elT.innerText = total;
         let elI = document.getElementById(filas[key]); if(elI) elI.value = total;
     }
