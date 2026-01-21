@@ -3,7 +3,7 @@
     CONFIGURACIÓN DE SESIÓN Y TIEMPO
 ============================================================ */
 $session_timeout  = 3600;
-$inactive_timeout = 1800;
+$inactive_timeout = 2400;
 date_default_timezone_set('America/Bogota');
 ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);

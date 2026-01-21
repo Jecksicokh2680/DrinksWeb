@@ -5,7 +5,7 @@ include 'ConnCentral.php';  // Base Central ($mysqliPos)
 
 $self = basename($_SERVER['PHP_SELF']);
 
-// 1. VARIABLES DE SESIÓN (Configuradas el 2026-01-15)
+// 1. VARIABLES DE SESIÓN
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? '';
 $Usuario     = $_SESSION['Usuario'] ?? '';
 $NroSucursal = $_SESSION['NroSucursal'] ?? '';
@@ -18,7 +18,7 @@ if (isset($_GET['eliminar'])) {
     exit();
 }
 
-// --- 3. LÓGICA DE GUARDADO (ACTUALIZA SI YA EXISTE) ---
+// --- 3. LÓGICA DE GUARDADO (INSERT O UPDATE) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     $cedula  = $mysqli->real_escape_string($_POST['CedulaNit']);
     $periodo = (date('j') <= 15 ? "1ra Quinc" : "2da Quinc") . " " . date('m-Y');
@@ -63,14 +63,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     exit();
 }
 
-// --- 4. CONSULTA DE COLABORADOR ---
+// --- 4. CONSULTA DE COLABORADOR SELECCIONADO ---
 $colaborador = null;
 $nombreCompletoForm = "";
 if (!empty($_GET['cedula'])) {
     $ced = $mysqli->real_escape_string($_GET['cedula']);
     $res = $mysqli->query("SELECT * FROM colaborador WHERE CedulaNit = '$ced' AND NitEmpresa = '$NitEmpresa' LIMIT 1");
     $colaborador = $res->fetch_assoc();
-    if($colaborador){
+    if($colaborador && $mysqliPos){
         $resNom = $mysqliPos->query("SELECT nombres, nombre2, apellidos, apellido2 FROM terceros WHERE nit = '$ced' LIMIT 1");
         if($t = $resNom->fetch_assoc()){
             $nombreCompletoForm = trim("{$t['nombres']} {$t['nombre2']} {$t['apellidos']} {$t['apellido2']}");
@@ -83,8 +83,9 @@ if (!empty($_GET['cedula'])) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Sincronización de Nómina 2026</title>
+    <title>Nómina 2026 - Centralizada</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
         body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
         .card-nomina { border-top: 5px solid #2c3e50; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
@@ -96,6 +97,8 @@ if (!empty($_GET['cedula'])) {
         .bg-vacio { background-color: #00ff00; font-weight: bold; color: #000; }
         .input-cron { width: 38px; border: 1px solid #ddd; text-align: center; font-size: 0.75rem; padding: 2px; }
         .table-xs { font-size: 0.75rem; }
+        /* Estilo para que Select2 se vea como Bootstrap 5 */
+        .select2-container--default .select2-selection--single { height: 38px; border: 1px solid #dee2e6; padding-top: 5px; }
     </style>
 </head>
 <body class="p-4">
@@ -103,22 +106,32 @@ if (!empty($_GET['cedula'])) {
 <div class="container" style="max-width: 1350px;">
     
     <?php if(isset($_GET['success'])): ?>
-        <div class="alert alert-success border-0 shadow-sm text-center fw-bold">✅ PROCESADO CORRECTAMENTE (INSERT/UPDATE)</div>
+        <div class="alert alert-success border-0 shadow-sm text-center fw-bold">✅ PROCESADO CORRECTAMENTE</div>
     <?php endif; ?>
 
     <div class="card mb-4 border-0 shadow-sm">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="fw-bold mb-0 text-secondary">LIQUIDACIÓN | <?= $Usuario ?> | SUCURSAL <?= $NroSucursal ?></h6>
-                <button type="button" class="btn btn-dark btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalProcesados">📂 HISTORIAL DE PAGOS</button>
+                <button type="button" class="btn btn-dark btn-sm fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalProcesados">📂 HISTORIAL Y TOTALES</button>
             </div>
             <form method="GET" action="<?= $self ?>" class="row g-2">
                 <div class="col-md-10">
-                    <select name="cedula" class="form-select border-primary shadow-sm">
-                        <option value="">-- Buscar colaborador para liquidar --</option>
+                    <select name="cedula" id="buscar_colaborador" class="form-select border-primary shadow-sm">
+                        <option value="">-- Buscar por Cédula o Nombre --</option>
                         <?php
+                        // Traer activos de local y cruzar nombres de central
                         $list = $mysqli->query("SELECT CedulaNit FROM colaborador WHERE NitEmpresa = '$NitEmpresa' AND estado = 'ACTIVO'");
-                        while($row = $list->fetch_assoc()) echo "<option value='{$row['CedulaNit']}' ".(($_GET['cedula']??'')==$row['CedulaNit']?'selected':'').">{$row['CedulaNit']}</option>";
+                        while($row = $list->fetch_assoc()) {
+                            $c_nit = $row['CedulaNit'];
+                            $nom_sel = "No sincronizado";
+                            if($mysqliPos){
+                                $qN = $mysqliPos->query("SELECT nombres, apellidos FROM terceros WHERE nit = '$c_nit' LIMIT 1");
+                                if($tN = $qN->fetch_assoc()) $nom_sel = trim("{$tN['nombres']} {$tN['apellidos']}");
+                            }
+                            $sel = (($_GET['cedula']??'')==$c_nit?'selected':'');
+                            echo "<option value='$c_nit' $sel>$c_nit - $nom_sel</option>";
+                        }
                         ?>
                     </select>
                 </div>
@@ -144,10 +157,10 @@ if (!empty($_GET['cedula'])) {
                 <div class="row mb-3">
                     <div class="col-md-8">
                         <h2 class="fw-bold text-dark mb-0"><?= $nombreCompletoForm ?></h2>
-                        <span class="text-muted fw-bold">NIT/CC: <?= $colaborador['CedulaNit'] ?></span>
+                        <span class="text-muted fw-bold">CC: <?= $colaborador['CedulaNit'] ?></span>
                     </div>
                     <div class="col-md-4 text-md-end">
-                        <label class="lbl-ley">Devengado Quincenal</label>
+                        <label class="lbl-ley">Básico Quincenal</label>
                         <h3 class="fw-bold text-primary mb-0">$<?= number_format($sueldo_q) ?></h3>
                     </div>
                 </div>
@@ -193,7 +206,7 @@ if (!empty($_GET['cedula'])) {
                     <div class="col-md-8 border-end">
                         <h6 class="text-success fw-bold">➕ DEVENGADOS</h6>
                         <div class="row g-2 mb-3">
-                            <div class="col-md-4"><label class="lbl-ley">Días Trabajados</label><input type="number" name="dias_laborados" id="inp_d_lab" class="form-control text-center fw-bold" readonly></div>
+                            <div class="col-md-4"><label class="lbl-ley">Días Lab</label><input type="number" name="dias_laborados" id="inp_d_lab" class="form-control text-center fw-bold" readonly></div>
                             <div class="col-md-4"><label class="lbl-ley">Básico</label><input type="number" name="basico" id="basico" class="form-control bg-light" value="<?= $sueldo_q ?>" readonly></div>
                             <div class="col-md-4"><label class="lbl-ley">Aux Transp</label><input type="number" name="aux_transp" id="aux_transp" class="form-control calc" value="124547"></div>
                         </div>
@@ -203,7 +216,6 @@ if (!empty($_GET['cedula'])) {
                             <div class="col-md-3"><label class="lbl-ley">DOM</label><input type="number" name="cant_dom" id="dom" class="form-control calc" value="0"></div>
                             <div class="col-md-3"><label class="lbl-ley">RNDF</label><input type="number" name="cant_rndf" id="rndf" class="form-control calc" value="0"></div>
                         </div>
-                        <input type="hidden" name="cant_hen" value="0">
                         <div class="mt-2"><label class="lbl-ley">Bonificaciones</label><input type="number" name="bonificaciones" id="bonos" class="form-control calc" value="0"></div>
                     </div>
                     <div class="col-md-4">
@@ -215,8 +227,8 @@ if (!empty($_GET['cedula'])) {
                 </div>
 
                 <div class="bg-resumen mt-4 d-flex justify-content-between align-items-center">
-                    <div><small class="text-uppercase opacity-75 fw-bold" style="font-size: 10px;">Neto a Pagar:</small><h1 id="txt_neto" class="fw-bold mb-0 text-info">$ 0</h1></div>
-                    <button type="submit" class="btn btn-light btn-lg fw-bold px-5">💾 GUARDAR/ACTUALIZAR PAGO</button>
+                    <div><small class="text-uppercase opacity-75 fw-bold" style="font-size: 10px;">Neto Quincenal:</small><h1 id="txt_neto" class="fw-bold mb-0 text-info">$ 0</h1></div>
+                    <button type="submit" class="btn btn-light btn-lg fw-bold px-5 shadow">💾 GUARDAR PAGO</button>
                 </div>
             </div>
         </form>
@@ -228,8 +240,8 @@ if (!empty($_GET['cedula'])) {
     <div class="modal-dialog modal-xl" style="max-width: 95%;">
         <div class="modal-content">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold">Historial Técnico de Nómina</h5>
-                <button onclick="exportTableToExcel('tblNomina', 'Nomina_Detallada')" class="btn btn-success btn-sm ms-3 fw-bold">📊 EXCEL</button>
+                <h5 class="modal-title fw-bold">Historial de Pagos Procesados</h5>
+                <button onclick="exportTableToExcel('tblNomina', 'Reporte_Nomina')" class="btn btn-success btn-sm ms-3 fw-bold">📊 EXCEL</button>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">
@@ -237,25 +249,50 @@ if (!empty($_GET['cedula'])) {
                     <table class="table table-hover table-xs align-middle mb-0" id="tblNomina">
                         <thead class="table-secondary">
                             <tr>
-                                <th class="ps-3">Identificación</th><th>Nombre</th><th>Periodo</th><th>Días</th><th>HED</th><th>RN</th><th>DOM</th><th>RNDF</th><th>Salud</th><th>Pens.</th><th>Dcto</th><th class="text-end fw-bold">Total</th><th>Acción</th>
+                                <th class="ps-3">Identificación</th><th>Nombre</th><th>Periodo</th><th>Días</th><th>HED</th><th>RN</th><th>DOM</th><th>RNDF</th>
+                                <th class="text-end">Salud</th><th class="text-end">Pens.</th><th class="text-end">Dcto</th><th class="text-end fw-bold">Total Neto</th><th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php
+                            $sumSalud = 0; $sumPens = 0; $sumDesc = 0; $sumTotal = 0;
                             $res_h = $mysqli->query("SELECT * FROM nomina_pagos WHERE NitEmpresa = '$NitEmpresa' ORDER BY id DESC");
                             while ($p = $res_h->fetch_assoc()) {
+                                $sumSalud += $p['salud']; $sumPens += $p['pension']; $sumDesc += $p['descuentos']; $sumTotal += $p['total_pagado'];
                                 $nit_p = $p['CedulaNit'];
-                                $qNom = $mysqliPos->query("SELECT nombres, nombre2, apellidos, apellido2 FROM terceros WHERE nit = '$nit_p' LIMIT 1");
-                                $nomH = ($tH = $qNom->fetch_assoc()) ? trim("{$tH['nombres']} {$tH['nombre2']} {$tH['apellidos']} {$tH['apellido2']}") : "CC: $nit_p";
-                                echo "<tr>
-                                    <td class='ps-3 fw-bold'>{$p['CedulaNit']}</td><td style='font-size: 10px;'>$nomH</td><td>{$p['periodo']}</td><td class='text-center'>{$p['dias_laborados']}</td>
-                                    <td class='text-center'>{$p['cant_hed']}</td><td class='text-center'>{$p['cant_rn']}</td><td class='text-center'>{$p['cant_dom']}</td><td class='text-center'>{$p['cant_rndf']}</td>
-                                    <td class='text-end'>$".number_format($p['salud'])."</td><td class='text-end'>$".number_format($p['pension'])."</td><td class='text-end'>$".number_format($p['descuentos'])."</td>
-                                    <td class='text-end fw-bold text-primary'>$".number_format($p['total_pagado'])."</td>
-                                    <td class='text-center'><a href='$self?eliminar={$p['id']}' class='btn btn-sm btn-outline-danger' onclick='return confirm(\"¿Borrar?\")'>🗑</a></td>
-                                </tr>";
-                            } ?>
+                                $nomH = "CC: $nit_p";
+                                if($mysqliPos){
+                                    $qH = $mysqliPos->query("SELECT nombres, apellidos FROM terceros WHERE nit = '$nit_p' LIMIT 1");
+                                    if($tH = $qH->fetch_assoc()) $nomH = trim("{$tH['nombres']} {$tH['apellidos']}");
+                                }
+                                ?>
+                                <tr>
+                                    <td class="ps-3 fw-bold"><?= $p['CedulaNit'] ?></td>
+                                    <td style="font-size: 10px;"><?= $nomH ?></td>
+                                    <td><?= $p['periodo'] ?></td>
+                                    <td class="text-center"><?= $p['dias_laborados'] ?></td>
+                                    <td class="text-center"><?= $p['cant_hed'] ?></td>
+                                    <td class="text-center"><?= $p['cant_rn'] ?></td>
+                                    <td class="text-center"><?= $p['cant_dom'] ?></td>
+                                    <td class="text-center"><?= $p['cant_rndf'] ?></td>
+                                    <td class="text-end">$<?= number_format($p['salud']) ?></td>
+                                    <td class="text-end">$<?= number_format($p['pension']) ?></td>
+                                    <td class="text-end">$<?= number_format($p['descuentos']) ?></td>
+                                    <td class="text-end fw-bold text-primary">$<?= number_format($p['total_pagado']) ?></td>
+                                    <td class="text-center"><a href="<?= $self ?>?eliminar=<?= $p['id'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Borrar?')">🗑</a></td>
+                                </tr>
+                            <?php } ?>
                         </tbody>
+                        <tfoot class="table-dark">
+                            <tr>
+                                <td colspan="8" class="text-end fw-bold text-uppercase ps-3">Totales:</td>
+                                <td class="text-end fw-bold text-warning">$<?= number_format($sumSalud) ?></td>
+                                <td class="text-end fw-bold text-warning">$<?= number_format($sumPens) ?></td>
+                                <td class="text-end fw-bold text-danger">$<?= number_format($sumDesc) ?></td>
+                                <td class="text-end fw-bold text-info">$<?= number_format($sumTotal) ?></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </div>
@@ -263,7 +300,16 @@ if (!empty($_GET['cedula'])) {
     </div>
 </div>
 
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
+// Inicializar Buscador Select2
+$(document).ready(function() {
+    $('#buscar_colaborador').select2();
+});
+
 function calcular() {
     if(!document.getElementById('basico')) return;
     const vH = parseFloat(document.getElementById('v_hora').value || 0);
@@ -274,9 +320,13 @@ function calcular() {
     let c_dom = (parseFloat(document.getElementById('dom').value)||0)*(vH*1.75);
     let c_rndf = (parseFloat(document.getElementById('rndf').value)||0)*(vH*2.10);
     let bonos = parseFloat(document.getElementById('bonos').value) || 0;
+    
     let ibc = basico + c_hed + c_rn + c_dom + c_rndf + bonos;
     let salud = Math.round(ibc * 0.04), pension = Math.round(ibc * 0.04);
-    document.getElementById('salud').value = salud; document.getElementById('pension').value = pension;
+    
+    document.getElementById('salud').value = salud; 
+    document.getElementById('pension').value = pension;
+    
     let neto = (ibc + auxT) - (salud + pension + (parseFloat(document.getElementById('desc').value) || 0));
     document.getElementById('txt_neto').innerText = "$" + Math.round(neto).toLocaleString('es-CO');
     document.getElementById('input_neto').value = Math.round(neto);
@@ -287,8 +337,8 @@ function sumarCronograma() {
     for (let key in filas) {
         let total = 0;
         document.querySelectorAll(`input[name^="cron[${key}]"]`).forEach(i => total += parseFloat(i.value) || 0);
-        document.getElementById(`total_${key}`).innerText = total;
-        document.getElementById(filas[key]).value = total;
+        let elT = document.getElementById(`total_${key}`); if(elT) elT.innerText = total;
+        let elI = document.getElementById(filas[key]); if(elI) elI.value = total;
     }
     calcular();
 }
@@ -309,6 +359,5 @@ document.addEventListener('input', e => {
 
 document.addEventListener('DOMContentLoaded', sumarCronograma);
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
