@@ -1,212 +1,151 @@
 <?php
-require_once("ConnCentral.php"); // POS ($mysqliPos) -> Stock real
-require_once("Conexion.php");    // ADM ($mysqli)    -> Log de conteos
+require_once("ConnCentral.php"); 
+require_once("ConnDrinks.php");  
+require_once("Conexion.php");    
+
 session_start();
+if (!isset($_SESSION['Usuario'])) die("Sesión no válida");
 
-// Variables de Sesión
-
-/* ============================================
-   VALIDAR SESIÓN
-============================================ */
-if (!isset($_SESSION['Usuario'])) {
-    die("Sesión no válida");
-}
-
-$usuario   = $_SESSION['Usuario'] ?? 'SISTEMA';
-$nit       = $_SESSION['NitEmpresa'] ?? '';
-$sucursal  = $_SESSION['NroSucursal'] ?? '';
-$idalmacen = 1; // ID del almacén que se está auditando (puedes dinamizarlo)
-date_default_timezone_set('America/Bogota');
-
-$mensaje   = "";
-
-/* ============================================
-   APLICAR AJUSTE Y GUARDAR MOVIMIENTO
-   Distribuyendo diferencia entre todos los productos
-============================================ */
+// 1. LÓGICA DE PROCESAMIENTO
 if (isset($_POST['accion']) && $_POST['accion'] === 'ajustar') {
-
     $idConteo = (int)$_POST['id_conteo'];
-
-    // 1️⃣ Traer el conteo
-    $stmt = $mysqli->prepare("
-        SELECT CodCat, diferencia
-        FROM conteoweb
-        WHERE id=? AND estado='A'
-    ");
+    
+    $stmt = $mysqli->prepare("SELECT CodCat, diferencia, NitEmpresa FROM conteoweb WHERE id=? AND estado='A'");
     $stmt->bind_param("i", $idConteo);
     $stmt->execute();
     $conteo = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if (!$conteo) {
-        // $mensaje = "❌ Conteo no válido o ya cerrado";
-    } else {
+    if ($conteo) {
+        $nitFila = trim($conteo['NitEmpresa']);
+        $CodCat = $conteo['CodCat'];
+        $diferenciaTotal = (float)$conteo['diferencia'];
 
-        $CodCat     = $conteo['CodCat'];
-        $diferencia = (float)$conteo['diferencia'];
+        $dbDestino = ($nitFila === '901724534-7') ? $mysqliDrinks : $mysqliCentral;
+        $nombreDestino = ($nitFila === '901724534-7') ? "DRINKS" : "CENTRAL";
 
-        // 2️⃣ Traer los SKUs de la categoría
         $skus = [];
-        $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=?");
-        $stmt->bind_param("s", $CodCat);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $skus[] = $row['Sku'];
-        $stmt->close();
+        $st = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=?");
+        $st->bind_param("s", $CodCat);
+        $st->execute();
+        $resSKU = $st->get_result();
+        while ($row = $resSKU->fetch_assoc()) $skus[] = $row['Sku'];
+        $st->close();
 
-        if (empty($skus)) {
-            $mensaje = "❌ Categoría sin productos";
-        } else {
-
-            // 3️⃣ Traer inventario POS de todos los SKUs
+        if (!empty($skus)) {
             $ph = implode(",", array_fill(0, count($skus), '?'));
-            $types = str_repeat("s", count($skus));
-
-            $sql = "
-                SELECT p.idproducto, p.barcode, i.cantidad
-                FROM productos p
-                INNER JOIN inventario i ON i.idproducto=p.idproducto
-                WHERE p.barcode IN ($ph) AND i.idalmacen=?
-            ";
-            $stmt = $mysqliPos->prepare($sql);
-            $params = array_merge($skus, [$idalmacen]);
-            $stmt->bind_param($types . "i", ...$params);
+            $sql = "SELECT p.idproducto, i.cantidad FROM productos p 
+                    INNER JOIN inventario i ON i.idproducto = p.idproducto 
+                    WHERE p.barcode IN ($ph) AND i.idalmacen = 1";
+            
+            $stmt = $dbDestino->prepare($sql);
+            $stmt->bind_param(str_repeat("s", count($skus)), ...$skus);
             $stmt->execute();
-            $res = $stmt->get_result();
+            $resProd = $stmt->get_result();
 
             $productos = [];
-            while ($r = $res->fetch_assoc()) $productos[] = $r;
+            while ($r = $resProd->fetch_assoc()) $productos[] = $r;
             $stmt->close();
 
-            if (empty($productos)) {
-                $mensaje = "❌ No se encontró inventario para los SKUs";
-            } else {
-
-                $numProductos = count($productos);
-                $difPorProducto = $diferencia / $numProductos;
-
-                foreach ($productos as $prod) {
-
-                    $idproducto = (int)$prod['idproducto'];
-                    $barcode    = $prod['barcode'];
-                    $antes      = (float)$prod['cantidad'];
-                    $despues    = $antes + $difPorProducto;
-
-                    // 4️⃣ Actualizar inventario
-                    $stmt = $mysqliPos->prepare("
-                        UPDATE inventario
-                        SET cantidad=?, localchange=1
-                        WHERE idproducto=? AND idalmacen=?
-                    ");
-                    $stmt->bind_param("dii", $despues, $idproducto, $idalmacen);
-                    $stmt->execute();
-                    $stmt->close();
-
-                    // 5️⃣ Guardar en inventario_movimientos
-                    $tipo = $difPorProducto >= 0 ? 'REM_ENT' : 'REM_SAL';
-                    $cant = abs($difPorProducto);
-                    $referencia = "Ajuste por conteo distribuido";
-
-                    $stmt = $mysqli->prepare("
-                        INSERT INTO inventario_movimientos
-                        (idproducto, barcode, tipo, cant, stock_antes, stock_despues, Nit, NroSucursal, usuario, referencia)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)
-                    ");
-                    $stmt->bind_param(
-                        "issdddsiss",
-                        $idproducto,
-                        $barcode,
-                        $tipo,
-                        $cant,
-                        $antes,
-                        $despues,
-                        $nit,
-                        $sucursal,
-                        $usuario,
-                        $referencia
-                    );
-                    $stmt->execute();
-                    $stmt->close();
+            if (!empty($productos)) {
+                $difPorUnidad = $diferenciaTotal / count($productos);
+                foreach ($productos as $p) {
+                    $nuevoStock = $p['cantidad'] + $difPorUnidad;
+                    $idp = $p['idproducto'];
+                    $updInv = $dbDestino->prepare("UPDATE inventario SET cantidad=?, localchange=1, syncweb=0, sincalmacenes='AJUSTE_WEB' WHERE idproducto=? AND idalmacen=1");
+                    $updInv->bind_param("di", $nuevoStock, $idp);
+                    $updInv->execute();
+                    $updInv->close();
+                    $dbDestino->query("UPDATE productos SET localchange=1, syncweb=0 WHERE idproducto=$idp");
                 }
-
-                // 6️⃣ Cerrar el conteo
-                $stmt = $mysqli->prepare("UPDATE conteoweb SET estado='C' WHERE id=?");
-                $stmt->bind_param("i", $idConteo);
-                $stmt->execute();
-                $stmt->close();
-
-                $mensaje = "✅ Inventario ajustado correctamente (diferencia distribuida entre {$numProductos} productos)";
+                $mysqli->query("UPDATE conteoweb SET estado='C' WHERE id=$idConteo");
+                $mensaje = "✅ Ajuste aplicado exitosamente.";
             }
         }
     }
 }
 
-/* ============================================
-   CONTEOS ACTIVOS
-============================================ */
-$res = $mysqli->query("
-    SELECT c.*, cat.Nombre
-    FROM conteoweb c
-    INNER JOIN categorias cat ON cat.CodCat=c.CodCat
-    WHERE c.estado='A' AND DATE(fecha_conteo)=CURDATE()
-    AND c.diferencia != 0
-    order by c.diferencia desc
-");
+// 2. VISTA DE DATOS (Diferencia distinta de cero)
+$res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat = c.CodCat WHERE c.estado = 'A' AND c.diferencia <> 0 ORDER BY c.id DESC");
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>Ajuste por Categoría</title>
-<style>
-body{font-family:Segoe UI;background:#eef2f7}
-.card{max-width:1000px;margin:20px auto;background:#fff;padding:20px;border-radius:12px}
-table{width:100%;border-collapse:collapse}
-th,td{padding:8px;border-bottom:1px solid #ddd;text-align:center}
-th{background:#f1f4f9}
-button{background:#198754;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer}
-.msg{margin-bottom:10px;padding:8px;border-radius:6px;background:#e7f3ff}
-.diferencia-neg{color:#dc3545;font-weight:bold;}
-</style>
+    <meta charset="UTF-8">
+    <title>Ajuste de Inventario</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
+        
+        /* Botón de refrescar */
+        .btn-refresh { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; transition: 0.3s; }
+        .btn-refresh:hover { background: #2980b9; transform: rotate(15deg); }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; background: #fafafa; padding: 12px; color: #666; font-size: 12px; border-bottom: 2px solid #eee; }
+        td { padding: 15px; border-bottom: 1px solid #f1f1f1; }
+        .btn-ajuste { background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .diff { font-weight: bold; }
+        .neg { color: #e74c3c; }
+        .pos { color: #27ae60; }
+    </style>
 </head>
 <body>
 
-<div class="card">
-<h3>AJUSTE AL INVENTARIO POR DISTRIBUCION</h3>
-<div class="card">
-    <div style="margin:15px 0">
-    <button type="button" onclick="location.reload()" style="font-size:16px;padding:8px 14px">
-        🔄 Refrescar
-    </button>
-</div>
-<?php if($mensaje): ?>
-<div class="msg"><?= $mensaje ?></div>
-<?php endif; ?>
+<div class="container">
+    <div class="header">
+        <h2 style="margin:0">📊 Ajustes de Inventario Pendientes</h2>
+        <button onclick="window.location.reload();" class="btn-refresh" title="Recargar datos">
+            🔄 Refrescar Lista
+        </button>
+    </div>
+    
+    <?php if(isset($mensaje)): ?>
+        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:8px; margin-bottom:20px;">
+            <?= $mensaje ?>
+        </div>
+    <?php endif; ?>
 
-<table>
-<tr>
-    <th>Categoría</th>
-    <th>Diferencia</th>
-    <th>Acción</th>
-</tr>
-<?php while($c = $res->fetch_assoc()): ?>
-<tr>
-    <td><?= $c['CodCat'].' - '.$c['Nombre'] ?></td>
-    <td align="right" class="<?= $c['diferencia']<0?'diferencia-neg':'' ?>">
-        <?= number_format($c['diferencia'],3) ?>
-    </td>
-    <td align="center">
-        <form method="POST"
-              onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').innerText='Ajustando...';">
-            <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
-            <input type="hidden" name="accion" value="ajustar">
-            <button type="submit">Ajustar</button>
-        </form>
-    </td>
-</tr>
-<?php endwhile; ?>
-</table>
+    <table>
+        <thead>
+            <tr>
+                <th>SEDE</th>
+                <th>CATEGORÍA</th>
+                <th style="text-align:right">SISTEMA</th>
+                <th style="text-align:right">FISICO</th>
+                <th style="text-align:center">DIFERENCIA</th>
+                <th style="text-align:center">ACCION</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if($res->num_rows > 0): ?>
+                <?php while($r = $res->fetch_assoc()): 
+                    $sede = ($r['NitEmpresa'] === '901724534-7') ? "DRINKS" : "CENTRAL";
+                ?>
+                <tr>
+                    <td><strong><?= $sede ?></strong></td>
+                    <td><?= $r['CodCat'] ?> - <?= $r['Nombre'] ?></td>
+                    <td style="text-align:right"><?= number_format($r['stock_sistema'], 2) ?></td>
+                    <td style="text-align:right"><?= number_format($r['stock_fisico'], 2) ?></td>
+                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < 0) ? 'neg' : 'pos' ?>">
+                        <?= ($r['diferencia'] > 0 ? '+' : '') . number_format($r['diferencia'], 2) ?>
+                    </td>
+                    <td style="text-align:center">
+                        <form method="POST">
+                            <input type="hidden" name="id_conteo" value="<?= $r['id'] ?>">
+                            <input type="hidden" name="accion" value="ajustar">
+                            <button type="submit" class="btn-ajuste" onclick="return confirm('¿Aplicar este ajuste?')">Ajustar</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <tr><td colspan="6" style="text-align:center; padding:30px; color:#999;">No hay diferencias pendientes.</td></tr>
+            <?php endif; ?>
+        </tbody>
+    </table>
 </div>
 
 </body>

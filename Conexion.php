@@ -7,7 +7,7 @@ $puerto  = 32768;
 
 $mysqli = new mysqli($host, $usuario, $pass, $db, $puerto);
 if ($mysqli->connect_error) {
-    $conn_error = "❌ La conexión a la base de datos (empresa001) falló: " . $mysqliPos->connect_error;
+    $conn_error = "❌ La conexión a la base de datos (empresa001) falló: " . $mysqli->connect_error;
    } else {
     // $mysqliPos->set_charset("utf8mb4");
 }
