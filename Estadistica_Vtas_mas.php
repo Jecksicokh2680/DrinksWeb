@@ -89,7 +89,7 @@ function obtenerProductosHoy($db){
     return array_values($out);
 }
 
-function obtenerTop($arr, $limite = 40){
+function obtenerTop($arr, $limite = 25){
     usort($arr, fn($a,$b)=>$b['total'] <=> $a['total']);
     return array_slice($arr, 0, $limite);
 }
@@ -153,7 +153,7 @@ if (!$accionManual) {
 
 <div class="container">
     <div class="header-flex">
-        <h2>🏆 Panel de Control: Top 40</h2>
+        <h2>🏆 Panel de Control: Top 25</h2>
         <div class="actions-group">
             <form method="POST" onsubmit="return confirm('¿Poner TODAS las categorías en 1?')">
                 <button type="submit" name="set_1" class="btn btn-green">🚀 ACTIVAR TODAS (SET 1)</button>
