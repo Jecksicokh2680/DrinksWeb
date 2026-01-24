@@ -250,6 +250,9 @@ body{
 <a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">
 Lo más Vendido
 </a>
+<a class="nav-link" href="Estadistica_Vtas_Cajero.php" target="contentFrame">
+Lo más Vendido por Cajero
+</a>
 </div>
 </div>
 </div>
