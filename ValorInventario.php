@@ -115,7 +115,7 @@ function guardarDia($mysqli, $fecha, $nit, $sucursal, $inv, $vd, $vm, $util){
     $stmt = $mysqli->prepare("
         INSERT INTO fechainventariofisico
         (fecha, nit_empresa, sucursal, valor_bodega, venta_dia, venta_mes, utilidad_mes)
-        VALUE (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             valor_bodega = VALUES(valor_bodega),
             venta_dia    = VALUES(venta_dia),
@@ -162,6 +162,9 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 .total{border:2px solid #0d6efd}
 .small{font-size:12px;color:#666}
 .line{border-top:1px solid #eee;margin:10px 0}
+.btn{padding:8px 14px;border-radius:8px;border:none;color:#fff;font-weight:600;cursor:pointer;margin:0 5px}
+.btn-primary{background:#0d6efd}
+.btn-success{background:#198754}
 </style>
 </head>
 
@@ -173,9 +176,8 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 </h2>
 
 <div style="text-align:center;margin:10px">
-<button onclick="abrirModal()" style="padding:8px 14px;border-radius:8px;border:none;background:#0d6efd;color:#fff;font-weight:600;cursor:pointer">
-📅 Ver Histórico
-</button>
+    <button onclick="abrirModal()" class="btn btn-primary">📅 Ver Histórico</button>
+    <button onclick="location.reload()" class="btn btn-success">🔄 Actualizar Consultas</button>
 </div>
 
 <div class="cards">
