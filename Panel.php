@@ -231,6 +231,7 @@ body{
 <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
 <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Empresas Productoras</a>
 <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
+<a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Categoria Producto</a>
 </div>
 </div>
 </div>
