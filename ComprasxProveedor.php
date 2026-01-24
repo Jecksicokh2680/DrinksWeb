@@ -44,7 +44,7 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Compras Gerenciales - Filtro Dinámico</title>
+    <title>Compras Gerenciales - Reporte Mensual</title>
     <style>
         body{ font-family:Segoe UI,Arial; margin:15px; background:#f4f6f8; font-size:14px; }
         .card{ background:#fff; padding:20px; border-radius:14px; box-shadow:0 6px 16px rgba(0,0,0,.10) }
@@ -53,20 +53,20 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
         select,button,input{ width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:14px; box-sizing: border-box; }
         button{ background:#0d6efd; color:#fff; font-weight:700; cursor:pointer }
         
-        /* Estilo para el buscador dinámico */
         .search-container { margin-bottom: 15px; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 5px solid #0d6efd; }
         .search-input { border: 2px solid #0d6efd !important; font-weight: bold; }
 
         .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd }
-        table{ border-collapse:collapse; width:100%; min-width:1100px; }
-        th,td{ border:1px solid #ddd; padding:8px; text-align:right; }
+        table{ border-collapse:collapse; width:100%; min-width:1200px; }
+        th,td{ border:1px solid #ddd; padding:8px; text-align:right; white-space:nowrap; }
         thead th{ position:sticky; top:0; background:#f1f3f5; font-weight:800; z-index: 20; }
         .badge{ padding:4px 8px; border-radius:10px; color:#fff; font-size:11px; }
         .central{background:#0d6efd} .drinks{background:#198754}
         .subtotal{ background:#f8f9fa; font-weight:800; }
         .total{ background:#e6fffa; font-weight:900; font-size:16px }
         .text-left{ text-align:left }
-        .no-result { display: none; text-align: center; padding: 20px; font-weight: bold; color: red; }
+        .porc-pos{color:#1b5e20;font-weight:800}
+        .porc-neg{color:#b71c1c;font-weight:800}
     </style>
 </head>
 <body>
@@ -75,14 +75,12 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
     <h2>📊 Compras Gerenciales por Mes</h2>
 
     <form method="GET" class="filters">
-        <div>
-            <label>Año</label>
+        <div><label>Año</label>
             <select name="Anio">
                 <?php for($i=date('Y'); $i>=2023; $i--) echo "<option value='$i' ".($AnioSel==$i?'selected':'').">$i</option>"; ?>
             </select>
         </div>
-        <div>
-            <label>Mes</label>
+        <div><label>Mes</label>
             <select name="Mes">
                 <?php 
                 $meses = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
@@ -90,16 +88,14 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                 ?>
             </select>
         </div>
-        <div>
-            <label>Sucursal</label>
+        <div><label>Sucursal</label>
             <select name="Sucursal">
                 <option value="AMBAS" <?=$Sucursal=='AMBAS'?'selected':''?>>Ambas</option>
                 <option value="CENTRAL" <?=$Sucursal=='CENTRAL'?'selected':''?>>Central</option>
                 <option value="DRINKS" <?=$Sucursal=='DRINKS'?'selected':''?>>Drinks</option>
             </select>
         </div>
-        <div>
-            <label>Proveedor</label>
+        <div><label>Proveedor</label>
             <select name="Proveedor">
                 <option value="">-- Todos los Proveedores --</option>
                 <?php
@@ -117,17 +113,12 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                 ?>
             </select>
         </div>
-        <div>
-            <label>&nbsp;</label>
-            <button type="submit">Cargar Datos</button>
-        </div>
+        <div><label>&nbsp;</label><button type="submit">Cargar Datos</button></div>
     </form>
-
-    <hr>
 
     <div class="search-container">
         <label>🔍 Filtro Rápido (Nombre o Sku):</label>
-        <input type="text" id="inputBusqueda" class="search-input" placeholder="Escribe el nombre del producto para filtrar la lista actual..." onkeyup="filtrarProductos()">
+        <input type="text" id="inputBusqueda" class="search-input" placeholder="Escriba aquí para filtrar..." onkeyup="filtrarProductos()">
     </div>
 
     <?php
@@ -141,8 +132,7 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
             return $out;
         }
 
-        $pvC=precioProm($mysqliCentral);
-        $pvD=precioProm($mysqliDrinks);
+        $pvC=precioProm($mysqliCentral); $pvD=precioProm($mysqliDrinks);
 
         function comprasMes($mysqli, $suc, $m, $a, $nitProv){
             $cond = $nitProv ? " AND T.NIT='$nitProv' " : "";
@@ -153,25 +143,20 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                 JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
                 JOIN DETCOMPRAS D ON D.idcompra=C.idcompra
                 JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
-                WHERE MONTH(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$m' 
-                  AND YEAR(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$a'
-                  AND C.ESTADO='0' $cond
-                ORDER BY prov, C.FECHA ASC
-            ");
+                WHERE MONTH(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$m' AND YEAR(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$a' AND C.ESTADO='0' $cond
+                ORDER BY prov, C.FECHA ASC");
         }
 
         $resultados = [];
-        if($Sucursal!='DRINKS') { $res = comprasMes($mysqliCentral, 'Central', $MesSel, $AnioSel, $ProveedorSel); while($row = $res->fetch_assoc()) $resultados[] = $row; }
-        if($Sucursal!='CENTRAL') { $res = comprasMes($mysqliDrinks, 'Drinks', $MesSel, $AnioSel, $ProveedorSel); while($row = $res->fetch_assoc()) $resultados[] = $row; }
+        if($Sucursal!='DRINKS') { $res=comprasMes($mysqliCentral,'Central',$MesSel,$AnioSel,$ProveedorSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
+        if($Sucursal!='CENTRAL') { $res=comprasMes($mysqliDrinks,'Drinks',$MesSel,$AnioSel,$ProveedorSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
 
         usort($resultados, function($a, $b) { return strcmp($a['prov'], $b['prov']); });
 
-        echo "<div class='table-container'>
-                <table id='tablaCompras'>
-                <thead><tr>
-                  <th>Suc</th><th>Fecha</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
-                  <th>Cant</th><th>Costo</th><th>Total</th>";
-        if($PuedeVerUtil) echo "<th>P.Venta</th><th>Util</th>";
+        echo "<div class='table-container'><table id='tablaCompras'><thead><tr>
+              <th>Suc</th><th>Fecha</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
+              <th>Cant</th><th>Costo</th><th>Total</th>";
+        if($PuedeVerUtil) echo "<th>P.Venta</th><th>Util</th><th>%</th>";
         echo "</tr></thead><tbody>";
 
         $provAnt=''; $subTotal=0; $granTotal=0;
@@ -183,18 +168,17 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
             $total=$costo*$cant;
             $pv = ($x['sucursal']=='Central') ? ($pvC[$x['Barcode']]??0) : ($pvD[$x['Barcode']]??0);
             $util = ($pv - $costo) * $cant;
+            $porc = $costo > 0 ? (($pv - $costo) / $costo) * 100 : 0;
 
             if($provAnt != '' && $provAnt != $x['prov']){
-                echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='2'></td>":"")."</tr>";
+                echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
                 $subTotal = 0;
             }
 
-            $subTotal += $total;
-            $granTotal += $total;
-            $provAnt = $x['prov'];
-
+            $subTotal += $total; $granTotal += $total; $provAnt = $x['prov'];
             $cls = $x['sucursal']=='Central' ? 'central' : 'drinks';
-            // Agregamos una clase 'item-row' para identificarlas en JS
+            $clsP = $porc >= 0 ? 'porc-pos' : 'porc-neg';
+
             echo "<tr class='item-row'>
                     <td><span class='badge $cls'>{$x['sucursal']}</span></td>
                     <td>{$x['FECHA']}</td>
@@ -205,14 +189,12 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                     <td>".number_format($cant,0)."</td>
                     <td>".fmoneda($costo)."</td>
                     <td>".fmoneda($total)."</td>";
-            if($PuedeVerUtil) echo "<td>".fmoneda($pv)."</td><td>".fmoneda($util)."</td>";
+            if($PuedeVerUtil) echo "<td>".fmoneda($pv)."</td><td>".fmoneda($util)."</td><td class='$clsP'>".number_format($porc,1)."%</td>";
             echo "</tr>";
         }
 
-        if($provAnt != ''){
-            echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='2'></td>":"")."</tr>";
-        }
-        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL GENERAL DEL MES</td><td>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='2'></td>":"")."</tr>";
+        if($provAnt != '') echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL GENERAL DEL MES</td><td>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
         echo "</tbody></table></div>";
     }
     ?>
@@ -225,7 +207,6 @@ function filtrarProductos() {
     let subtotales = document.getElementsByClassName("prov-row");
     let totalGeneral = document.getElementById("rowTotal");
 
-    // Si hay búsqueda, ocultamos totales y subtotales porque pierden sentido matemático al filtrar solo unos ítems
     if (input.length > 0) {
         for (let s of subtotales) s.style.display = "none";
         if(totalGeneral) totalGeneral.style.display = "none";
@@ -234,19 +215,12 @@ function filtrarProductos() {
         if(totalGeneral) totalGeneral.style.display = "";
     }
 
-    // Filtrar filas de productos
     for (let i = 0; i < filas.length; i++) {
-        let nombre = filas[i].getElementsByClassName("nombre-prod")[0].innerText.toLowerCase();
-        let barcode = filas[i].getElementsByClassName("barcode")[0].innerText.toLowerCase();
-        
-        if (nombre.includes(input) || barcode.includes(input)) {
-            filas[i].style.display = "";
-        } else {
-            filas[i].style.display = "none";
-        }
+        let nombre = filas[i].querySelector(".nombre-prod").innerText.toLowerCase();
+        let barcode = filas[i].querySelector(".barcode").innerText.toLowerCase();
+        filas[i].style.display = (nombre.includes(input) || barcode.includes(input)) ? "" : "none";
     }
 }
 </script>
-
 </body>
 </html>
