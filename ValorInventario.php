@@ -115,7 +115,7 @@ function guardarDia($mysqli, $fecha, $nit, $sucursal, $inv, $vd, $vm, $util){
     $stmt = $mysqli->prepare("
         INSERT INTO fechainventariofisico
         (fecha, nit_empresa, sucursal, valor_bodega, venta_dia, venta_mes, utilidad_mes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUE (?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             valor_bodega = VALUES(valor_bodega),
             venta_dia    = VALUES(venta_dia),
@@ -181,30 +181,33 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 <div class="cards">
 <div class="card">
 <h3>🏢 Central</h3>
-<div class="valor"><?= moneda($central['inventario']) ?></div>
+<div class="small">Venta Día</div>
+<div class="valor"><?= moneda($central['venta_dia']) ?></div>
 <div class="line"></div>
-Venta Día: <b><?= moneda($central['venta_dia']) ?></b><br>
 Venta Mes: <span class="orange"><?= moneda($central['venta_mes']) ?></span><br>
-Utilidad: <span class="green"><?= moneda($central['utilidad']) ?></span>
+Utilidad: <span class="green"><?= moneda($central['utilidad']) ?></span><br>
+Valor Bodega: <b><?= moneda($central['inventario']) ?></b>
 </div>
 
 <div class="card">
 <h3>🍹 Drinks</h3>
-<div class="valor"><?= moneda($drinks['inventario']) ?></div>
+<div class="small">Venta Día</div>
+<div class="valor"><?= moneda($drinks['venta_dia']) ?></div>
 <div class="line"></div>
-Venta Día: <b><?= moneda($drinks['venta_dia']) ?></b><br>
 Venta Mes: <span class="orange"><?= moneda($drinks['venta_mes']) ?></span><br>
-Utilidad: <span class="green"><?= moneda($drinks['utilidad']) ?></span>
+Utilidad: <span class="green"><?= moneda($drinks['utilidad']) ?></span><br>
+Valor Bodega: <b><?= moneda($drinks['inventario']) ?></b>
 </div>
 
 <div class="card total">
 <h3>📌 Total Consolidado</h3>
-<div class="valor"><?= moneda($totalInv) ?></div>
+<div class="small">Venta Total Día</div>
+<div class="valor"><?= moneda($totalVentaD) ?></div>
 <div class="line"></div>
-Venta Día: <b><?= moneda($totalVentaD) ?></b><br>
 Venta Mes: <span class="orange"><?= moneda($totalVentaM) ?></span><br>
 Utilidad: <span class="green"><?= moneda($totalUtil) ?></span><br>
-Utilidad %: <b><?= $totalPct ?>%</b>
+Utilidad %: <b><?= $totalPct ?>%</b><br>
+Total Bodega: <b><?= moneda($totalInv) ?></b>
 </div>
 </div>
 
@@ -224,7 +227,6 @@ Inventario Neto:<br>
 Fecha: <?= $fechaHoy ?> | Hora: <?= $horaHoy ?> (Bogotá)
 </p>
 
-<!-- ===== MODAL ===== -->
 <div id="modalHistorico" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5)">
 <div style="background:#fff;width:90%;max-width:900px;margin:50px auto;border-radius:12px;padding:20px;max-height:80%;overflow:auto">
 <h3 style="text-align:center">📊 Histórico</h3>
