@@ -28,6 +28,7 @@ if ($is_ajax && $_POST['action'] === 'get_orphans') {
     $resP = $dbProd->query($sql);
     
     $html = "";
+
     while($p = $resP->fetch_assoc()) {
         $html .= "<tr>
                     <td>{$p['barcode']}</td>
@@ -93,7 +94,7 @@ if ($is_ajax && $_POST['action'] === 'filter') {
     }
     
     // C. Consulta principal a productos
-    $stmt = $dbProd->prepare("SELECT barcode, descripcion FROM productos WHERE (barcode LIKE ? OR descripcion LIKE ? $extra_sql) LIMIT 40");
+    $stmt = $dbProd->prepare("SELECT barcode, descripcion FROM productos WHERE estado='1' AND (barcode LIKE ? OR descripcion LIKE ? $extra_sql) LIMIT 40");
     $stmt->bind_param("ss", $q, $q);
     $stmt->execute();
     $productos = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
