@@ -62,8 +62,18 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
         .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd; background:#fff; }
         table{ border-collapse:collapse; width:100%; min-width:1300px; }
         
-        /* TAMAÑO DE NÚMEROS EN LA TABLA */
+        /* TAMAÑO DE TEXTOS Y NÚMEROS EN LA TABLA */
         th,td{ border:1px solid #ddd; padding:12px 10px; text-align:right; white-space:nowrap; font-size: 15px; }
+        
+        /* Nombres de Productos resaltados */
+        .nombre-prod { 
+            font-size: 17px !important; 
+            font-weight: 600; 
+            color: #1a1a1a; 
+            white-space: normal !important; /* Permite que el nombre use más de una línea si es necesario */
+            min-width: 300px;
+        }
+
         .monto-grande { font-size: 17px; font-weight: 700; color: #2c3e50; }
         
         thead th{ position:sticky; top:0; background:#f8f9fa; font-weight:800; z-index: 20; font-size: 14px; color: #444; }
