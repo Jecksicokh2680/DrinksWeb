@@ -162,6 +162,7 @@ body{
 <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
 <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
 <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
+<a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
 <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
 <a class="nav-link" href="ListaFactDia.php" target="contentFrame">Facturas del Día</a>
 </div>
