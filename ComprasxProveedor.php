@@ -4,9 +4,9 @@ session_start();
 /* =========================
    CONEXIONES
 ========================= */
-require('Conexion.php');        // $mysqliWeb
-require('ConnCentral.php');     // $mysqliCentral
-require('ConnDrinks.php');      // $mysqliDrinks
+require('Conexion.php');        
+require('ConnCentral.php');     
+require('ConnDrinks.php');      
 
 /* =========================
    VALIDAR SESIÓN
@@ -48,25 +48,38 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
     <style>
         body{ font-family:Segoe UI,Arial; margin:15px; background:#f4f6f8; font-size:14px; }
         .card{ background:#fff; padding:20px; border-radius:14px; box-shadow:0 6px 16px rgba(0,0,0,.10) }
+        h2 { font-size: 28px; margin-bottom: 20px; color: #2c3e50; }
+        
         .filters{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:15px }
         label{ font-size:12px; font-weight:700; color:#555; }
-        select,button,input{ width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:14px; box-sizing: border-box; }
-        button{ background:#0d6efd; color:#fff; font-weight:700; cursor:pointer }
+        select,button,input{ width:100%; padding:12px; border-radius:8px; border:1px solid #ccc; font-size:15px; box-sizing: border-box; }
+        button{ background:#0d6efd; color:#fff; font-weight:700; cursor:pointer; transition: 0.3s; }
+        button:hover{ background:#0a58ca; }
         
-        .search-container { margin-bottom: 15px; background: #e9ecef; padding: 15px; border-radius: 8px; border-left: 5px solid #0d6efd; }
-        .search-input { border: 2px solid #0d6efd !important; font-weight: bold; }
+        .search-container { margin-bottom: 15px; background: #eef2f7; padding: 20px; border-radius: 10px; border-left: 6px solid #0d6efd; }
+        .search-input { border: 2px solid #0d6efd !important; font-size: 18px !important; font-weight: bold; }
 
-        .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd }
-        table{ border-collapse:collapse; width:100%; min-width:1200px; }
-        th,td{ border:1px solid #ddd; padding:8px; text-align:right; white-space:nowrap; }
-        thead th{ position:sticky; top:0; background:#f1f3f5; font-weight:800; z-index: 20; }
-        .badge{ padding:4px 8px; border-radius:10px; color:#fff; font-size:11px; }
+        .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd; background:#fff; }
+        table{ border-collapse:collapse; width:100%; min-width:1300px; }
+        
+        /* TAMAÑO DE NÚMEROS EN LA TABLA */
+        th,td{ border:1px solid #ddd; padding:12px 10px; text-align:right; white-space:nowrap; font-size: 15px; }
+        .monto-grande { font-size: 17px; font-weight: 700; color: #2c3e50; }
+        
+        thead th{ position:sticky; top:0; background:#f8f9fa; font-weight:800; z-index: 20; font-size: 14px; color: #444; }
+        .badge{ padding:5px 10px; border-radius:12px; color:#fff; font-size:12px; font-weight: bold; }
         .central{background:#0d6efd} .drinks{background:#198754}
-        .subtotal{ background:#f8f9fa; font-weight:800; }
-        .total{ background:#e6fffa; font-weight:900; font-size:16px }
+        
+        /* ESTILOS DE FILAS ESPECIALES */
+        .subtotal{ background:#f1f8ff; font-weight:800; }
+        .subtotal td { font-size: 18px; color: #0d6efd; }
+        
+        .total{ background:#d1fae5; font-weight:900; }
+        .total td { font-size: 22px; color: #065f46; padding: 20px 10px; }
+        
         .text-left{ text-align:left }
-        .porc-pos{color:#1b5e20;font-weight:800}
-        .porc-neg{color:#b71c1c;font-weight:800}
+        .porc-pos{color:#1b5e20; font-weight:800; font-size: 16px; }
+        .porc-neg{color:#b71c1c; font-weight:800; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -113,12 +126,12 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                 ?>
             </select>
         </div>
-        <div><label>&nbsp;</label><button type="submit">Cargar Datos</button></div>
+        <div><label>&nbsp;</label><button type="submit">Cargar Reporte</button></div>
     </form>
 
     <div class="search-container">
-        <label>🔍 Filtro Rápido (Nombre o Sku):</label>
-        <input type="text" id="inputBusqueda" class="search-input" placeholder="Escriba aquí para filtrar..." onkeyup="filtrarProductos()">
+        <label>🔍 Filtro Dinámico de Productos (Nombre o Sku):</label>
+        <input type="text" id="inputBusqueda" class="search-input" placeholder="Comience a escribir el nombre del producto..." onkeyup="filtrarProductos()">
     </div>
 
     <?php
@@ -155,8 +168,8 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
 
         echo "<div class='table-container'><table id='tablaCompras'><thead><tr>
               <th>Suc</th><th>Fecha</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
-              <th>Cant</th><th>Costo</th><th>Total</th>";
-        if($PuedeVerUtil) echo "<th>P.Venta</th><th>Util</th><th>%</th>";
+              <th>Cant</th><th>Costo</th><th>Total Compra</th>";
+        if($PuedeVerUtil) echo "<th>P.Venta</th><th>Utilidad</th><th>%</th>";
         echo "</tr></thead><tbody>";
 
         $provAnt=''; $subTotal=0; $granTotal=0;
@@ -171,7 +184,7 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
             $porc = $costo > 0 ? (($pv - $costo) / $costo) * 100 : 0;
 
             if($provAnt != '' && $provAnt != $x['prov']){
-                echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+                echo "<tr class='subtotal prov-row'><td colspan='8'>SUBTOTAL: $provAnt</td><td class='monto-grande'>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
                 $subTotal = 0;
             }
 
@@ -186,15 +199,15 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                     <td class='text-left'>{$x['prov']}</td>
                     <td class='text-left barcode'>{$x['Barcode']}</td>
                     <td class='text-left nombre-prod'>{$x['descripcion']}</td>
-                    <td>".number_format($cant,0)."</td>
-                    <td>".fmoneda($costo)."</td>
-                    <td>".fmoneda($total)."</td>";
-            if($PuedeVerUtil) echo "<td>".fmoneda($pv)."</td><td>".fmoneda($util)."</td><td class='$clsP'>".number_format($porc,1)."%</td>";
+                    <td class='monto-grande'>".number_format($cant,0)."</td>
+                    <td class='monto-grande'>".fmoneda($costo)."</td>
+                    <td class='monto-grande' style='color:#0d6efd;'>".fmoneda($total)."</td>";
+            if($PuedeVerUtil) echo "<td class='monto-grande'>".fmoneda($pv)."</td><td class='monto-grande'>".fmoneda($util)."</td><td class='$clsP'>".number_format($porc,1)."%</td>";
             echo "</tr>";
         }
 
-        if($provAnt != '') echo "<tr class='subtotal prov-row'><td colspan='8'>Subtotal $provAnt</td><td>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
-        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL GENERAL DEL MES</td><td>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+        if($provAnt != '') echo "<tr class='subtotal prov-row'><td colspan='8'>SUBTOTAL: $provAnt</td><td class='monto-grande'>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL CONSOLIDADO MES</td><td class='monto-grande'>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
         echo "</tbody></table></div>";
     }
     ?>
