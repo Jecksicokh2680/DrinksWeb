@@ -177,7 +177,7 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 
 <div style="text-align:center;margin:10px">
     <button onclick="abrirModal()" class="btn btn-primary">📅 Ver Histórico</button>
-    <button onclick="location.reload()" class="btn btn-success">🔄 Actualizar Consultas</button>
+    <button onclick="location.reload()" class="btn btn-success">🔄 Refrescar</button>
 </div>
 
 <div class="cards">
