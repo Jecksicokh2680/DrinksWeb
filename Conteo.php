@@ -39,10 +39,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
         $ph = implode(',', array_fill(0, count($skus), '?'));
         $tp = str_repeat('s', count($skus));
         
-        $sql = "SELECT p.barcode, p.descripcion,'***'
-       -- -- , IFNULL(SUM(i.cantidad),0) as stock 
+        $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as stock 
                 FROM productos p 
-        --         LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1 
+                LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1 
                 WHERE p.barcode IN ($ph) and p.estado='1'
                 GROUP BY p.barcode ORDER BY p.descripcion ASC";
         
