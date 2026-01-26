@@ -165,6 +165,9 @@ body{
 <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
 <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
 <a class="nav-link" href="ListaFactDia.php" target="contentFrame">Facturas del Día</a>
+<a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
+<a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
+<a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
 </div>
 </div>
 </div>
@@ -199,12 +202,6 @@ body{
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminCtrl">
 📈 Control
 </button>
-<div id="adminCtrl" class="accordion-collapse collapse">
-<div class="accordion-body">
-<a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
-<a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
-<a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
-</div>
 </div>
 </div>
 
