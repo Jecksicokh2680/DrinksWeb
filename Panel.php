@@ -199,13 +199,6 @@ body{
 </div>
 
 <div class="accordion-item">
-<button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminCtrl">
-📈 Control
-</button>
-</div>
-</div>
-
-<div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminNomina">
 💼 Nómina
 </button>
