@@ -146,7 +146,7 @@ if($UsuarioFact !== ''){
 function money($v){ return number_format((float)$v, 0, ',', '.'); }
 
 // Lógica de Saldo Corregida: Lo que entró menos lo que salió (Egresos y Transferencias)
-$saldo_efectivo = $totalVentas - $totalEgresos - $totalTransfer;
+$saldo_efectivo =($totalEgresos - $totalTransfer)-$totalVentas;
 $saldo_color = ($saldo_efectivo >= 0) ? '#0abf53' : '#d93025';
 ?>
 
