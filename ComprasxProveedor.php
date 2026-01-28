@@ -39,6 +39,7 @@ $MesSel = $_GET['Mes'] ?? date('m');
 $AnioSel = $_GET['Anio'] ?? date('Y');
 $Sucursal = $_GET['Sucursal'] ?? 'AMBAS';
 $ProveedorSel = $_GET['Proveedor'] ?? '';
+$ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -62,15 +63,13 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
         .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd; background:#fff; }
         table{ border-collapse:collapse; width:100%; min-width:1300px; }
         
-        /* TAMAÑO DE TEXTOS Y NÚMEROS EN LA TABLA */
         th,td{ border:1px solid #ddd; padding:12px 10px; text-align:right; white-space:nowrap; font-size: 15px; }
         
-        /* Nombres de Productos resaltados */
         .nombre-prod { 
             font-size: 17px !important; 
             font-weight: 600; 
             color: #1a1a1a; 
-            white-space: normal !important; /* Permite que el nombre use más de una línea si es necesario */
+            white-space: normal !important; 
             min-width: 300px;
         }
 
@@ -80,7 +79,6 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
         .badge{ padding:5px 10px; border-radius:12px; color:#fff; font-size:12px; font-weight: bold; }
         .central{background:#0d6efd} .drinks{background:#198754}
         
-        /* ESTILOS DE FILAS ESPECIALES */
         .subtotal{ background:#f1f8ff; font-weight:800; }
         .subtotal td { font-size: 18px; color: #0d6efd; }
         
@@ -136,12 +134,15 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
                 ?>
             </select>
         </div>
+        <div><label>Filtro Producto (SQL)</label>
+            <input type="text" name="FiltroProd" value="<?=htmlspecialchars($ProductoSel)?>" placeholder="Sku o Nombre...">
+        </div>
         <div><label>&nbsp;</label><button type="submit">Cargar Reporte</button></div>
     </form>
 
     <div class="search-container">
-        <label>🔍 Filtro Dinámico de Productos (Nombre o Sku):</label>
-        <input type="text" id="inputBusqueda" class="search-input" placeholder="Comience a escribir el nombre del producto..." onkeyup="filtrarProductos()">
+        <label>🔍 Filtro Dinámico en Pantalla (Rápido):</label>
+        <input type="text" id="inputBusqueda" class="search-input" placeholder="Filtrar resultados cargados..." onkeyup="filtrarProductos()">
     </div>
 
     <?php
@@ -157,11 +158,17 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
 
         $pvC=precioProm($mysqliCentral); $pvD=precioProm($mysqliDrinks);
 
-        function comprasMes($mysqli, $suc, $m, $a, $nitProv){
+        function comprasMes($mysqli, $suc, $m, $a, $nitProv, $busqProd){
             $cond = $nitProv ? " AND T.NIT='$nitProv' " : "";
+            // AGREGAR FILTRO SQL PARA PRODUCTO
+            if($busqProd != ""){
+                $busqProd = $mysqli->real_escape_string($busqProd);
+                $cond .= " AND (P.descripcion LIKE '%$busqProd%' OR P.Barcode LIKE '%$busqProd%') ";
+            }
+
             return $mysqli->query("
                 SELECT '$suc' sucursal, C.FECHA, C.idcompra, CONCAT(T.nombres,' ',T.apellidos) prov,
-                       P.Barcode, P.descripcion, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni
+                        P.Barcode, P.descripcion, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni
                 FROM compras C
                 JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
                 JOIN DETCOMPRAS D ON D.idcompra=C.idcompra
@@ -171,8 +178,8 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
         }
 
         $resultados = [];
-        if($Sucursal!='DRINKS') { $res=comprasMes($mysqliCentral,'Central',$MesSel,$AnioSel,$ProveedorSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
-        if($Sucursal!='CENTRAL') { $res=comprasMes($mysqliDrinks,'Drinks',$MesSel,$AnioSel,$ProveedorSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
+        if($Sucursal!='DRINKS') { $res=comprasMes($mysqliCentral,'Central',$MesSel,$AnioSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
+        if($Sucursal!='CENTRAL') { $res=comprasMes($mysqliDrinks,'Drinks',$MesSel,$AnioSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
 
         usort($resultados, function($a, $b) { return strcmp($a['prov'], $b['prov']); });
 
@@ -224,6 +231,7 @@ $ProveedorSel = $_GET['Proveedor'] ?? '';
 </div>
 
 <script>
+// Filtro de JavaScript (para búsqueda rápida en los datos ya cargados)
 function filtrarProductos() {
     let input = document.getElementById("inputBusqueda").value.toLowerCase();
     let filas = document.getElementsByClassName("item-row");

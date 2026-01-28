@@ -1,6 +1,6 @@
 <?php
 /* ============================================================
-    CONFIGURACIÓN DE SESIÓN Y TIEMPO
+    CONFIGURACIÓN DE SESIÓN Y CONEXIONES
 ============================================================ */
 $session_timeout  = 3600;
 $inactive_timeout = 2400;
@@ -14,14 +14,7 @@ session_regenerate_id(true);
 // --- Carga de Conexiones ---
 require("ConnCentral.php"); // Provee $mysqliCentral
 require("Conexion.php");    // Provee $mysqli (para autorizaciones)
-
-// --- Configuración Sede Drinks (AWS) ---
-$hostD    = "52.15.192.69";
-$usuarioD = "aws_user";
-$passD    = "root";
-$dbD      = "empresa001";
-$puertoD  = 3308;
-$mysqliDrinks = new mysqli($hostD, $usuarioD, $passD, $dbD, $puertoD);
+require("ConnDrinks.php");  // Provee $mysqliDrinks (AWS)
 
 /* ============================================================
     SELECCIÓN DE SEDE ACTIVA
@@ -89,9 +82,7 @@ if($permiso9999 !== 'SI') {
 $fecha_esc       = $mysqliActiva->real_escape_string($fecha);
 $UsuarioFact_esc = $mysqliActiva->real_escape_string($UsuarioFact);
 
-/* ============================================================
-    QUERY ACTUALIZADA: FACTURADORES (SIN DEVOLUCIONES)
-============================================================ */
+// Query de Facturadores
 $qryFacturadores = "
 SELECT DISTINCT FACTURADOR_NIT, FACTURADOR FROM (
     SELECT T1.NIT AS FACTURADOR_NIT, CONCAT_WS(' ', T1.nombres, T1.nombre2, T1.apellidos, T1.apellido2) AS FACTURADOR
@@ -108,13 +99,12 @@ SELECT DISTINCT FACTURADOR_NIT, FACTURADOR FROM (
 ) X
 ORDER BY FACTURADOR;
 ";
-
 $factList = $mysqliActiva->query($qryFacturadores);
 
 $totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0;
 
 if($UsuarioFact !== ''){
-    // Ventas (Aplicando la misma lógica de exclusión de devoluciones para el total)
+    // Ventas
     $qryV = "SELECT SUM(T) AS TOTAL, NOM FROM (
         SELECT (DF.CANTIDAD*DF.VALORPROD) AS T, CONCAT_WS(' ', T1.nombres, T1.nombre2, T1.apellidos, T1.apellido2) AS NOM 
         FROM FACTURAS F 
@@ -138,7 +128,7 @@ if($UsuarioFact !== ''){
     }
 
     // Egresos
-    $qryE = "SELECT S1.IDSALIDA, MOTIVO, VALOR FROM SALIDASCAJA S1 
+    $qryE = "SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
              INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO 
              INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
              WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$UsuarioFact_esc'";
@@ -148,15 +138,16 @@ if($UsuarioFact !== ''){
         $resEgresos->data_seek(0); 
     }
 
-    // Transferencias (Base Local)
+    // Transferencias (Base Local siempre)
     $resT = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$UsuarioFact_esc'");
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
 }
 
 function money($v){ return number_format((float)$v, 0, ',', '.'); }
-// $saldo = $totalVentas - $totalEgresos - $totalTransfer;
-$saldo = ( $totalEgresos + $totalTransfer)- $totalVentas ;
-$saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
+
+// Lógica de Saldo Corregida: Lo que entró menos lo que salió (Egresos y Transferencias)
+$saldo_efectivo = $totalVentas - $totalEgresos - $totalTransfer;
+$saldo_color = ($saldo_efectivo >= 0) ? '#0abf53' : '#d93025';
 ?>
 
 <!DOCTYPE html>
@@ -174,6 +165,7 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
         .input-edit{width:100%; padding:5px; border:1px solid #ccc; border-radius:4px;}
         .btn-save{background:#0b63a3; color:#fff; border:none; padding:5px 8px; border-radius:4px; cursor:pointer;}
         .badge-sede{ background: #0b63a3; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em;}
+        .text-end{ text-align: right; }
         @media print { .no-print { display: none; } }
     </style>
     <script>
@@ -181,7 +173,11 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
             const mot=encodeURIComponent(document.getElementById('motivo_'+id).value);
             const val=encodeURIComponent(document.getElementById('valor_'+id).value);
             if(!confirm('¿Guardar cambios?')) return;
-            fetch('update_egreso.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+id+'&motivo='+mot+'&valor='+val+'&sede=<?=$sede_actual?>'})
+            fetch('update_egreso.php',{
+                method:'POST',
+                headers:{'Content-Type':'application/x-www-form-urlencoded'},
+                body:'id='+id+'&motivo='+mot+'&valor='+val+'&sede=<?=$sede_actual?>'
+            })
             .then(r=>r.text()).then(t=>{alert(t); location.reload();});
         }
     </script>
@@ -201,9 +197,9 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
         Facturador: 
         <select name="nit">
             <option value="">-- Seleccione --</option>
-            <?php $factList->data_seek(0); while($f=$factList->fetch_assoc()): ?>
+            <?php if($factList): $factList->data_seek(0); while($f=$factList->fetch_assoc()): ?>
                 <option value="<?=$f['FACTURADOR_NIT']?>" <?=($f['FACTURADOR_NIT']===$UsuarioFact)?'selected':''?>><?=$f['FACTURADOR_NIT']." - ".$f['FACTURADOR']?></option>
-            <?php endwhile; ?>
+            <?php endwhile; endif; ?>
         </select>
         <button class="button" type="submit">Consultar</button>
     </form>
@@ -214,11 +210,11 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
     <h3>💰 Ventas - <?=htmlspecialchars($nombreCompleto)?> <span class="badge-sede"><?=$nombre_sede_display?></span></h3>
     <?php if($permiso9999==='SI'): ?>
         <table class="table">
-            <tr><th>NIT</th><th>Nombre</th><th>Total</th></tr>
+            <tr><th>NIT</th><th>Nombre</th><th class="text-end">Total</th></tr>
             <tr>
                 <td><?=$UsuarioFact?></td>
                 <td><?=htmlspecialchars($nombreCompleto)?></td>
-                <td><b>$<?=money($totalVentas)?></b></td>
+                <td class="text-end"><b>$<?=money($totalVentas)?></b></td>
             </tr>
         </table>
     <?php else: ?>
@@ -234,12 +230,10 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
         </thead>
         <tbody>
             <?php 
-            $subtotalEgresos = 0; // Variable para sumar en el bucle
             if($resEgresos && $resEgresos->num_rows > 0): 
                 while($eg = $resEgresos->fetch_assoc()): 
                     $id = $eg['IDSALIDA'];
-                    $valorEgreso = (float)$eg['VALOR'];
-                    $subtotalEgresos += $valorEgreso;
+                    $vEg = (float)$eg['VALOR'];
             ?>
                 <tr>
                     <td><?=$id?></td>
@@ -250,8 +244,8 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
                     </td>
                     <td class="text-end">
                         <?php if($permiso1700==='SI'): ?>
-                            <input id="valor_<?=$id?>" class="input-edit text-end" type="number" value="<?=$valorEgreso?>">
-                        <?php else: echo "$".money($valorEgreso); endif; ?>
+                            <input id="valor_<?=$id?>" class="input-edit text-end" type="number" value="<?=$vEg?>">
+                        <?php else: echo "$".money($vEg); endif; ?>
                     </td>
                     <td>
                         <?php if($permiso1700==='SI'): ?>
@@ -263,17 +257,9 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
                 <tr><td colspan="4" style="text-align:center; color: #999;">No hay egresos registrados</td></tr>
             <?php endif; ?>
         </tbody>
-        <?php if($subtotalEgresos > 0): ?>
-        <tfoot style="background: #f9f9f9; font-weight: bold;">
-            <tr>
-                <td colspan="2" class="text-end">TOTAL EGRESOS:</td>
-                <td class="text-end" style="color: #d93025;">$<?=money($subtotalEgresos)?></td>
-                <td></td>
-            </tr>
-        </tfoot>
-        <?php endif; ?>
     </table>
 </div>
+
 <div class="panel">
     <h3>📊 Resumen de Caja</h3>
     <table class="table" style="max-width: 450px;">
@@ -291,10 +277,11 @@ $saldo_color = ($saldo >= 0) ? '#0abf53' : '#d93025';
         </tr>
         <tr style="border-top: 2px solid #333; font-size: 1.3em;">
             <td><b>TOTAL EFECTIVO EN CAJA:</b></td>
-            <td class="text-end"><b style="color:<?=$saldo_color?>">$<?=money($saldo)?></b></td>
+            <td class="text-end"><b style="color:<?=$saldo_color?>">$<?=money($saldo_efectivo)?></b></td>
         </tr>
     </table>
-</div><?php endif; ?>
+</div>
+<?php endif; ?>
 
 </body>
 </html>
