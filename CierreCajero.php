@@ -43,7 +43,8 @@ function Autorizacion($User, $Solicitud) {
     return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
 
-$permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
+$permiso9999 = Autorizacion($UsuarioSesion, '9999');
+$permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
 $permiso1700 = Autorizacion($UsuarioSesion, '1700'); 
 
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
@@ -137,7 +138,7 @@ $saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
         function abrirModal(id) { document.getElementById(id).style.display = 'block'; }
         function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
         function ejecutarCierreDefinitivo() {
-            if('<?=$permiso9999?>' !== 'SI') {
+            if('<?=$permiso7777?>' !== 'SI') {
                 alert('ACCESO DENEGADO: Solo usuarios con autorización 9999 pueden realizar el cierre definitivo.');
                 return;
             }
