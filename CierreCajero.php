@@ -120,7 +120,7 @@ $saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
             .print-area, .print-area * { visibility: visible; color: #000 !important; }
             .print-area { 
                 position: absolute; 
-                left: -15px !important; 
+                left: -5px !important; 
                 top: 0; 
                 width: 270px; 
                 margin: 0;
