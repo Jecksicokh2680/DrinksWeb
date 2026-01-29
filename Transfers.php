@@ -6,7 +6,7 @@ session_start();
 session_regenerate_id(true);
 
 /* ============================================================
-   CONFIGURACIÓN DE SESIÓN
+    CONFIGURACIÓN DE SESIÓN
 ============================================================ */
 $session_timeout   = 3600;
 $inactive_timeout  = 1800;
@@ -24,7 +24,7 @@ ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);
 
 /* ============================================================
-   VARIABLES DE SESIÓN
+    VARIABLES DE SESIÓN
 ============================================================ */
 $UsuarioSesion   = $_SESSION['Usuario']     ?? '';
 $NitSesion       = $_SESSION['NitEmpresa']  ?? '';
@@ -36,7 +36,7 @@ if (empty($UsuarioSesion)) {
 }
 
 /* ============================================================
-   FUNCIÓN AUTORIZACIÓN (CON CACHE)
+    FUNCIÓN AUTORIZACIÓN (CON CACHE)
 ============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
@@ -59,16 +59,14 @@ function Autorizacion($User, $Solicitud) {
 }
 
 /* ============================================================
-   LÓGICA DE FECHA (REQUERIMIENTO 0013)
+    LÓGICA DE FECHA (REQUERIMIENTO 0013)
 ============================================================ */
 date_default_timezone_set('America/Bogota');
 $FechaHoy = date("Y-m-d");
 $HoraHoy  = date("H:i");
 
-// Verificar si tiene permiso 0013 para cambiar fecha de consulta
 $puedeModificarFechaConsulta = Autorizacion($UsuarioSesion, "0013") === "SI";
 
-// Si tiene el permiso y envió una fecha por POST, usamos esa. Si no, usamos Hoy.
 if ($puedeModificarFechaConsulta && isset($_POST['fechaConsulta'])) {
     $fechaConsulta = $_POST['fechaConsulta'];
 } else {
@@ -76,7 +74,7 @@ if ($puedeModificarFechaConsulta && isset($_POST['fechaConsulta'])) {
 }
 
 /* ============================================================
-   AJAX — SUCURSALES
+    AJAX — SUCURSALES
 ============================================================ */
 if (isset($_GET['ajax']) && $_GET['ajax'] === "sucursales") {
     header("Content-Type: application/json; charset=utf-8");
@@ -93,7 +91,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === "sucursales") {
 }
 
 /* ============================================================
-   AJAX — ACTUALIZAR CHECKBOX
+    AJAX — ACTUALIZAR CHECKBOX
 ============================================================ */
 if (isset($_POST['ajax']) && $_POST['ajax'] === 'actualizar_check') {
     header('Content-Type: application/json');
@@ -121,7 +119,7 @@ if (isset($_POST['ajax']) && $_POST['ajax'] === 'actualizar_check') {
 $msg = "";
 
 /* ============================================================
-   ELIMINAR TRANSFERENCIA
+    ELIMINAR TRANSFERENCIA
 ============================================================ */
 if (isset($_GET['borrar'])) {
     $idBorrar = intval($_GET['borrar']);
@@ -143,7 +141,7 @@ if (isset($_GET['borrar'])) {
 }
 
 /* ============================================================
-   REGISTRAR TRANSFERENCIA
+    REGISTRAR TRANSFERENCIA
 ============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'])) {
     if (Autorizacion($UsuarioSesion, "0007") !== "SI") {
@@ -165,11 +163,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarTransferencia'
 }
 
 /* ============================================================
-   LISTAR TRANSFERENCIAS (FILTRADO POR FECHA DE CONSULTA)
+    LISTAR TRANSFERENCIAS Y RESUMEN
 ============================================================ */
-$where = " WHERE t.Fecha = '" . $mysqli->real_escape_string($fechaConsulta) . "'";
+$safeFecha = $mysqli->real_escape_string($fechaConsulta);
+$where = " WHERE t.Fecha = '$safeFecha'";
 
-// Si no es admin (0003), solo ve las suyas de esa fecha
+// Filtro de seguridad para no-administradores
 if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $where .= " AND t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
@@ -187,12 +186,22 @@ $consultaSQL = "
 
 $transferencias = $mysqli->query($consultaSQL);
 
+// RESUMEN POR CAJERO (Agrupado)
+$resumenSQL = "
+    SELECT tr.Nombre AS Cajero, SUM(t.Monto) AS TotalCajero, COUNT(*) AS Cantidad
+    FROM Relaciontransferencias t
+    INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
+    $where
+    GROUP BY t.CedulaNit
+    ORDER BY TotalCajero DESC";
+$resumenPorCajero = $mysqli->query($resumenSQL);
+
 // TOTAL MONTOS REVISADOS
 $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias t $where AND (RevisadoLogistica+RevisadoGerencia)>=1";
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 
 /* ============================================================
-   LISTAS PARA MODAL
+    LISTAS PARA MODAL
 ============================================================ */
 $empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
 $tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
@@ -211,6 +220,7 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
         .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .table thead { background-color: #343a40; color: white; }
         .btn-primary { background-color: #0d6efd; }
+        .bg-resumen { background-color: #e9ecef; }
     </style>
 </head>
 <body>
@@ -225,7 +235,6 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
     <?php endif; ?>
 
     <div class="row mb-4 align-items-center">
-        <!-- BOTÓN NUEVA -->
         <div class="col-md-4">
             <?php if (Autorizacion($UsuarioSesion, "0007") === "SI"): ?>
                 <button class="btn btn-primary btn-lg px-4" data-bs-toggle="modal" data-bs-target="#modalTransferencia">
@@ -234,7 +243,6 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
             <?php endif; ?>
         </div>
 
-        <!-- FILTRO DE FECHA (REQUERIMIENTO 0013) -->
         <div class="col-md-8 mt-3 mt-md-0 d-flex justify-content-md-end">
             <div class="card p-3 w-100" style="max-width: 450px;">
                 <form method="POST" class="row g-2 align-items-center">
@@ -243,10 +251,8 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
                     </div>
                     <div class="col">
                         <?php if ($puedeModificarFechaConsulta): ?>
-                            <!-- Si tiene 0013, sale el calendario editable -->
                             <input type="date" name="fechaConsulta" class="form-control" value="<?= $fechaConsulta ?>">
                         <?php else: ?>
-                            <!-- Si NO tiene 0013, sale la fecha actual bloqueada -->
                             <input type="date" class="form-control bg-light" value="<?= $fechaConsulta ?>" readonly>
                         <?php endif; ?>
                     </div>
@@ -260,10 +266,9 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
         </div>
     </div>
 
-    <!-- TABLA DE RESULTADOS -->
-    <div class="card p-4">
+    <div class="card p-4 mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="text-dark">Transferencias del día: <span class="text-primary"><?= date("d/m/Y", strtotime($fechaConsulta)) ?></span></h4>
+            <h4 class="text-dark">Detalle de Transferencias: <span class="text-primary"><?= date("d/m/Y", strtotime($fechaConsulta)) ?></span></h4>
         </div>
         
         <div class="table-responsive">
@@ -324,9 +329,54 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
             </table>
         </div>
     </div>
+
+    <div class="row mb-5">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-dark text-white fw-bold">
+                    Resumen de Transferencias por Cajero
+                </div>
+                <div class="card-body bg-resumen">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered bg-white mb-0">
+                            <thead class="table-secondary">
+                                <tr>
+                                    <th>Cajero / Tercero</th>
+                                    <th class="text-center">Cant.</th>
+                                    <th class="text-end">Total Acumulado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $granTotal = 0;
+                                while ($r = $resumenPorCajero->fetch_assoc()): 
+                                    $granTotal += $r['TotalCajero'];
+                                ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($r['Cajero']) ?></td>
+                                        <td class="text-center"><?= $r['Cantidad'] ?></td>
+                                        <td class="text-end fw-bold"><?= number_format($r['TotalCajero'], 2) ?></td>
+                                    </tr>
+                                <?php endwhile; ?>
+                                <?php if ($resumenPorCajero->num_rows == 0): ?>
+                                    <tr><td colspan="3" class="text-center text-muted small">Sin datos para resumir</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                            <tfoot class="table-secondary fw-bold">
+                                <tr>
+                                    <td colspan="2" class="text-end">GRAN TOTAL DEL DÍA:</td>
+                                    <td class="text-end"><?= number_format($granTotal, 2) ?></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
-<!-- MODAL REGISTRO -->
 <div class="modal fade" id="modalTransferencia" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content shadow-lg">
@@ -418,7 +468,6 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
 </div>
 
 <script>
-// Carga dinámica de sucursales vía AJAX
 function cargarSucursales() {
     let nit = document.getElementById("NitEmpresa").value;
     let sucSelect = document.getElementById("Sucursal");
@@ -436,7 +485,6 @@ function cargarSucursales() {
         });
 }
 
-// Actualización de Checkboxes de revisión
 function actualizarCheck(idTransfer, campo, checkbox) {
     let valor = checkbox.checked ? 1 : 0;
     fetch(window.location.href, {
@@ -448,9 +496,8 @@ function actualizarCheck(idTransfer, campo, checkbox) {
     .then(data => {
         if(data.status !== 'ok') {
             alert("Error: " + data.msg);
-            checkbox.checked = !checkbox.checked; // Revertir si falla
+            checkbox.checked = !checkbox.checked;
         } else {
-            // Recargar para actualizar el Total en el footer
             location.reload();
         }
     });
