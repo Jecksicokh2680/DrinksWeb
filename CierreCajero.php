@@ -178,18 +178,6 @@ $saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
     </div>
 
     <div class="panel no-print">
-        <h3>📄 Egresos</h3>
-        <table class="table">
-            <thead><tr><th>ID</th><th>Motivo</th><th class="text-end">Valor</th></tr></thead>
-            <tbody>
-                <?php foreach($listaEgresos as $e): ?>
-                    <tr><td><?=$e['IDSALIDA']?></td><td><?=$e['MOTIVO']?></td><td class="text-end">$<?=money($e['VALOR'])?></td></tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-
-    <div class="panel no-print">
         <h3>📊 Resumen de Caja</h3>
         <table class="table" style="max-width: 400px;">
             <tr><td>(+) Ventas Brutas:</td><td class="text-end"><?= ($permiso9999 === 'SI') ? "$".money($totalVentas) : "[OCULTO]" ?></td></tr>
@@ -214,12 +202,19 @@ $saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
                 <p style="margin:2px;"><b>Sede:</b> <?=$nombre_sede_display?> | <b>Fecha:</b> <?=$fecha_input?></p>
                 <p style="margin:2px;"><b>Facturador:</b> <?=$nombreCompleto?></p>
             </div>
-            <h4 style="margin-top:15px;">📊 RESUMEN</h4>
+            <h4 style="margin-top:15px; margin-bottom:5px;">📊 RESUMEN</h4>
             <table class="table">
                 <tr><td>Ventas Brutas:</td><td class="text-end"><b><?= ($permiso9999 === 'SI') ? "$".money($totalVentas) : "[OCULTO]" ?></b></td></tr>
                 <tr><td>Total Egresos:</td><td class="text-end">-$<?=money($totalEgresos)?></td></tr>
                 <tr><td>Transferencias:</td><td class="text-end">-$<?=money($totalTransfer)?></td></tr>
-                <tr style="font-size:1.2em; border-top:1px solid #000;"><td><b>EFECTIVO EN CAJA:</b></td><td class="text-end"><b>$<?=money($saldo_efectivo)?></b></td></tr>
+                <tr style="font-size:1.1em; border-top:1px solid #000;"><td><b>EFECTIVO EN CAJA:</b></td><td class="text-end"><b>$<?=money($saldo_efectivo)?></b></td></tr>
+            </table>
+
+            <h4 style="margin-top:15px; margin-bottom:5px;">📄 DETALLE DE EGRESOS</h4>
+            <table class="table" style="font-size:0.9em;">
+                <?php foreach($listaEgresos as $egM): ?>
+                <tr><td><?=$egM['MOTIVO']?></td><td class="text-end">$<?=money($egM['VALOR'])?></td></tr>
+                <?php endforeach; ?>
             </table>
             
             <div class="firmas-container">
@@ -237,16 +232,23 @@ $saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
     <div id="modalCierre" class="modal">
         <div class="modal-content print-area">
             <div style="text-align:center; border-bottom:2px solid #d32f2f; padding-bottom:10px;">
-                <h2 style="margin:5px; color:#d32f2f;">CIERRE DEFINITIVO DE CAJA</h2>
+                <h2 style="margin:5px; color:#d32f2f;">CIERRE DEFINITIVO</h2>
                 <p style="margin:2px;"><b>Sede:</b> <?=$nombre_sede_display?> | <b>Fecha:</b> <?=$fecha_input?></p>
                 <p style="margin:2px;"><b>Facturador:</b> <?=$nombreCompleto?></p>
             </div>
-            <h4 style="margin-top:15px;">📊 RESUMEN FINAL</h4>
+            <h4 style="margin-top:15px; margin-bottom:5px;">📊 RESUMEN FINAL</h4>
             <table class="table">
                 <tr><td>Ventas Brutas:</td><td class="text-end"><b>$<?=money($totalVentas)?></b></td></tr>
                 <tr><td>Total Egresos:</td><td class="text-end">-$<?=money($totalEgresos)?></td></tr>
                 <tr><td>Transferencias:</td><td class="text-end">-$<?=money($totalTransfer)?></td></tr>
-                <tr style="font-size:1.2em; border-top:1px solid #000; background:#eee;"><td><b>EFECTIVO A ENTREGAR:</b></td><td class="text-end"><b>$<?=money($saldo_efectivo)?></b></td></tr>
+                <tr style="font-size:1.1em; border-top:1px solid #000; background:#eee;"><td><b>EFECTIVO A ENTREGAR:</b></td><td class="text-end"><b>$<?=money($saldo_efectivo)?></b></td></tr>
+            </table>
+
+            <h4 style="margin-top:15px; margin-bottom:5px;">📄 DETALLE DE EGRESOS</h4>
+            <table class="table" style="font-size:0.9em;">
+                <?php foreach($listaEgresos as $egM): ?>
+                <tr><td><?=$egM['MOTIVO']?></td><td class="text-end">$<?=money($egM['VALOR'])?></td></tr>
+                <?php endforeach; ?>
             </table>
 
             <div class="firmas-container">
