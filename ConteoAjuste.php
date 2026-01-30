@@ -65,8 +65,13 @@ if (isset($_POST['accion']) && $_POST['accion'] === 'ajustar') {
     }
 }
 
-// 2. VISTA DE DATOS (Diferencia distinta de cero)
-$res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat = c.CodCat WHERE c.estado = 'A' AND c.diferencia <> 0 ORDER BY c.id DESC");
+// 2. VISTA DE DATOS (Filtrado por diferencia mayor a 0.2 absoluto)
+$res = $mysqli->query("SELECT c.*, cat.Nombre 
+                       FROM conteoweb c 
+                       INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
+                       WHERE c.estado = 'A' 
+                       AND ABS(c.diferencia) > 0.2 
+                       ORDER BY c.id DESC");
 ?>
 
 <!DOCTYPE html>
@@ -78,11 +83,8 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN catego
         body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
         .container { max-width: 1100px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
-        
-        /* Botón de refrescar */
         .btn-refresh { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; transition: 0.3s; }
         .btn-refresh:hover { background: #2980b9; transform: rotate(15deg); }
-        
         table { width: 100%; border-collapse: collapse; }
         th { text-align: left; background: #fafafa; padding: 12px; color: #666; font-size: 12px; border-bottom: 2px solid #eee; }
         td { padding: 15px; border-bottom: 1px solid #f1f1f1; }
@@ -96,7 +98,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN catego
 
 <div class="container">
     <div class="header">
-        <h2 style="margin:0">📊 Ajustes de Inventario Pendientes</h2>
+        <h2 style="margin:0">📊 Ajustes de Inventario Pendientes (> 0.2)</h2>
         <button onclick="window.location.reload();" class="btn-refresh" title="Recargar datos">
             🔄 Refrescar Lista
         </button>
@@ -129,8 +131,8 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN catego
                     <td><?= $r['CodCat'] ?> - <?= $r['Nombre'] ?></td>
                     <td style="text-align:right"><?= number_format($r['stock_sistema'], 2) ?></td>
                     <td style="text-align:right"><?= number_format($r['stock_fisico'], 2) ?></td>
-                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < -0.2) ? 'neg' : 'pos' ?>">
-                        <?= ($r['diferencia'] > 0.2? '+' : '') . number_format($r['diferencia'], 1) ?>
+                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < 0) ? 'neg' : 'pos' ?>">
+                        <?= ($r['diferencia'] > 0 ? '+' : '') . number_format($r['diferencia'], 2) ?>
                     </td>
                     <td style="text-align:center">
                         <form method="POST">
@@ -142,7 +144,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN catego
                 </tr>
                 <?php endwhile; ?>
             <?php else: ?>
-                <tr><td colspan="6" style="text-align:center; padding:30px; color:#999;">No hay diferencias pendientes.</td></tr>
+                <tr><td colspan="6" style="text-align:center; padding:30px; color:#999;">No hay diferencias significativas (> 0.2) pendientes.</td></tr>
             <?php endif; ?>
         </tbody>
     </table>
