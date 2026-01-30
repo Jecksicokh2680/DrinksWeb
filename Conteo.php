@@ -292,7 +292,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 <tbody>
                     <?php foreach($conteos as $c): 
                         $dif = (float)$c['diferencia'];
-                        $color = ($dif == 0) ? 'verde' : (($dif < 0) ? 'rojo' : 'amarillo');
+                        $color = ($dif == 0) ? 'verde' : (($dif < - 0.2) ? 'rojo' : 'amarillo');
                     ?>
                     <tr>
                         <td style="color:#999; font-size:11px;"><?= $c['hora'] ?></td>

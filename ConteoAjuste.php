@@ -129,8 +129,8 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c INNER JOIN catego
                     <td><?= $r['CodCat'] ?> - <?= $r['Nombre'] ?></td>
                     <td style="text-align:right"><?= number_format($r['stock_sistema'], 2) ?></td>
                     <td style="text-align:right"><?= number_format($r['stock_fisico'], 2) ?></td>
-                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < 0) ? 'neg' : 'pos' ?>">
-                        <?= ($r['diferencia'] > 0 ? '+' : '') . number_format($r['diferencia'], 2) ?>
+                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < -0.2) ? 'neg' : 'pos' ?>">
+                        <?= ($r['diferencia'] > 0.2? '+' : '') . number_format($r['diferencia'], 1) ?>
                     </td>
                     <td style="text-align:center">
                         <form method="POST">
