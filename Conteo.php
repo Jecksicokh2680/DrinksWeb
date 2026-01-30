@@ -39,10 +39,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
         $ph = implode(',', array_fill(0, count($skus), '?'));
         $tp = str_repeat('s', count($skus));
         
-        $sql = "SELECT p.barcode, p.descripcion, '***'
-        -- IFNULL(SUM(i.cantidad),0) as stock 
+        $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as stock 
                 FROM productos p 
-                -- LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1 
+                LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1 
                 WHERE p.barcode IN ($ph) and p.estado='1'
                 GROUP BY p.barcode ORDER BY p.descripcion ASC";
         
@@ -208,9 +207,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         th,td{padding:12px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
-        .verde{background:#28a745;} .rojo{background:#dc3545;} .amarillo{background:#ffc107;}
-        
-        /* MODAL */
+        .verde{background:#28a745;} .rojo{background:#dc3545;}
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:25px; width:90%; max-width:650px; border-radius:15px; max-height:80vh; overflow-y:auto; position:relative; box-shadow: 0 20px 40px rgba(0,0,0,0.2);}
         .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
@@ -292,13 +289,16 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 <tbody>
                     <?php foreach($conteos as $c): 
                         $dif = (float)$c['diferencia'];
-                        $color = ($dif == 0) ? 'verde' : (($dif < - 0.2) ? 'rojo' : 'amarillo');
+                        // REGLA: Si la diferencia absoluta es mayor a 0.2 -> ROJO, de lo contrario VERDE.
+                        $color = (abs($dif) > 0.2) ? 'rojo' : 'verde';
                     ?>
                     <tr>
                         <td style="color:#999; font-size:11px;"><?= $c['hora'] ?></td>
                         <td><strong><?= $c['CodCat'] ?></strong><br><small style="color:#999"><?= $c['Nombre'] ?></small></td>
                         <td style="font-size:16px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
-                        <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= number_format($dif,2) ?>"></span></td>
+                        <td align="center">
+                            <span class="semaforo <?= $color ?>" title="Diferencia: <?= number_format($dif,2) ?>"></span>
+                        </td>
                         <?php if($AUT_BORRAR==='SI'): ?>
                         <td>
                             <form method="POST" onsubmit="return confirm('¿Anular este registro?')">
