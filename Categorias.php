@@ -1,270 +1,233 @@
 <?php
 require 'Conexion.php';
-// require 'helpers.php'; // Asegúrate de que este archivo exista o comenta si no es necesario
-
+require 'helpers.php';
 session_start();
 
 /* ============================================================
-   SEGURIDAD / SESIÓN
+   SEGURIDAD Y SESIÓN
 ============================================================ */
 if (empty($_SESSION['Usuario'])) {
     header("Location: Login.php?msg=Debe iniciar sesión");
     exit;
 }
 
-/* ============================================================
-   CSRF TOKEN
-============================================================ */
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 $csrf_token = $_SESSION['csrf_token'];
 
-/* ============================================================
-   TIPOS DE CATEGORÍA
-============================================================ */
-const TIPOS_CATEGORIA = [
-    "Cerveza", "Gaseosa", "Agua", "Jugo", "Hidratante",
-    "Energizante", "Dulceria", "Maltas", "Papeleria",
-    "Suero", "Aseo", "Elementos"
-];
+const TIPOS_CATEGORIA = ["Cerveza", "Gaseosa", "Agua", "Jugo", "Hidratante", "Energizante", "Dulceria", "Maltas", "Papeleria", "Suero", "Aseo", "Elementos"];
 
-function get_tipo_map(): array {
-    $map = [];
-    foreach (TIPOS_CATEGORIA as $t) {
-        $map[substr($t, 0, 2)] = $t; 
-    }
-    return $map;
-}
-
-/* ============================================================
-   FUNCIONES DE PROCESAMIENTO
-============================================================ */
-function check_csrf(string $posted, string $session) {
+function check_csrf($posted, $session) {
     if (!$posted || !hash_equals($session, $posted)) {
         http_response_code(403);
         die("Token CSRF inválido");
     }
 }
 
-function collect_category_data(bool $is_creation = false): array {
-    return [
-        'CodCat'     => $is_creation ? strtoupper(trim($_POST['CodCat'])) : trim($_POST['CodCat']),
-        'Nombre'     => trim($_POST['Nombre']),
-        'IdEmpresa'  => ($_POST['IdEmpresa'] ?? '') !== '' ? intval($_POST['IdEmpresa']) : null,
-        'SegWebF'    => isset($_POST['SegWebF']) ? '1' : '0',
-        'SegWebT'    => isset($_POST['SegWebT']) ? '1' : '0',
-        'Unicaja'    => intval($_POST['Unicaja'] ?? 1),
-        'Estado'     => ($_POST['Estado'] ?? '1') === '1' ? '1' : '0',
-        'Tipo'       => substr(trim($_POST['Tipo']), 0, 2)
-    ];
+/* ============================================================
+   PROCESAR ACTUALIZACIÓN AUTOMÁTICA (AJAX)
+============================================================ */
+if (isset($_POST['auto_update'])) {
+    check_csrf($_POST['csrf_token'], $csrf_token);
+    
+    $cod   = $_POST['CodCat'];
+    $valor = $_POST['valor'];
+    $campo = $_POST['campo'];
+    
+    $camposPermitidos = ['SegWebF', 'SegWebT', 'Estado', 'Tipo'];
+    
+    if (in_array($campo, $camposPermitidos)) {
+        $stmt = $mysqli->prepare("UPDATE categorias SET $campo = ? WHERE CodCat = ?");
+        $stmt->bind_param("ss", $valor, $cod);
+        if ($stmt->execute()) {
+            http_response_code(200);
+            exit;
+        }
+    }
+    http_response_code(400);
+    exit;
 }
 
 /* ============================================================
-   ACCIONES (CREAR / ACTUALIZAR)
+   PROCESAR CREACIÓN Y ACTUALIZACIÓN MANUAL
 ============================================================ */
 $mensaje = "";
 
-if (isset($_POST['crear'])) {
+if (isset($_POST['crear']) || isset($_POST['actualizar'])) {
     check_csrf($_POST['csrf_token'], $csrf_token);
-    $d = collect_category_data(true);
-
-    $stmt = $mysqli->prepare("
-        INSERT INTO categorias (CodCat, Nombre, IdEmpresa, SegWebF, SegWebT, Unicaja, Estado, Tipo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    $stmt->bind_param("ssississ", $d['CodCat'], $d['Nombre'], $d['IdEmpresa'], $d['SegWebF'], $d['SegWebT'], $d['Unicaja'], $d['Estado'], $d['Tipo']);
     
-    $mensaje = $stmt->execute() ? "Categoría {$d['CodCat']} creada" : "Error: " . $stmt->error;
-    $stmt->close();
-}
+    $d = [
+        'CodCat'          => isset($_POST['crear']) ? strtoupper(trim($_POST['CodCat'])) : trim($_POST['CodCat']),
+        'Nombre'          => trim($_POST['Nombre']),
+        'IdEmpresa'       => ($_POST['IdEmpresa'] ?? '') !== '' ? intval($_POST['IdEmpresa']) : null,
+        'SegWebF'         => isset($_POST['SegWebF']) ? '1' : '0',
+        'SegWebT'         => isset($_POST['SegWebT']) ? '1' : '0',
+        'Unicaja'         => intval($_POST['Unicaja'] ?? 1),
+        'Estado'          => ($_POST['Estado'] ?? '1') === '1' ? '1' : '0',
+        'Tipo'            => substr(trim($_POST['Tipo']), 0, 2),
+        'PrecioVtaNevera' => floatval($_POST['PrecioVtaNevera'] ?? 0)
+    ];
 
-if (isset($_POST['actualizar'])) {
-    check_csrf($_POST['csrf_token'], $csrf_token);
-    $d = collect_category_data();
+    if (isset($_POST['crear'])) {
+        $stmt = $mysqli->prepare("INSERT INTO categorias (CodCat, Nombre, IdEmpresa, SegWebF, SegWebT, Unicaja, Estado, Tipo, PrecioVtaNevera) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt->bind_param("ssississd", $d['CodCat'], $d['Nombre'], $d['IdEmpresa'], $d['SegWebF'], $d['SegWebT'], $d['Unicaja'], $d['Estado'], $d['Tipo'], $d['PrecioVtaNevera']);
+    } else {
+        $stmt = $mysqli->prepare("UPDATE categorias SET Nombre=?, IdEmpresa=?, SegWebF=?, SegWebT=?, Unicaja=?, Estado=?, Tipo=?, PrecioVtaNevera=? WHERE CodCat=?");
+        $stmt->bind_param("sississds", $d['Nombre'], $d['IdEmpresa'], $d['SegWebF'], $d['SegWebT'], $d['Unicaja'], $d['Estado'], $d['Tipo'], $d['PrecioVtaNevera'], $d['CodCat']);
+    }
 
-    $stmt = $mysqli->prepare("
-        UPDATE categorias SET Nombre=?, IdEmpresa=?, SegWebF=?, SegWebT=?, Unicaja=?, Estado=?, Tipo=?
-        WHERE CodCat=?
-    ");
-    $stmt->bind_param("sississs", $d['Nombre'], $d['IdEmpresa'], $d['SegWebF'], $d['SegWebT'], $d['Unicaja'], $d['Estado'], $d['Tipo'], $d['CodCat']);
-    $stmt->execute();
+    $mensaje = $stmt->execute() ? "✅ Registro procesado correctamente" : "❌ Error: " . $stmt->error;
     $stmt->close();
-    $mensaje = "Categoría {$d['CodCat']} actualizada";
 }
 
 /* ============================================================
-   DATOS PARA LA VISTA
+   CARGA DE DATOS PARA VISTA
 ============================================================ */
-$empresas = [];
-$resEmp = $mysqli->query("SELECT IdEmpresa, Nombre FROM empresas_productoras ORDER BY Nombre");
-while ($e = $resEmp->fetch_assoc()) $empresas[] = $e;
-
-$categorias = [];
-$res = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa ORDER BY c.CodCat");
-while ($r = $res->fetch_assoc()) $categorias[] = $r;
+$empresas = $mysqli->query("SELECT IdEmpresa, Nombre FROM empresas_productoras ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+$categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa ORDER BY c.CodCat")->fetch_all(MYSQLI_ASSOC);
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="utf-8">
-    <title>Gestión de Categorías</title>
+    <meta charset="UTF-8">
+    <title>ERP | Gestión de Categorías</title>
     <style>
-        body { font-family: 'Segoe UI', Arial; background: #f3f6fb; padding: 20px; color: #333; }
-        .card { background: #fff; padding: 20px; border-radius: 12px; max-width: 1300px; margin: 0 auto 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px; }
-        h2 { margin: 0; color: #0f2a44; }
-        .form-grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-        .form-group { display: flex; flex-direction: column; gap: 4px; }
-        label { font-size: 11px; font-weight: bold; color: #667; text-transform: uppercase; }
-        input, select, button { padding: 8px; border-radius: 6px; border: 1px solid #ddd; outline: none; }
-        button { background: #1e5aa8; color: white; border: none; cursor: pointer; font-weight: bold; }
-        button:hover { background: #154581; }
-        
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { background: #0f2a44; color: white; padding: 12px; text-align: left; }
-        td { padding: 10px; border-bottom: 1px solid #eee; background: #fff; }
-        .fila-inactiva td { background: #f9f9f9; color: #999; }
-        .badge { padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: bold; }
-        .activo { background: #e7f6ec; color: #198754; }
-        .inactivo { background: #fdeaea; color: #dc3545; }
-        
-        .filtros-container { display: flex; gap: 10px; }
-        .search-input { width: 250px; }
+        :root { --primary: #0f2a44; --accent: #1e5aa8; --bg: #f8fafc; --text: #334155; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 25px; }
+        .container { max-width: 1500px; margin: auto; }
+        .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 25px; margin-bottom: 25px; border: 1px solid #e2e8f0; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; margin-bottom: 20px; padding-bottom: 10px; }
+        h2 { color: var(--primary); margin: 0; font-size: 1.1rem; text-transform: uppercase; }
+        .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: end; }
+        label { display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8fafc; text-align: left; padding: 12px 8px; color: #475569; font-size: 12px; border-bottom: 2px solid #e2e8f0; }
+        td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
+        .fila-inactiva { background: #fff1f2; opacity: 0.7; }
+        .btn { background: var(--accent); color: #fff; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+        .btn-save { padding: 5px 10px; background: #059669; }
+        #filtro { width: 300px; border-radius: 20px; padding-left: 15px; }
+        .msg { background: #f0fdf4; color: #166534; padding: 10px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
     </style>
-
-    <script>
-        function ejecutarFiltros() {
-            const texto = document.getElementById("txtBuscar").value.toLowerCase();
-            const tipo = document.getElementById("selFiltroTipo").value.toLowerCase();
-            const filas = document.querySelectorAll("#tablaCategorias tbody tr");
-
-            filas.forEach(tr => {
-                const contenido = tr.innerText.toLowerCase();
-                const tipoFila = tr.getAttribute("data-tipo").toLowerCase();
-                
-                const coincideTexto = contenido.includes(texto);
-                const coincideTipo = (tipo === "" || tipoFila === tipo);
-
-                tr.style.display = (coincideTexto && coincideTipo) ? "" : "none";
-            });
-        }
-    </script>
 </head>
 <body>
 
-<div class="card">
-    <h2>Nueva Categoría</h2>
-    <?php if($mensaje): ?> <div style="color: #1e5aa8; font-weight: bold; margin: 10px 0;"><?= $mensaje ?></div> <?php endif; ?>
-    
-    <form method="post" class="form-grid">
-        <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-        <div class="form-group">
-            <label>Código</label>
-            <input name="CodCat" maxlength="4" placeholder="EJ: CERV" required style="width: 70px;">
-        </div>
-        <div class="form-group">
-            <label>Nombre</label>
-            <input name="Nombre" placeholder="Nombre de categoría" required>
-        </div>
-        <div class="form-group">
-            <label>Empresa</label>
-            <select name="IdEmpresa">
-                <option value="">-- Ninguna --</option>
-                <?php foreach($empresas as $e): ?>
-                    <option value="<?= $e['IdEmpresa'] ?>"><?= $e['Nombre'] ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Tipo</label>
-            <select name="Tipo">
-                <?php foreach(TIPOS_CATEGORIA as $t): ?>
-                    <option value="<?= substr($t,0,2) ?>"><?= $t ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Unicaja</label>
-            <input type="number" name="Unicaja" value="1" min="1" style="width: 60px;">
-        </div>
-        <div class="form-group" style="flex-direction: row; gap: 10px; padding-bottom: 10px;">
-            <label><input type="checkbox" name="SegWebF"> SegF</label>
-            <label><input type="checkbox" name="SegWebT"> SegT</label>
-        </div>
-        <button name="crear" style="height: 35px;">+ Crear</button>
-    </form>
-</div>
-
-<div class="card">
-    <div class="header">
-        <h2>Listado</h2>
-        <div class="filtros-container">
-            <select id="selFiltroTipo" onchange="ejecutarFiltros()">
-                <option value="">-- Todos los Tipos --</option>
-                <?php foreach(TIPOS_CATEGORIA as $t): ?>
-                    <option value="<?= substr($t,0,2) ?>"><?= $t ?></option>
-                <?php endforeach; ?>
-            </select>
-            <input id="txtBuscar" class="search-input" placeholder="Buscar por nombre o código..." onkeyup="ejecutarFiltros()">
-        </div>
+<div class="container">
+    <div class="card">
+        <div class="card-header"><h2>➕ Nueva Categoría</h2></div>
+        <?php if($mensaje) echo "<div class='msg'>$mensaje</div>"; ?>
+        <form method="post" class="grid-form">
+            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+            <div><label>Código</label><input name="CodCat" maxlength="4" required></div>
+            <div><label>Nombre</label><input name="Nombre" required></div>
+            <div><label>Empresa</label>
+                <select name="IdEmpresa">
+                    <option value="">-- Seleccione --</option>
+                    <?php foreach($empresas as $e): ?><option value="<?= $e['IdEmpresa'] ?>"><?= $e['Nombre'] ?></option><?php endforeach; ?>
+                </select>
+            </div>
+            <div><label>Tipo</label>
+                <select name="Tipo">
+                    <?php foreach(TIPOS_CATEGORIA as $t): ?><option value="<?= substr($t,0,2) ?>"><?= $t ?></option><?php endforeach; ?>
+                </select>
+            </div>
+            <div><label>Precio Esp.</label><input type="number" step="0.01" name="PrecioVtaNevera" value="0"></div>
+            <button name="crear" class="btn">Registrar</button>
+        </form>
     </div>
 
-    <table id="tablaCategorias">
-        <thead>
-            <tr>
-                <th>Cód</th>
-                <th>Nombre Categoría</th>
-                <th>Empresa Productora</th>
-                <th>Tipo</th>
-                <th>SegF</th>
-                <th>SegT</th>
-                <th>Caja</th>
-                <th>Estado</th>
-                <th>Acción</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach($categorias as $c): ?>
-            <tr class="<?= $c['Estado']=='0'?'fila-inactiva':'' ?>" data-tipo="<?= $c['Tipo'] ?>">
-                <form method="post">
-                <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-                <input type="hidden" name="CodCat" value="<?= $c['CodCat'] ?>">
-                
-                <td><strong><?= $c['CodCat'] ?></strong></td>
-                <td><input name="Nombre" value="<?= htmlspecialchars($c['Nombre']) ?>" style="width: 100%;"></td>
-                <td>
-                    <select name="IdEmpresa" style="width: 100%;">
-                        <option value="">-- Ninguna --</option>
-                        <?php foreach($empresas as $e): ?>
-                            <option value="<?= $e['IdEmpresa'] ?>" <?= $e['IdEmpresa']==$c['IdEmpresa']?'selected':'' ?>><?= $e['Nombre'] ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </td>
-                <td>
-                    <select name="Tipo">
-                        <?php foreach(TIPOS_CATEGORIA as $t): ?>
-                            <option value="<?= substr($t,0,2) ?>" <?= $c['Tipo']==substr($t,0,2)?'selected':'' ?>><?= $t ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </td>
-                <td><input type="checkbox" name="SegWebF" <?= $c['SegWebF']=='1'?'checked':'' ?>></td>
-                <td><input type="checkbox" name="SegWebT" <?= $c['SegWebT']=='1'?'checked':'' ?>></td>
-                <td><input type="number" name="Unicaja" value="<?= $c['Unicaja'] ?>" style="width: 45px;"></td>
-                <td>
-                    <select name="Estado" style="font-size: 11px;">
-                        <option value="1" <?= $c['Estado']=='1'?'selected':'' ?>>Activo</option>
-                        <option value="0" <?= $c['Estado']=='0'?'selected':'' ?>>Inactivo</option>
-                    </select>
-                </td>
-                <td><button name="actualizar">💾</button></td>
-                </form>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
+    <div class="card">
+        <div class="card-header">
+            <h2>📋 Gestión de Catálogo</h2>
+            <input id="filtro" placeholder="🔍 Filtrar registros..." onkeyup="filtrar()">
+        </div>
+        <table id="tabla">
+            <thead>
+                <tr>
+                    <th>Cod</th>
+                    <th>Nombre Categoría</th>
+                    <th>Empresa</th>
+                    <th>Tipo</th>
+                    <th>Unicaja</th>
+                    <th>Precio Esp.</th>
+                    <th>Web (Seg)</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($categorias as $c): ?>
+                <tr class="<?= $c['Estado']=='0'?'fila-inactiva':'' ?>">
+                    <form method="post">
+                        <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+                        <input type="hidden" name="CodCat" value="<?= $c['CodCat'] ?>">
+                        <td style="font-weight:bold;"><?= $c['CodCat'] ?></td>
+                        <td><input name="Nombre" value="<?= $c['Nombre'] ?>"></td>
+                        <td>
+                            <select name="IdEmpresa">
+                                <option value="">-- N/A --</option>
+                                <?php foreach($empresas as $e): ?>
+                                    <option value="<?= $e['IdEmpresa'] ?>" <?= $e['IdEmpresa']==$c['IdEmpresa']?'selected':'' ?>><?= $e['Nombre'] ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                        <td>
+                            <select onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Tipo')">
+                                <?php foreach(TIPOS_CATEGORIA as $t): ?>
+                                    <option value="<?= substr($t,0,2) ?>" <?= $c['Tipo']==substr($t,0,2)?'selected':'' ?>><?= $t ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                        <td><input type="number" name="Unicaja" value="<?= $c['Unicaja'] ?>" style="width:50px"></td>
+                        <td><input type="number" step="0.01" name="PrecioVtaNevera" value="<?= $c['PrecioVtaNevera'] ?>" style="width:80px"></td>
+                        <td>
+                            <label style="font-size:10px"><input type="checkbox" <?= $c['SegWebF']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebF')"> F</label>
+                            <label style="font-size:10px"><input type="checkbox" <?= $c['SegWebT']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebT')"> T</label>
+                        </td>
+                        <td>
+                            <select onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Estado')" style="width:85px; font-weight:bold;">
+                                <option value="1" <?= $c['Estado']=='1'?'selected':'' ?>>Activo</option>
+                                <option value="0" <?= $c['Estado']=='0'?'selected':'' ?>>Inactivo</option>
+                            </select>
+                        </td>
+                        <td><button name="actualizar" class="btn btn-save">OK</button></td>
+                    </form>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
+<script>
+async function updateRow(element, codCat, campo) {
+    const valor = (element.type === 'checkbox') ? (element.checked ? '1' : '0') : element.value;
+    const parentTd = element.closest('td');
+    const formData = new FormData();
+    formData.append('auto_update', '1');
+    formData.append('CodCat', codCat);
+    formData.append('campo', campo);
+    formData.append('valor', valor);
+    formData.append('csrf_token', '<?= $csrf_token ?>');
+
+    try {
+        const response = await fetch(window.location.href, { method: 'POST', body: formData });
+        if (response.ok) {
+            parentTd.style.background = "#dcfce7";
+            if(campo === 'Estado') location.reload();
+            setTimeout(() => parentTd.style.background = "transparent", 600);
+        }
+    } catch (e) { console.error(e); }
+}
+
+function filtrar(){
+    let f=document.getElementById("filtro").value.toLowerCase();
+    document.querySelectorAll("#tabla tbody tr").forEach(tr=>{
+        tr.style.display=tr.innerText.toLowerCase().includes(f)?"":"none";
+    });
+}
+</script>
 </body>
 </html>
