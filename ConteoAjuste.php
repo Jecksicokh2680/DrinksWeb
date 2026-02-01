@@ -70,7 +70,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                        FROM conteoweb c 
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                        WHERE c.estado = 'A' 
-                       AND ABS(c.diferencia) > 0.2 
+                       AND ABS(c.diferencia) > 0.18 
                        ORDER BY c.id DESC");
 ?>
 
