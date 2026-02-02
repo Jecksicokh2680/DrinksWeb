@@ -91,8 +91,8 @@ if($UsuarioFact !== ''){
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
 }
 
-function money($v){ return number_format((float)$v, 0, ',', '.'); }
-$saldo_efectivo = ($totalEgresos) - $totalVentas;
+function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
+$saldo_efectivo = $totalVentas - ($totalEgresos + $totalTransfer);
 ?>
 
 <!DOCTYPE html>
@@ -104,33 +104,42 @@ $saldo_efectivo = ($totalEgresos) - $totalVentas;
         body{font-family:"Segoe UI",sans-serif; margin:20px; background:#eef3f7; color:#333;}
         .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
         .table{width:100%; border-collapse:collapse;}
-        .table th{background:#1f2d3d; color:#fff; padding:8px; text-align:left;}
-        .table td{padding:8px; border-bottom:1px solid #eee;}
+        .table td, .table th{padding:8px; border-bottom:1px solid #eee; text-align: left;}
         .button{padding:10px 15px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;}
-        .btn-save{background:#0b63a3; color:#fff; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; font-size: 0.85em;}
+        .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px; border-radius:4px; cursor:pointer;}
         .text-end{ text-align: right; }
-        .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 18px; font-weight: 500; }
+        .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; font-weight: 500; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow: auto; }
-        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 90%; max-width: 500px; border-radius: 12px; }
-        .firmas-container { margin-top: 40px; display: flex; justify-content: space-between; }
-        .firma-box { border-top: 1.5px solid #000; width: 45%; text-align: center; padding-top: 5px; font-size: 0.9em; font-weight: bold; }
+        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 95%; max-width: 450px; border-radius: 12px; }
 
         @media print {
-            body * { visibility: hidden; }
-            .print-area, .print-area * { visibility: visible; color: #000 !important; }
-            .print-area { position: absolute; left: 0; top: 0; width: 100%; font-size: 14px; }
+            body * { visibility: hidden !important; }
+            #modalVoucher, #modalVoucher * { 
+                visibility: visible !important; 
+                color: #000 !important; 
+                font-weight: bold !important; /* Letra más oscura/gruesa */
+            }
+            #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; display: block !important; background: white !important; }
+            #printArea { 
+                width: 72mm !important; 
+                margin: 0 !important; padding: 0 !important; 
+                font-family: "Courier New", Courier, monospace !important;
+            }
             .no-print { display: none !important; }
+            @page { margin: 0; size: auto; }
+            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; }
+            .ticket-table td { padding: 2px 0 !important; color: #000 !important; }
         }
     </style>
     <script>
         function guardarEgreso(id){
-            const mot = encodeURIComponent(document.getElementById('motivo_'+id).value);
-            const val = encodeURIComponent(document.getElementById('valor_'+id).value);
+            const mot = document.getElementById('motivo_'+id).value;
+            const val = document.getElementById('valor_'+id).value;
             if(!confirm('¿Desea actualizar este egreso?')) return;
             fetch('update_egreso.php', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `id=${id}&motivo=${mot}&valor=${val}&sede=<?=$sede_actual?>`
+                body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?=$sede_actual?>`
             }).then(r => r.text()).then(t => { alert(t); location.reload(); });
         }
     </script>
@@ -158,24 +167,38 @@ $saldo_efectivo = ($totalEgresos) - $totalVentas;
     <div class="panel no-print">
         <h3>📊 Resumen de Caja: <?=htmlspecialchars($nombreCompleto)?></h3>
         <table class="table" style="max-width: 500px;">
-            <tr><td>(-) Ventas Brutas:</td><td class="text-end"><?= ($permiso9999 === 'SI') ? '$ '.money($totalVentas) : '<i>*** Oculto ***</i>' ?></td></tr>
-            <tr><td>(+) Egresos:</td><td class="text-end" style="color:red;">$ <?=money($totalEgresos)?></td></tr>
-            <tr><td>(+) Transferencias:</td><td class="text-end" style="color:blue;">$ <?=money($totalTransfer)?></td></tr>
+            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><?= ($permiso9999 === 'SI') ? '$ '.money($totalVentas) : '*** Oculto ***' ?></td></tr>
+            <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?=money($totalEgresos)?></td></tr>
+            <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?=money($totalTransfer)?></td></tr>
             <tr style="font-size:1.3em; border-top:2px solid #333;"><td><b>TOTAL EFECTIVO:</b></td><td class="text-end"><b>$ <?=money($saldo_efectivo)?></b></td></tr>
         </table>
     </div>
 
     <div class="panel no-print">
-        <h3>💸 Detallado de Egresos</h3>
+        <h3>💸 Detallado de Egresos (Editable)</h3>
         <table class="table">
-            <thead><tr><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th style="text-align:center;">Acción</th></tr></thead>
+            <thead>
+                <tr><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th style="text-align:center;">Acción</th></tr>
+            </thead>
             <tbody>
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
                 <tr>
                     <td><?=$idE?></td>
-                    <td><?php if($permiso9999 === 'SI'): ?><input type="text" id="motivo_<?=$idE?>" class="input-edit" value="<?=htmlspecialchars($eg['MOTIVO'])?>"><?php else: echo "<span style='font-size:18px;'>".$eg['MOTIVO']."</span>"; endif; ?></td>
-                    <td class="text-end"><?php if($permiso9999 === 'SI'): ?><input type="number" id="valor_<?=$idE?>" class="input-edit text-end" value="<?=$eg['VALOR']?>"><?php else: echo "<span style='font-size:18px;'>$".money($eg['VALOR'])."</span>"; endif; ?></td>
-                    <td style="text-align:center;"><?php if($permiso9999 === 'SI'): ?><button class="btn-save" onclick="guardarEgreso(<?=$idE?>)">💾 Guardar</button><?php endif; ?></td>
+                    <td>
+                        <?php if($permiso9999 === 'SI'): ?>
+                            <input type="text" id="motivo_<?=$idE?>" class="input-edit" value="<?=htmlspecialchars($eg['MOTIVO'])?>">
+                        <?php else: echo $eg['MOTIVO']; endif; ?>
+                    </td>
+                    <td class="text-end">
+                        <?php if($permiso9999 === 'SI'): ?>
+                            <input type="number" id="valor_<?=$idE?>" class="input-edit text-end" value="<?=$eg['VALOR']?>">
+                        <?php else: echo "$".money($eg['VALOR']); endif; ?>
+                    </td>
+                    <td style="text-align:center;">
+                        <?php if($permiso9999 === 'SI'): ?>
+                            <button class="btn-save" onclick="guardarEgreso(<?=$idE?>)">💾 Guardar</button>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -188,70 +211,60 @@ $saldo_efectivo = ($totalEgresos) - $totalVentas;
     </div>
 
     <div id="modalVoucher" class="modal">
-        <div class="modal-content print-area" id="printContent"></div>
+        <div class="modal-content" id="printArea"></div>
     </div>
 <?php endif; ?>
 
 <script>
     function mostrarVoucher(tipo) {
         if(tipo === 'cierre' && '<?=$permiso7777?>' !== 'SI') {
-            alert('ACCESO DENEGADO: No tiene autorización 7777.');
-            return;
+            alert('ACCESO DENEGADO'); return;
         }
 
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td style="padding:5px 0;">- <?= $e['MOTIVO'] ?></td><td class="text-end">$<?= money($e['VALOR']) ?></td></tr>`;
+            egresosHtml += `<tr><td>- <?= $e['MOTIVO'] ?></td><td class="text-end">$<?= money($e['VALOR']) ?></td></tr>`;
         <?php endforeach; ?>
 
         const titulo = (tipo === 'precierre') ? 'VOUCHER DE PRECIERRE' : 'CIERRE DEFINITIVO';
-        
-        // Lógica de ventas: Precierre oculta según permiso, Cierre muestra siempre.
-        let ventasDisplay = "";
-        if(tipo === 'precierre') {
-            ventasDisplay = ('<?=$permiso9999?>' === 'SI') ? '-$<?=money($totalVentas)?>' : '*** Oculto ***';
-        } else {
-            ventasDisplay = '-$<?=money($totalVentas)?>';
-        }
+        let ventasDisplay = (tipo === 'precierre' && '<?=$permiso9999?>' !== 'SI') ? '*** Oculto ***' : '$<?=money($totalVentas)?>';
 
         let html = `
-            <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px;">
-                <h2 style="margin:5px;">${titulo}</h2>
-                <p style="margin:2px;"><b>Sede:</b> <?=$nombre_sede_display?> | <b>Fecha:</b> <?=$fecha_input?></p>
-                <p style="margin:2px;"><b>Facturador:</b> <?=$nombreCompleto?></p>
+            <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px; color:#000;">
+                <h2 style="margin:5px; font-size:18px; font-weight:bold;">${titulo}</h2>
+                <p style="margin:2px; font-size:12px; font-weight:bold;">Sede: <?=$nombre_sede_display?></p>
+                <p style="margin:2px; font-size:12px; font-weight:bold;">Fecha: <?=$fecha_input?></p>
+                <p style="margin:2px; font-size:12px; font-weight:bold;">Cajero: <?=$nombreCompleto?></p>
             </div>
-            <h4 style="margin-top:15px; margin-bottom:5px;">📊 RESUMEN</h4>
-            <table class="table" style="font-size: 15px;">
+            <table class="ticket-table" style="font-weight:bold; color:#000;">
                 <tr><td>Ventas Brutas:</td><td class="text-end">${ventasDisplay}</td></tr>
-                <tr><td>Total Egresos:</td><td class="text-end">+$<?=money($totalEgresos)?></td></tr>
-                <tr><td>Transferencias:</td><td class="text-end">+$<?=money($totalTransfer)?></td></tr>
-                <tr style="font-size:1.2em; border-top:1.5px solid #000;"><td><b>EFECTIVO:</b></td><td class="text-end"><b>$<?=money($saldo_efectivo)?></b></td></tr>
+                <tr><td>(-) Egresos:</td><td class="text-end">$<?=money($totalEgresos)?></td></tr>
+                <tr><td>(-) Transfer:</td><td class="text-end">$<?=money($totalTransfer)?></td></tr>
+                <tr style="font-size:15px; border-top:1.5px solid #000;">
+                    <td style="padding-top:5px;">EFECTIVO CAJA:</td>
+                    <td class="text-end" style="padding-top:5px;">$<?=money($saldo_efectivo)?></td>
+                </tr>
             </table>
-            <h4 style="margin-top:20px; border-bottom:1px solid #000;">📄 DETALLE DE EGRESOS</h4>
-            <table class="table" style="font-size:15px; margin-top:5px;">${egresosHtml}</table>
-            <div class="firmas-container">
-                <div class="firma-box">Firma del Cajero</div>
-                <div class="firma-box">Firma del Supervisor</div>
+            <div style="margin-top:15px; border-bottom:1.5px solid #000; font-weight:bold; font-size:12px; color:#000;">DETALLE DE EGRESOS</div>
+            <table class="ticket-table" style="font-weight:bold; color:#000;">
+                ${egresosHtml}
+            </table>
+            <div style="margin-top:45px; display:flex; justify-content:space-between; color:#000;">
+                <div style="border-top:1.5px solid #000; width:45%; text-align:center; font-size:10px; padding-top:5px; font-weight:bold;">Firma Cajero</div>
+                <div style="border-top:1.5px solid #000; width:45%; text-align:center; font-size:10px; padding-top:5px; font-weight:bold;">Supervisor</div>
             </div>
-            <div class="no-print" style="margin-top:20px; text-align:right;">
-                <button class="button" style="background:#2ecc71;" onclick="window.print()">🖨️ Imprimir</button>
-                <button class="button" style="background:#7f8c8d;" onclick="cerrarModal()">Cerrar</button>
+            <div class="no-print" style="margin-top:20px; text-align:center;">
+                <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">🖨️ Imprimir</button>
+                <button class="button" style="background:#7f8c8d; width:100%; margin-top:5px;" onclick="cerrarModal()">Cerrar</button>
             </div>
         `;
 
-        document.getElementById('printContent').innerHTML = html;
+        document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
 
-    function cerrarModal() { 
-        document.getElementById('modalVoucher').style.display = 'none'; 
-    }
-
-    // Cerrar modal al hacer clic fuera de él
-    window.onclick = function(event) {
-        if (event.target == document.getElementById('modalVoucher')) cerrarModal();
-    }
+    function cerrarModal() { document.getElementById('modalVoucher').style.display = 'none'; }
+    window.onclick = function(e) { if (e.target == document.getElementById('modalVoucher')) cerrarModal(); }
 </script>
-
 </body>
 </html>
