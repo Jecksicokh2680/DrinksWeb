@@ -6,24 +6,33 @@ require_once("Conexion.php");
 session_start();
 if (!isset($_SESSION['Usuario'])) die("Sesión no válida");
 
-// 1. LÓGICA DE PROCESAMIENTO
+$usuarioActual = $_SESSION['Usuario'];
+$hoy = date("Y-m-d");
+$mensaje = "";
+
+/* ============================================================
+   1. PROCESAMIENTO DEL AJUSTE
+   ============================================================ */
 if (isset($_POST['accion']) && $_POST['accion'] === 'ajustar') {
     $idConteo = (int)$_POST['id_conteo'];
     
-    $stmt = $mysqli->prepare("SELECT CodCat, diferencia, NitEmpresa FROM conteoweb WHERE id=? AND estado='A'");
+    // Obtenemos los datos clave del conteo (incluyendo el stock que el sistema tenía al contar)
+    $stmt = $mysqli->prepare("SELECT CodCat, diferencia, NitEmpresa, stock_sistema FROM conteoweb WHERE id=? AND estado='A'");
     $stmt->bind_param("i", $idConteo);
     $stmt->execute();
     $conteo = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
     if ($conteo) {
-        $nitFila = trim($conteo['NitEmpresa']);
-        $CodCat = $conteo['CodCat'];
-        $diferenciaTotal = (float)$conteo['diferencia'];
+        $nitFila         = trim($conteo['NitEmpresa']);
+        $CodCat          = $conteo['CodCat'];
+        $difTotal        = (float)$conteo['diferencia'];
+        $stockAnterior   = (float)$conteo['stock_sistema'];
+        $stockNuevo      = $stockAnterior + $difTotal; // Calculamos el valor final proyectado
 
         $dbDestino = ($nitFila === '901724534-7') ? $mysqliDrinks : $mysqliCentral;
-        $nombreDestino = ($nitFila === '901724534-7') ? "DRINKS" : "CENTRAL";
 
+        // 1. Obtener los SKUs de la categoría
         $skus = [];
         $st = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=?");
         $st->bind_param("s", $CodCat);
@@ -43,34 +52,58 @@ if (isset($_POST['accion']) && $_POST['accion'] === 'ajustar') {
             $stmt->execute();
             $resProd = $stmt->get_result();
 
-            $productos = [];
-            while ($r = $resProd->fetch_assoc()) $productos[] = $r;
+            $productosActuales = [];
+            while ($r = $resProd->fetch_assoc()) $productosActuales[] = $r;
             $stmt->close();
 
-            if (!empty($productos)) {
-                $difPorUnidad = $diferenciaTotal / count($productos);
-                foreach ($productos as $p) {
-                    $nuevoStock = $p['cantidad'] + $difPorUnidad;
-                    $idp = $p['idproducto'];
-                    $updInv = $dbDestino->prepare("UPDATE inventario SET cantidad=?, localchange=1, syncweb=0, sincalmacenes='AJUSTE_WEB' WHERE idproducto=? AND idalmacen=1");
-                    $updInv->bind_param("di", $nuevoStock, $idp);
-                    $updInv->execute();
-                    $updInv->close();
-                    $dbDestino->query("UPDATE productos SET localchange=1, syncweb=0 WHERE idproducto=$idp");
+            if (!empty($productosActuales)) {
+                $difPorUnidad = $difTotal / count($productosActuales);
+                
+                $dbDestino->begin_transaction();
+                try {
+                    foreach ($productosActuales as $p) {
+                        $idp = $p['idproducto'];
+                        $nuevaCant = $p['cantidad'] + $difPorUnidad;
+                        
+                        // Actualizar Inventario
+                        $updInv = $dbDestino->prepare("UPDATE inventario SET cantidad=?, localchange=1, syncweb=0, sincalmacenes='AJUSTE_WEB' WHERE idproducto=? AND idalmacen=1");
+                        $updInv->bind_param("di", $nuevaCant, $idp);
+                        $updInv->execute();
+                        
+                        // Marcar producto para sincronización
+                        $dbDestino->query("UPDATE productos SET localchange=1, syncweb=0 WHERE idproducto=$idp");
+                    }
+
+                    // 2. Cerrar el conteo en la web
+                    $mysqli->query("UPDATE conteoweb SET estado='C' WHERE id=$idConteo");
+                    
+                    // 3. GUARDAR HISTORIAL CON VALORES ANTES/DESPUÉS
+                    $log = $mysqli->prepare("INSERT INTO historial_ajustes 
+                        (id_conteo, usuario, nit_empresa, categoria, stock_anterior, diferencia_aplicada, stock_nuevo) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $log->bind_param("isssddd", $idConteo, $usuarioActual, $nitFila, $CodCat, $stockAnterior, $difTotal, $stockNuevo);
+                    $log->execute();
+
+                    $dbDestino->commit();
+                    $mensaje = "✅ Ajuste procesado: Sistema anterior: $stockAnterior | Nuevo: $stockNuevo";
+                } catch (Exception $e) {
+                    $dbDestino->rollback();
+                    $mensaje = "❌ Error crítico: " . $e->getMessage();
                 }
-                $mysqli->query("UPDATE conteoweb SET estado='C' WHERE id=$idConteo");
-                $mensaje = "✅ Ajuste aplicado exitosamente.";
             }
         }
     }
 }
 
-// 2. VISTA DE DATOS (Filtrado por diferencia mayor a 0.2 absoluto)
+/* ============================================================
+   2. CONSULTA DE DATOS PENDIENTES (HOY)
+   ============================================================ */
 $res = $mysqli->query("SELECT c.*, cat.Nombre 
                        FROM conteoweb c 
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                        WHERE c.estado = 'A' 
                        AND ABS(c.diferencia) > 0.2 
+                       AND DATE(c.fecha_conteo) = '$hoy'
                        ORDER BY c.id DESC");
 ?>
 
@@ -78,76 +111,73 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Ajuste de Inventario</title>
+    <title>Control de Ajustes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; }
-        .btn-refresh { background: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; transition: 0.3s; }
-        .btn-refresh:hover { background: #2980b9; transform: rotate(15deg); }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; background: #fafafa; padding: 12px; color: #666; font-size: 12px; border-bottom: 2px solid #eee; }
-        td { padding: 15px; border-bottom: 1px solid #f1f1f1; }
-        .btn-ajuste { background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .diff { font-weight: bold; }
-        .neg { color: #e74c3c; }
-        .pos { color: #27ae60; }
+        body { background: #f8f9fa; }
+        .card { border: none; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1); }
+        .table thead { background: #343a40; color: white; }
+        .badge-delta { font-size: 0.9em; padding: 5px 10px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h2 style="margin:0">📊 Ajustes de Inventario </h2>
-        <button onclick="window.location.reload();" class="btn-refresh" title="Recargar datos">
-            🔄 Refrescar Lista
-        </button>
-    </div>
-    
-    <?php if(isset($mensaje)): ?>
-        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:8px; margin-bottom:20px;">
-            <?= $mensaje ?>
+<div class="container py-5">
+    <div class="card mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h4 class="mb-0 text-primary">📊 Ajustes Pendientes (Fecha: <?= date("d/m/Y") ?>)</h4>
+            <button onclick="location.reload()" class="btn btn-outline-secondary btn-sm">🔄 Recargar</button>
         </div>
-    <?php endif; ?>
-
-    <table>
-        <thead>
-            <tr>
-                <th>SEDE</th>
-                <th>CATEGORÍA</th>
-                <th style="text-align:right">SISTEMA</th>
-                <th style="text-align:right">CONTEO FISICO</th>
-                <th style="text-align:center">DIFERENCIA</th>
-                <th style="text-align:center">ACCION</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if($res->num_rows > 0): ?>
-                <?php while($r = $res->fetch_assoc()): 
-                    $sede = ($r['NitEmpresa'] === '901724534-7') ? "DRINKS" : "CENTRAL";
-                ?>
-                <tr>
-                    <td><strong><?= $sede ?></strong></td>
-                    <td><?= $r['CodCat'] ?> - <?= $r['Nombre'] ?></td>
-                    <td style="text-align:right"><?= number_format($r['stock_sistema'], 2) ?></td>
-                    <td style="text-align:right"><?= number_format($r['stock_fisico'], 2) ?></td>
-                    <td style="text-align:center" class="diff <?= ($r['diferencia'] < 0) ? 'neg' : 'pos' ?>">
-                        <?= ($r['diferencia'] > 0 ? '+' : '') . number_format($r['diferencia'], 2) ?>
-                    </td>
-                    <td style="text-align:center">
-                        <form method="POST">
-                            <input type="hidden" name="id_conteo" value="<?= $r['id'] ?>">
-                            <input type="hidden" name="accion" value="ajustar">
-                            <button type="submit" class="btn-ajuste" onclick="return confirm('¿Aplicar este ajuste?')">Ajustar</button>
-                        </form>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
-            <?php else: ?>
-                <tr><td colspan="6" style="text-align:center; padding:30px; color:#999;">No hay diferencias significativas (> 0.2) pendientes.</td></tr>
+        <div class="card-body">
+            
+            <?php if($mensaje): ?>
+                <div class="alert alert-info border-0 shadow-sm mb-4"><?= $mensaje ?></div>
             <?php endif; ?>
-        </tbody>
-    </table>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>SEDE</th>
+                            <th>CATEGORÍA</th>
+                            <th class="text-end">EN SISTEMA</th>
+                            <th class="text-end">FISICO</th>
+                            <th class="text-center">DIFERENCIA</th>
+                            <th class="text-center">ACCION</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if($res && $res->num_rows > 0): ?>
+                            <?php while($r = $res->fetch_assoc()): 
+                                $sede = ($r['NitEmpresa'] === '901724534-7') ? "DRINKS" : "CENTRAL";
+                            ?>
+                            <tr>
+                                <td><span class="fw-bold text-secondary"><?= $sede ?></span></td>
+                                <td><small class="text-muted d-block"><?= $r['CodCat'] ?></small><?= $r['Nombre'] ?></td>
+                                <td class="text-end fw-bold text-muted"><?= number_format($r['stock_sistema'], 2) ?></td>
+                                <td class="text-end fw-bold text-dark"><?= number_format($r['stock_fisico'], 2) ?></td>
+                                <td class="text-center">
+                                    <span class="badge badge-delta <?= ($r['diferencia'] < 0) ? 'bg-danger' : 'bg-success' ?>">
+                                        <?= ($r['diferencia'] > 0 ? '+' : '') . number_format($r['diferencia'], 2) ?>
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <form method="POST">
+                                        <input type="hidden" name="id_conteo" value="<?= $r['id'] ?>">
+                                        <input type="hidden" name="accion" value="ajustar">
+                                        <button type="submit" class="btn btn-primary btn-sm px-3 shadow-sm" onclick="return confirm('¿Aplicar ajuste y guardar historial?')">Ajustar Sistema</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <tr><td colspan="6" class="text-center py-5 text-muted">No se encontraron diferencias mayores a 0.2 para procesar hoy.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 </body>
