@@ -139,6 +139,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                     <thead>
                         <tr>
                             <th>SEDE</th>
+                            <th>FECHA CONTEO</th>
                             <th>CATEGORÍA</th>
                             <th class="text-end">EN SISTEMA</th>
                             <th class="text-end">FISICO</th>
@@ -153,6 +154,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                             ?>
                             <tr>
                                 <td><span class="fw-bold text-secondary"><?= $sede ?></span></td>
+                                <td><span class="text-muted small"><?= date("d/m/Y H:i", strtotime($r['fecha_conteo'])) ?></span></td>
                                 <td><small class="text-muted d-block"><?= $r['CodCat'] ?></small><?= $r['Nombre'] ?></td>
                                 <td class="text-end fw-bold text-muted"><?= number_format($r['stock_sistema'], 2) ?></td>
                                 <td class="text-end fw-bold text-dark"><?= number_format($r['stock_fisico'], 2) ?></td>
@@ -171,7 +173,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center py-5 text-muted">No se encontraron diferencias mayores a 0.2 para procesar hoy.</td></tr>
+                            <tr><td colspan="7" class="text-center py-5 text-muted">No se encontraron diferencias mayores a 0.2 para procesar hoy.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
