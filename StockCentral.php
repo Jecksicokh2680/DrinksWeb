@@ -4,12 +4,21 @@ require_once("ConnDrinks.php");    // $mysqliDrinks
 require_once("Conexion.php");      // $mysqliWeb
 
 /* ============================================================
-   LÓGICA DE BACKUP: INSERTAR O ACTUALIZAR (UPSERT)
+   RELACIÓN PRODUCTO → CATEGORÍA (Se necesita para el Backup)
+============================================================ */
+$prodCat = [];
+$resPC = $mysqliWeb->query("SELECT sku, CodCat FROM catproductos");
+while ($r = $resPC->fetch_assoc()) {
+    $prodCat[$r['sku']] = $r['CodCat'];
+}
+
+/* ============================================================
+   LÓGICA DE BACKUP: INSERTAR O ACTUALIZAR (UPSERT) CON CODCAT
 ============================================================ */
 if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
     $fecha_actual = date("Y-m-d");
 
-    // Traemos el stock actual de ambas sedes (Todo el universo de productos)
+    // Traemos el stock actual de ambas sedes
     $sqlAll = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as cant 
                FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
                WHERE p.estado='1' GROUP BY p.barcode";
@@ -24,52 +33,49 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
 
     $todos_barcodes = array_unique(array_merge(array_keys($dataC), array_keys($dataD)));
 
-    /* Usamos INSERT ... ON DUPLICATE KEY UPDATE:
-       Si el barcode y la fecha ya existen, actualiza los stocks. Si no, inserta nuevo.
-    */
+    // SQL UPSERT incluyendo codcat
     $sqlUpsert = "INSERT INTO historial_stock 
-                  (barcode, descripcion, stock_central, stock_drinks, stock_total, fecha_registro) 
-                  VALUES (?, ?, ?, ?, ?, ?)
+                  (barcode, descripcion, codcat, stock_central, stock_drinks, stock_total, fecha_registro) 
+                  VALUES (?, ?, ?, ?, ?, ?, ?)
                   ON DUPLICATE KEY UPDATE 
                   stock_central = VALUES(stock_central),
-                  stock_drinks = VALUES(stock_drinks),
-                  stock_total = VALUES(stock_total),
-                  descripcion = VALUES(descripcion)";
+                  stock_drinks  = VALUES(stock_drinks),
+                  stock_total   = VALUES(stock_total),
+                  descripcion   = VALUES(descripcion),
+                  codcat        = VALUES(codcat)";
 
     $stmtIns = $mysqliWeb->prepare($sqlUpsert);
 
     foreach($todos_barcodes as $bc){
         $desc_ins = $dataC[$bc]['descripcion'] ?? ($dataD[$bc]['descripcion'] ?? 'Sin nombre');
-        $c_ins = $dataC[$bc]['cant'] ?? 0;
-        $d_ins = $dataD[$bc]['cant'] ?? 0;
-        $t_ins = $c_ins + $d_ins;
+        $cat_ins  = $prodCat[$bc] ?? 'SIN'; // Obtenemos el CodCat
+        $c_ins    = $dataC[$bc]['cant'] ?? 0;
+        $d_ins    = $dataD[$bc]['cant'] ?? 0;
+        $t_ins    = $c_ins + $d_ins;
         
-        $stmtIns->bind_param("ssddds", $bc, $desc_ins, $c_ins, $d_ins, $t_ins, $fecha_actual);
+        // s = string, d = double/decimal
+        $stmtIns->bind_param("ssdddds", $bc, $desc_ins, $cat_ins, $c_ins, $d_ins, $t_ins, $fecha_actual);
         $stmtIns->execute();
     }
-    $msg_backup = "✅ Historial actualizado/insertado correctamente para hoy ($fecha_actual).";
+    $msg_backup = "✅ Respaldo completo: Stock y Categorías actualizados para hoy ($fecha_actual).";
 }
 
-/* =============================
+/* ============================================================
    PARÁMETROS DE VISTA (PAGINACIÓN Y FILTROS)
-============================= */
+============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term      = $_GET['term'] ?? '';
 $page      = max(1, (int)($_GET['page'] ?? 1));
 $limit     = 15;
 $offset    = ($page - 1) * $limit;
-$like = "%$term%";
+$like      = "%$term%";
 
-/* ... (Se mantiene el resto de tu lógica de Categorías y Relación Producto-Categoría) ... */
+// Categorías para el selector
 $cats = [];
 $resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1' ORDER BY CodCat ASC");
 while ($c = $resCat->fetch_assoc()) { $cats[$c['CodCat']] = $c['Nombre']; }
 
-$prodCat = [];
-$resPC = $mysqliWeb->query("SELECT sku, CodCat FROM catproductos");
-while ($r = $resPC->fetch_assoc()) { $prodCat[$r['sku']] = $r['CodCat']; }
-
-/* ... (Lógica de filtrado Barcodes por Categoría) ... */
+// Barcodes filtrados por categoría (si aplica)
 $barcodesCat = [];
 if ($categoria) {
     $stmtCat = $mysqliWeb->prepare("SELECT sku FROM catproductos WHERE CodCat = ?");
@@ -86,7 +92,7 @@ if ($categoria) {
     $where .= " AND p.barcode IN ($in)";
 }
 
-/* CONTADOR PARA PAGINACIÓN */
+/* CONTADOR Y CONSULTA PARA LA TABLA VISUAL */
 $sqlCount = "SELECT COUNT(DISTINCT p.barcode) total FROM productos p WHERE $where";
 $stmtCnt = $mysqliCentral->prepare($sqlCount);
 $stmtCnt->bind_param("ss", $like, $like);
@@ -94,7 +100,6 @@ $stmtCnt->execute();
 $totalRows  = $stmtCnt->get_result()->fetch_assoc()['total'];
 $totalPages = max(1, ceil($totalRows / $limit));
 
-/* QUERY PRINCIPAL DE VISTA */
 $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) cantidad FROM productos p
         LEFT JOIN inventario i ON p.idproducto = i.idproducto
         WHERE $where GROUP BY p.barcode, p.descripcion ORDER BY p.barcode ASC LIMIT $limit OFFSET $offset";
@@ -118,33 +123,34 @@ usort($barcodes, function($a, $b) use($prodCat) {
     return ($prodCat[$a] ?? '') <=> ($prodCat[$b] ?? '');
 });
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Inventario Consolidado con Backup</title>
+    <title>Inventario Consolidado</title>
     <style>
         body{font-family:Segoe UI,Arial;background:#eef1f4;color:#333;margin:0;padding:0}
         .container{max-width:1200px;margin:30px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
         h2{color:#2c3e50;text-align:center;margin-bottom:20px}
         form{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center}
         select,input,button{padding:8px 12px;border-radius:6px;border:1px solid #ccc;font-size:14px}
-        button{background:#007bff;color:#fff;border:none;cursor:pointer;transition:0.3s}
+        button{background:#007bff;color:#fff;border:none;cursor:pointer}
         .table-container{overflow-x:auto;border-radius:12px;background:#fff}
         table{width:100%;border-collapse:collapse;min-width:700px}
         th,td{padding:12px 8px;text-align:center;border-bottom:1px solid #e1e1e1}
-        th{background:#007bff;color:#fff;font-weight:500}
+        th{background:#007bff;color:#fff}
         tr.subtotal{background:#f1f1f1;font-weight:700}
         .paginacion{text-align:center;margin-top:15px}
         .paginacion a{padding:6px 10px;margin:2px;border:1px solid #007bff;color:#007bff;text-decoration:none;border-radius:5px}
         .paginacion a.activa{background:#007bff;color:#fff}
-        .alert { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border: 1px solid #bee5eb; font-weight: bold; }
+        .alert { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border: 1px solid #bee5eb; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📦 Gestión de Inventario Central + Drinks</h2>
+    <h2>📦 Inventario Central + Drinks</h2>
 
     <?php if(isset($msg_backup)): ?>
         <div class="alert"><?= $msg_backup ?></div>
@@ -158,8 +164,8 @@ usort($barcodes, function($a, $b) use($prodCat) {
             <?php endforeach; ?>
         </select>
         <input type="text" name="term" placeholder="Buscar producto..." value="<?= htmlspecialchars($term) ?>">
-        <button type="submit">🔍 Consultar Stock</button>
-        <button type="button" onclick="location.href='?action=backup_db'" style="background:#28a745;">💾 Sincronizar/Backup Hoy</button>
+        <button type="submit">🔍 Consultar</button>
+        <button type="button" onclick="location.href='?action=backup_db'" style="background:#28a745;">💾 Sincronizar Historial</button>
     </form>
 
     <div class="table-container">
@@ -167,7 +173,7 @@ usort($barcodes, function($a, $b) use($prodCat) {
             <thead>
                 <tr>
                     <th>CodCat</th>
-                    <th>Nombre Categoría</th>
+                    <th>Categoría</th>
                     <th>Barcode</th>
                     <th style="text-align:left;">Producto</th>
                     <th>Drinks</th>
