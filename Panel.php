@@ -3,8 +3,9 @@ require 'Conexion.php';
 require 'helpers.php';
 session_start();
 
+// Si no hay sesión, redirigimos al Login rompiendo cualquier iframe
 if (empty($_SESSION['Usuario'])) {
-    header("Location: Login.php?msg=Debe iniciar sesión");
+    echo "<script>window.top.location.href='Login.php?msg=Debe iniciar sesión';</script>";
     exit;
 }
 
@@ -51,6 +52,7 @@ body{
     color:#fff;
     display:flex;
     flex-direction:column;
+    flex-shrink: 0;
 }
 .sidebar .nav-link{
     color:#fff;
@@ -255,7 +257,7 @@ Lo más Vendido por Cajero
 
 <div class="mt-auto p-3 border-top text-center">
 <div>Bienvenido<br><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
-<a href="Logout.php" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
+<a href="Logout.php" target="_top" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
 </div>
 
 </div>

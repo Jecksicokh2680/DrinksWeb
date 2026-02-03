@@ -59,9 +59,11 @@ function cargarMapeoCompleto($dbWeb){
 function obtenerProductosHoy($db){
     $hoy = date('Ymd');
     $out = [];
+    $totalVentaGlobal = 0; // Para calcular participación
+
     $sql = "SELECT PR.barcode, PR.DESCRIPCION producto,
-               round(SUM(D.CANTIDAD),1) cant,
-               round(SUM(D.CANTIDAD * D.VALORPROD),1) total
+                round(SUM(D.CANTIDAD),1) cant,
+                round(SUM(D.CANTIDAD * D.VALORPROD),1) total
         FROM FACTURAS F
         INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
         INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -69,11 +71,14 @@ function obtenerProductosHoy($db){
         WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA = '$hoy'
         GROUP BY PR.barcode, PR.DESCRIPCION";
     $r = $db->query($sql);
-    while($r && $row = $r->fetch_assoc()){ $out[$row['barcode']] = $row; }
+    while($r && $row = $r->fetch_assoc()){ 
+        $out[$row['barcode']] = $row; 
+        $totalVentaGlobal += $row['total'];
+    }
 
     $sqlPed = "SELECT PR.barcode, PR.DESCRIPCION producto,
-               round(SUM(D.CANTIDAD),1) cant,
-               round(SUM(D.CANTIDAD * D.VALORPROD),1) total
+                round(SUM(D.CANTIDAD),1) cant,
+                round(SUM(D.CANTIDAD * D.VALORPROD),1) total
         FROM PEDIDOS P
         INNER JOIN DETPEDIDOS D ON D.IDPEDIDO = P.IDPEDIDO
         INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -81,12 +86,13 @@ function obtenerProductosHoy($db){
         GROUP BY PR.barcode, PR.DESCRIPCION";
     $rp = $db->query($sqlPed);
     while($rp && $row = $rp->fetch_assoc()){
+        $totalVentaGlobal += $row['total'];
         if(isset($out[$row['barcode']])){
             $out[$row['barcode']]['cant']  += $row['cant'];
             $out[$row['barcode']]['total'] += $row['total'];
         } else { $out[$row['barcode']] = $row; }
     }
-    return array_values($out);
+    return ['lista' => array_values($out), 'global' => $totalVentaGlobal];
 }
 
 function obtenerTop($arr, $limite = 25){
@@ -97,14 +103,20 @@ function obtenerTop($arr, $limite = 25){
 function money($v){ return number_format($v/1000, 0, ',', '.'); }
 
 /* =====================================================
-    3. PROCESAMIENTO AUTOMÁTICO
+    3. PROCESAMIENTO
 ===================================================== */
 $mapeo = cargarMapeoCompleto($dbWeb);
-$topCentral = obtenerTop(obtenerProductosHoy($dbCentral));
-$topDrinks  = obtenerTop(obtenerProductosHoy($dbDrinks));
 
+$resC = obtenerProductosHoy($dbCentral);
+$topCentral = obtenerTop($resC['lista']);
+$globalC = $resC['global'];
+
+$resD = obtenerProductosHoy($dbDrinks);
+$topDrinks  = obtenerTop($resD['lista']);
+$globalD = $resD['global'];
+
+// Logica de Actualización Automática (SegWebT)
 $logUpdate = "";
-// Solo auto-actualiza si no se acaba de presionar un botón manual
 if (!$accionManual) {
     $categoriasParaActualizar = [];
     foreach (array_merge($topCentral, $topDrinks) as $p) {
@@ -147,6 +159,10 @@ if (!$accionManual) {
         .btn-red{background:#d32f2f;} .btn-red:hover{background:#b71c1c;}
         .btn-green{background:#2e7d32;} .btn-green:hover{background:#1b5e20;}
         .footer-info{margin:8px 0; font-size:13px; color:#555;}
+        /* Estilos Participación */
+        .part-badge{background:#fff3e0; color:#e65100; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px;}
+        .stats-summary{display:flex; justify-content:space-between; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid #dee2e6;}
+        .stat-val{font-size:14px; color:#1a237e; font-weight:bold;}
     </style>
 </head>
 <body>
@@ -178,21 +194,27 @@ if (!$accionManual) {
             <?php 
                 $sumC = array_sum(array_column($topCentral, 'total')); 
                 $cantC = array_sum(array_column($topCentral, 'cant'));
+                $percC = ($globalC > 0) ? ($sumC / $globalC) * 100 : 0;
             ?>
-            <div class="footer-info">Items: <?= count($topCentral) ?> | Cant: <?= $cantC ?> | Vol: $ <?= money($sumC) ?>k</div>
+            <div class="stats-summary">
+                <div>Venta Total Hoy: <span class="stat-val">$ <?= money($globalC) ?>k</span></div>
+                <div>Participación Top 25: <span class="stat-val"><?= number_format($percC, 1) ?>%</span></div>
+            </div>
+            <div class="footer-info">Items Top: <?= count($topCentral) ?> | Cant: <?= $cantC ?> | Vol Top: $ <?= money($sumC) ?>k</div>
             <table>
                 <thead>
-                    <tr><th>Categoría</th><th>Producto</th><th>Cant</th><th>Total</th></tr>
+                    <tr><th>Producto</th><th>Cant</th><th>Total</th><th>%</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach($topCentral as $p): 
                         $info = $mapeo[$p['barcode']] ?? ['categoria'=>'N/A','empresa'=>'N/A'];
+                        $p_perc = ($globalC > 0) ? ($p['total'] / $globalC) * 100 : 0;
                     ?>
                     <tr>
-                        <td><strong><?= $info['categoria'] ?></strong><br><small><?= $info['empresa'] ?></small></td>
-                        <td><?= $p['producto'] ?></td>
+                        <td><strong><?= $p['producto'] ?></strong><br><small><?= $info['categoria'] ?> | <?= $info['empresa'] ?></small></td>
                         <td class="cant"><?= $p['cant'] ?></td>
                         <td class="monto">$ <?= money($p['total']) ?></td>
+                        <td><span class="part-badge"><?= number_format($p_perc, 1) ?>%</span></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -204,21 +226,27 @@ if (!$accionManual) {
             <?php 
                 $sumD = array_sum(array_column($topDrinks, 'total')); 
                 $cantD = array_sum(array_column($topDrinks, 'cant'));
+                $percD = ($globalD > 0) ? ($sumD / $globalD) * 100 : 0;
             ?>
-            <div class="footer-info">Items: <?= count($topDrinks) ?> | Cant: <?= $cantD ?> | Vol: $ <?= money($sumD) ?>k</div>
+            <div class="stats-summary">
+                <div>Venta Total Hoy: <span class="stat-val">$ <?= money($globalD) ?>k</span></div>
+                <div>Participación Top 25: <span class="stat-val"><?= number_format($percD, 1) ?>%</span></div>
+            </div>
+            <div class="footer-info">Items Top: <?= count($topDrinks) ?> | Cant: <?= $cantD ?> | Vol Top: $ <?= money($sumD) ?>k</div>
             <table>
                 <thead>
-                    <tr><th>Categoría</th><th>Producto</th><th>Cant</th><th>Total</th></tr>
+                    <tr><th>Producto</th><th>Cant</th><th>Total</th><th>%</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach($topDrinks as $p): 
                         $info = $mapeo[$p['barcode']] ?? ['categoria'=>'N/A','empresa'=>'N/A'];
+                        $p_perc = ($globalD > 0) ? ($p['total'] / $globalD) * 100 : 0;
                     ?>
                     <tr>
-                        <td><strong><?= $info['categoria'] ?></strong><br><small><?= $info['empresa'] ?></small></td>
-                        <td><?= $p['producto'] ?></td>
+                        <td><strong><?= $p['producto'] ?></strong><br><small><?= $info['categoria'] ?> | <?= $info['empresa'] ?></small></td>
                         <td class="cant"><?= $p['cant'] ?></td>
                         <td class="monto">$ <?= money($p['total']) ?></td>
+                        <td><span class="part-badge"><?= number_format($p_perc, 1) ?>%</span></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

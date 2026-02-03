@@ -147,6 +147,10 @@ if($skus){
     input:focus{ border-color: #0288d1; }
     button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px 20px;}
     button:hover{ background: #01579b;}
+    /* Estilo botón excel */
+    .btn-excel{ background: #2e7d32 !important; }
+    .btn-excel:hover{ background: #1b5e20 !important; }
+
     table{border-collapse:collapse; width:100%; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden;}
     th{background:#263238; color: white; padding: 12px; text-align: left; position: sticky; top: 0;}
     td{padding: 10px; border-bottom: 1px solid #eee;}
@@ -155,6 +159,7 @@ if($skus){
     .badge{ padding: 4px 8px; border-radius: 4px; font-size: 11px; color: white; font-weight: bold;}
     .central{ background: #1565c0; } .drinks{ background: #2e7d32; }
 </style>
+<script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
 </head>
 <body>
 
@@ -193,12 +198,13 @@ if($skus){
             </select>
         </div>
         <button type="submit">🔍 Filtrar Datos</button>
+        <button type="button" class="btn-excel" onclick="exportarExcel()">Excel 📥</button>
     </form>
 
     <?php if(!$rows): ?>
         <p style="margin-top:20px; color: #78909c;">No se encontraron registros con esos criterios.</p>
     <?php else: ?>
-    <table>
+    <table id="tablaVentas">
         <thead>
             <tr>
                 <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
@@ -255,6 +261,22 @@ if($skus){
     </table>
     <?php endif; ?>
 </div>
+
+<script>
+function exportarExcel() {
+    let table = document.getElementById("tablaVentas");
+    if (!table) {
+        alert("No hay datos para exportar");
+        return;
+    }
+    TableToExcel.convert(table, {
+        name: "Reporte_Ventas_<?=$f_ini?>_<?=$f_fin?>.xlsx",
+        sheet: {
+            name: "Ventas"
+        }
+    });
+}
+</script>
 
 </body>
 </html>
