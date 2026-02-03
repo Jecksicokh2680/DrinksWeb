@@ -231,7 +231,7 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td>$<?= number_format($r['ValorFactAnular'], 0) ?></td>
+                        <td>$<?= number_format($r['ValorFactAnular'], 0)*10000?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
