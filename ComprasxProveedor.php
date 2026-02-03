@@ -39,55 +39,90 @@ $MesSel = $_GET['Mes'] ?? date('m');
 $AnioSel = $_GET['Anio'] ?? date('Y');
 $Sucursal = $_GET['Sucursal'] ?? 'AMBAS';
 $ProveedorSel = $_GET['Proveedor'] ?? '';
-$ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
+$ProductoSel = trim($_GET['FiltroProd'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compras Gerenciales - Reporte Mensual</title>
     <style>
-        body{ font-family:Segoe UI,Arial; margin:15px; background:#f4f6f8; font-size:14px; }
-        .card{ background:#fff; padding:20px; border-radius:14px; box-shadow:0 6px 16px rgba(0,0,0,.10) }
-        h2 { font-size: 28px; margin-bottom: 20px; color: #2c3e50; }
+        /* Ajustes base responsive */
+        body{ font-family:Segoe UI,Arial; margin:10px; background:#f4f6f8; font-size:14px; color: #333; }
+        .card{ background:#fff; padding:15px; border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.08); max-width: 100%; margin: auto; }
         
-        .filters{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:15px }
-        label{ font-size:12px; font-weight:700; color:#555; }
-        select,button,input{ width:100%; padding:12px; border-radius:8px; border:1px solid #ccc; font-size:15px; box-sizing: border-box; }
-        button{ background:#0d6efd; color:#fff; font-weight:700; cursor:pointer; transition: 0.3s; }
-        button:hover{ background:#0a58ca; }
-        
-        .search-container { margin-bottom: 15px; background: #eef2f7; padding: 20px; border-radius: 10px; border-left: 6px solid #0d6efd; }
-        .search-input { border: 2px solid #0d6efd !important; font-size: 18px !important; font-weight: bold; }
+        h2 { font-size: 22px; margin-bottom: 20px; color: #2c3e50; text-align: center; }
 
-        .table-container{ max-height:65vh; overflow:auto; border-radius:12px; border:1px solid #ddd; background:#fff; }
-        table{ border-collapse:collapse; width:100%; min-width:1300px; }
+        /* Formulario de filtros adaptativo */
+        .filters{ 
+            display: grid; 
+            grid-template-columns: 1fr; /* Por defecto 1 columna (móvil) */
+            gap: 12px; 
+            margin-bottom: 15px; 
+        }
+
+        /* Pantallas medianas y grandes (Tablets/PC) */
+        @media (min-width: 768px) {
+            .filters { grid-template-columns: repeat(3, 1fr); }
+            h2 { font-size: 28px; text-align: left; }
+            .card { padding: 25px; }
+        }
+        @media (min-width: 1024px) {
+            .filters { grid-template-columns: repeat(6, 1fr); }
+        }
+
+        label{ font-size:11px; font-weight:700; color:#555; text-transform: uppercase; display: block; margin-bottom: 4px; }
+        select, button, input { width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:14px; box-sizing: border-box; }
+        button { background:#0d6efd; color:#fff; font-weight:700; cursor:pointer; transition: 0.3s; border: none; margin-top: 5px; }
+        button:hover { background:#0a58ca; }
         
-        th,td{ border:1px solid #ddd; padding:12px 10px; text-align:right; white-space:nowrap; font-size: 15px; }
+        .search-container { margin-bottom: 15px; background: #eef2f7; padding: 15px; border-radius: 10px; border-left: 5px solid #0d6efd; }
+        .search-input { border: 2px solid #0d6efd !important; font-size: 16px !important; font-weight: bold; }
+
+        /* Contenedor de tabla con scroll */
+        .table-container { 
+            max-height: 70vh; 
+            overflow: auto; 
+            border-radius: 10px; 
+            border: 1px solid #ddd; 
+            background: #fff; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
+        }
+        
+        table { border-collapse: collapse; width: 100%; min-width: 1000px; } /* Mantiene el ancho para permitir scroll horizontal en móvil */
+        
+        th, td { border: 1px solid #eee; padding: 10px 8px; text-align: right; white-space: nowrap; font-size: 13px; }
         
         .nombre-prod { 
-            font-size: 17px !important; 
+            font-size: 14px !important; 
             font-weight: 600; 
             color: #1a1a1a; 
             white-space: normal !important; 
-            min-width: 300px;
+            min-width: 250px;
+            text-align: left;
         }
 
-        .monto-grande { font-size: 17px; font-weight: 700; color: #2c3e50; }
+        .monto-grande { font-size: 14px; font-weight: 700; color: #2c3e50; }
         
-        thead th{ position:sticky; top:0; background:#f8f9fa; font-weight:800; z-index: 20; font-size: 14px; color: #444; }
-        .badge{ padding:5px 10px; border-radius:12px; color:#fff; font-size:12px; font-weight: bold; }
-        .central{background:#0d6efd} .drinks{background:#198754}
+        thead th { position: sticky; top: 0; background: #f8f9fa; font-weight: 800; z-index: 20; color: #444; border-bottom: 2px solid #dee2e6; }
         
-        .subtotal{ background:#f1f8ff; font-weight:800; }
-        .subtotal td { font-size: 18px; color: #0d6efd; }
+        .badge { padding: 4px 8px; border-radius: 6px; color: #fff; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .central { background: #0d6efd; } .drinks { background: #198754; }
         
-        .total{ background:#d1fae5; font-weight:900; }
-        .total td { font-size: 22px; color: #065f46; padding: 20px 10px; }
+        .subtotal { background: #f1f8ff; font-weight: 800; }
+        .subtotal td { font-size: 15px; color: #0d6efd; }
         
-        .text-left{ text-align:left }
-        .porc-pos{color:#1b5e20; font-weight:800; font-size: 16px; }
-        .porc-neg{color:#b71c1c; font-weight:800; font-size: 16px; }
+        .total { background: #d1fae5; font-weight: 900; }
+        .total td { font-size: 18px; color: #065f46; padding: 15px 10px; }
+        
+        .text-left { text-align: left; }
+        .porc-pos { color: #1b5e20; font-weight: 800; }
+        .porc-neg { color: #b71c1c; font-weight: 800; }
+
+        /* Estilo para barra de scroll en móviles */
+        .table-container::-webkit-scrollbar { height: 8px; width: 8px; }
+        .table-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -118,7 +153,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
         </div>
         <div><label>Proveedor</label>
             <select name="Proveedor">
-                <option value="">-- Todos los Proveedores --</option>
+                <option value="">-- Todos --</option>
                 <?php
                 function listarProv($mysqli, $m, $a){
                     return $mysqli->query("SELECT DISTINCT T.NIT, CONCAT(T.nombres,' ',T.apellidos) as prov 
@@ -134,15 +169,15 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
                 ?>
             </select>
         </div>
-        <div><label>Filtro Producto (SQL)</label>
+        <div><label>Filtro SQL</label>
             <input type="text" name="FiltroProd" value="<?=htmlspecialchars($ProductoSel)?>" placeholder="Sku o Nombre...">
         </div>
-        <div><label>&nbsp;</label><button type="submit">Cargar Reporte</button></div>
+        <div><label>&nbsp;</label><button type="submit">Cargar</button></div>
     </form>
 
     <div class="search-container">
-        <label>🔍 Filtro Dinámico en Pantalla (Rápido):</label>
-        <input type="text" id="inputBusqueda" class="search-input" placeholder="Filtrar resultados cargados..." onkeyup="filtrarProductos()">
+        <label>🔍 Filtro Rápido en Pantalla:</label>
+        <input type="text" id="inputBusqueda" class="search-input" placeholder="Escriba para filtrar..." onkeyup="filtrarProductos()">
     </div>
 
     <?php
@@ -160,7 +195,6 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
 
         function comprasMes($mysqli, $suc, $m, $a, $nitProv, $busqProd){
             $cond = $nitProv ? " AND T.NIT='$nitProv' " : "";
-            // AGREGAR FILTRO SQL PARA PRODUCTO
             if($busqProd != ""){
                 $busqProd = $mysqli->real_escape_string($busqProd);
                 $cond .= " AND (P.descripcion LIKE '%$busqProd%' OR P.Barcode LIKE '%$busqProd%') ";
@@ -185,7 +219,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
 
         echo "<div class='table-container'><table id='tablaCompras'><thead><tr>
               <th>Suc</th><th>Fecha</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
-              <th>Cant</th><th>Costo</th><th>Total Compra</th>";
+              <th>Cant</th><th>Costo</th><th>Total</th>";
         if($PuedeVerUtil) echo "<th>P.Venta</th><th>Utilidad</th><th>%</th>";
         echo "</tr></thead><tbody>";
 
@@ -210,7 +244,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
             $clsP = $porc >= 0 ? 'porc-pos' : 'porc-neg';
 
             echo "<tr class='item-row'>
-                    <td><span class='badge $cls'>{$x['sucursal']}</span></td>
+                    <td><span class='badge $cls'>".substr($x['sucursal'],0,1)."</span></td>
                     <td>{$x['FECHA']}</td>
                     <td>{$x['idcompra']}</td>
                     <td class='text-left'>{$x['prov']}</td>
@@ -224,14 +258,13 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? ''); // NUEVA VARIABLE
         }
 
         if($provAnt != '') echo "<tr class='subtotal prov-row'><td colspan='8'>SUBTOTAL: $provAnt</td><td class='monto-grande'>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
-        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL CONSOLIDADO MES</td><td class='monto-grande'>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL MES</td><td class='monto-grande'>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
         echo "</tbody></table></div>";
     }
     ?>
 </div>
 
 <script>
-// Filtro de JavaScript (para búsqueda rápida en los datos ya cargados)
 function filtrarProductos() {
     let input = document.getElementById("inputBusqueda").value.toLowerCase();
     let filas = document.getElementsByClassName("item-row");
