@@ -92,7 +92,7 @@ if($UsuarioFact !== ''){
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
-$saldo_efectivo = $totalVentas - ($totalEgresos );
+$saldo_efectivo =  ($totalEgresos )-$totalVentas ;
 ?>
 
 <!DOCTYPE html>
