@@ -12,6 +12,7 @@ if (!isset($_SESSION['Usuario'])) die("Sesión no válida");
 $mysqli->set_charset("utf8");
 $usuarioActual = $_SESSION['Usuario'];
 $hoy = date("Y-m-d");
+$primerDiaMes = date("Y-m-01"); // Variable para el filtro mensual
 $ahoraBogota = date("Y-m-d H:i:s");
 
 /* ============================================================
@@ -147,11 +148,12 @@ $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre
     WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2 AND DATE(c.fecha_conteo) = '$hoy'
     ORDER BY c.id DESC");
 
+// MODIFICACIÓN: Se cambió el filtro para mostrar todo el mes actual
 $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre 
     FROM historial_ajustes h
     LEFT JOIN categorias cat ON cat.CodCat = h.categoria
-    WHERE DATE(h.fecha_ajuste) = '$hoy'
-    ORDER BY h.fecha_ajuste DESC");
+    WHERE h.fecha_ajuste >= '$primerDiaMes 00:00:00'
+    ORDER BY cat.CodCat ,h.fecha_ajuste DESC");
 ?>
 
 <!DOCTYPE html>
@@ -256,7 +258,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                             <button onclick="devolverAjuste(<?= $h['id'] ?>)" class="btn btn-outline-warning btn-undo text-dark fw-bold mb-1">
                                                 <i class="bi bi-arrow-counterclockwise"></i> DEVOLVER
                                             </button>
-                                            <div class="badge bg-light text-dark border d-block" style="font-size: 10px;"><?= date("H:i:s", strtotime($h['fecha_ajuste'])) ?></div>
+                                            <div class="badge bg-light text-dark border d-block" style="font-size: 10px;"><?= date("d/m H:i", strtotime($h['fecha_ajuste'])) ?></div>
                                         </div>
                                     </div>
                                     
@@ -286,7 +288,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <div class="p-5 text-center text-muted italic small">No hay ajustes realizados hoy.</div>
+                            <div class="p-5 text-center text-muted italic small">No hay ajustes realizados en el mes.</div>
                         <?php endif; ?>
                     </div>
                 </div>
