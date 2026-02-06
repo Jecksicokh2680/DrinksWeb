@@ -11,20 +11,25 @@ $mysqli->set_charset("utf8");
 
 // Captura de filtros
 $filtroCat   = $_GET['codcat'] ?? '';
-$filtroSede  = $_GET['sede'] ?? ''; // Nuevo filtro de sede
+$filtroSede  = $_GET['sede'] ?? ''; 
 $fechaInicio = $_GET['f_inicio'] ?? date('Y-m-01'); 
 $fechaFin    = $_GET['f_fin'] ?? date('Y-m-d');
 
 /* ============================================================
-   CONSULTA DE CATEGORÍAS (Basada en conteoweb)
+   CONSULTA DE SEDES DINÁMICA
+============================================================ */
+$resSedes = $mysqli->query("SELECT DISTINCT NitEmpresa FROM conteoweb WHERE NitEmpresa != ''");
+
+/* ============================================================
+   CONSULTA DE CATEGORÍAS
 ============================================================ */
 $resCats = $mysqli->query("SELECT DISTINCT c.CodCat, cat.Nombre 
                            FROM conteoweb c 
                            INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
-                           ORDER BY cat.Nombre ASC");
+                           ORDER BY c.CodCat,cat.Nombre ASC");
 
 /* ============================================================
-   CONSULTA DE CONTEOS DÍA A DÍA
+   CONSULTA DE CONTEOS
 ============================================================ */
 $sql = "SELECT c.*, cat.Nombre as NombreCat 
         FROM conteoweb c
@@ -36,12 +41,11 @@ if ($filtroCat != '') {
 }
 
 if ($filtroSede != '') {
-    // Filtro por NIT según tu lógica previa
     $sql .= " AND c.NitEmpresa = '$filtroSede'";
 }
 
 $sql .= " AND DATE(c.fecha_conteo) BETWEEN '$fechaInicio' AND '$fechaFin'";
-$sql .= " ORDER BY DATE(c.fecha_conteo) DESC, c.fecha_conteo DESC";
+$sql .= " ORDER BY DATE(c.fecha_conteo) ASC, c.fecha_conteo ASC";
 
 $resConteos = $mysqli->query($sql);
 ?>
@@ -61,13 +65,14 @@ $resConteos = $mysqli->query($sql);
         .estado-a { color: #fd7e14; font-weight: bold; } 
         .estado-c { color: #198754; font-weight: bold; } 
         .estado-e { color: #dc3545; text-decoration: line-through; } 
+        @media print { .btn, .card-body form, .navbar { display: none !important; } }
     </style>
 </head>
 <body>
 
 <nav class="navbar navbar-dark bg-dark mb-4 shadow">
     <div class="container-fluid px-4">
-        <span class="navbar-brand fw-bold"><i class="bi bi-clipboard-check me-2"></i> CONTEOS DÍA A DÍA</span>
+        <span class="navbar-brand fw-bold"><i class="bi bi-clipboard-check me-2"></i> REPORTE DE CONTEOS</span>
         <a href="javascript:history.back()" class="btn btn-outline-light btn-sm">Regresar</a>
     </div>
 </nav>
@@ -81,8 +86,23 @@ $resConteos = $mysqli->query($sql);
                     <label class="form-label small fw-bold">Sede</label>
                     <select name="sede" class="form-select form-select-sm">
                         <option value="">-- Todas las Sedes --</option>
-                        <option value="901724534-7" <?= ($filtroSede == '901724534-7') ? 'selected' : '' ?>>Drinks</option>
-                        <option value="900351234-1" <?= ($filtroSede == '900351234-1') ? 'selected' : '' ?>>Central</option> </select>
+                        <?php 
+                        if($resSedes):
+                            while($s = $resSedes->fetch_assoc()): 
+                                $nit = trim($s['NitEmpresa']);
+                                // Identificación de sede por el NIT corregido
+                                if ($nit === '901724534-7') { $label = "Drinks"; }
+                                elseif ($nit === '86057267-8') { $label = "Central"; }
+                                else { $label = "NIT: " . $nit; }
+                        ?>
+                            <option value="<?= $nit ?>" <?= ($filtroSede == $nit) ? 'selected' : '' ?>>
+                                <?= $label ?>
+                            </option>
+                        <?php 
+                            endwhile; 
+                        endif;
+                        ?>
+                    </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small fw-bold">Categoría</label>
@@ -117,7 +137,7 @@ $resConteos = $mysqli->query($sql);
                     <thead class="table-light">
                         <tr>
                             <th class="ps-4">Hora</th>
-                            <th>Sede / Suc</th>
+                            <th>Sede</th>
                             <th>Categoría</th>
                             <th class="text-end">Stock Sis.</th>
                             <th class="text-end">Stock Fís.</th>
@@ -137,46 +157,50 @@ $resConteos = $mysqli->query($sql);
                                     $fechaActual = $fechaFila;
                         ?>
                                 <tr class="fecha-header">
-                                    <td colspan="8" class="ps-4 py-2">
-                                        <i class="bi bi-calendar-event me-2"></i> FECHA: <?= $fechaActual ?>
+                                    <td colspan="8" class="ps-4 py-2 text-primary">
+                                        <i class="bi bi-calendar-check me-2"></i> <?= $fechaActual ?>
                                     </td>
                                 </tr>
                         <?php endif; ?>
                                 <tr>
                                     <td class="ps-4"><?= date("H:i:s", strtotime($r['fecha_conteo'])) ?></td>
                                     <td>
-                                        <div class="small fw-bold"><?= ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : 'Central' ?></div>
-                                        <div class="text-muted" style="font-size: 10px;">Suc: <?= $r['NroSucursal'] ?></div>
+                                        <div class="fw-bold">
+                                            <?= ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : (($r['NitEmpresa'] === '86057267-8') ? 'Central' : $r['NitEmpresa']) ?>
+                                        </div>
+                                        <div class="text-muted small" style="font-size: 10px;">Suc: <?= $r['NroSucursal'] ?></div>
                                     </td>
                                     <td>
-                                        <div class="fw-bold"><?= $r['NombreCat'] ?></div>
-                                        <div class="text-muted small"><?= $r['CodCat'] ?></div>
+                                        <div class="fw-bold text-dark"><?= $r['NombreCat'] ?></div>
+                                        <div class="text-muted" style="font-size: 11px;"><?= $r['CodCat'] ?></div>
                                     </td>
                                     <td class="text-end"><?= number_format($r['stock_sistema'], 2) ?></td>
                                     <td class="text-end fw-bold"><?= number_format($r['stock_fisico'], 2) ?></td>
                                     <td class="text-center">
                                         <?php 
-                                            $dif = $r['diferencia'];
+                                            $dif = (float)$r['diferencia'];
                                             $badge = ($dif < 0) ? 'bg-danger' : ($dif > 0 ? 'bg-success' : 'bg-secondary');
                                         ?>
                                         <span class="badge <?= $badge ?> rounded-pill">
                                             <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
                                         </span>
                                     </td>
-                                    <td><i class="bi bi-person small me-1"></i><?= $r['usuario'] ?></td>
+                                    <td><span class="small text-muted"><i class="bi bi-person"></i> <?= $r['usuario'] ?></span></td>
                                     <td class="text-center">
                                         <?php 
                                             $est = strtoupper($r['estado']);
                                             $lbl = ($est == 'A') ? 'Abierto' : (($est == 'C') ? 'Cerrado' : 'Eliminado');
                                             $cls = ($est == 'A') ? 'estado-a' : (($est == 'C') ? 'estado-c' : 'estado-e');
                                         ?>
-                                        <span class="<?= $cls ?> small"><?= $lbl ?></span>
+                                        <span class="<?= $cls ?>"><?= $lbl ?></span>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="8" class="text-center py-5 text-muted">No se encontraron conteos.</td>
+                                <td colspan="8" class="text-center py-5">
+                                    <i class="bi bi-info-circle me-2"></i> No se encontraron datos para los filtros seleccionados.
+                                </td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -185,6 +209,15 @@ $resConteos = $mysqli->query($sql);
         </div>
     </div>
 </div>
+
+<script>
+    // Pequeño script por si quieres imprimir el reporte
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'p') {
+            window.print();
+        }
+    });
+</script>
 
 </body>
 </html>
