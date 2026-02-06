@@ -240,7 +240,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
         <div class="col-lg-5">
             <div class="card">
                 <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS DE HOY</h6>
+                    <h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS APLICADOS</h6>
                 </div>
                 <div class="card-body p-0">
                     <div id="historialList" class="list-group list-group-flush" style="max-height: 750px; overflow-y: auto;">

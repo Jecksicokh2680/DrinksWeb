@@ -24,7 +24,6 @@ function Autorizacion($User, $Solicitud) {
 }
 
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
-// La fecha de consulta es HOY por defecto, a menos que se pase por URL
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
 $fPosFormat    = date('Ymd', strtotime($fechaConsulta));
 
@@ -61,7 +60,9 @@ if (isset($_GET['setSede'])) {
 if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
-    $v = str_replace(['$', '.', ','], '', $_POST['ValorAnular']);
+    // CORRECCIÓN: Limpieza del valor asegurando formato decimal para bind_param "d"
+    $v = str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
+    $v = (float)$v; 
     
     if ($factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
@@ -69,7 +70,6 @@ if (isset($_POST['grabar'])) {
 
     $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
     $ft = date('Y-m-d H:i:s');
-    // Se guarda con la fecha de creación que se está consultando
     $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $_POST['motivo'], $reemplazo);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
@@ -107,7 +107,6 @@ $esGerente = (Autorizacion($Usuario, '2010') === 'SI');
 $esBodega  = (Autorizacion($Usuario, '0004') === 'SI');
 $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
-// Documentos disponibles según fecha de consulta
 $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fPosFormat' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fPosFormat' ORDER BY NUMERO DESC";
 $listaDocs = $dbSede->query($queryDocs);
 $docsArray = [];
@@ -231,7 +230,7 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td>$<?= number_format($r['ValorFactAnular'], 0)*10000?></td>
+                        <td>$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
@@ -271,13 +270,15 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
         });
     });
 
-    const selAnular = document.getElementById('selAnular');
-    const selReemplaza = document.getElementById('selReemplaza');
-
-    selAnular.addEventListener('change', function() {
-        const o = this.options[this.selectedIndex];
-        document.getElementById('FactAnular').value = o.value;
-        document.getElementById('ValorAnular').value = o.dataset.valor || '0';
+    // CORRECCIÓN: Captura segura al momento del envío
+    document.getElementById('formAnulacion').addEventListener('submit', function(e) {
+        const sel = document.getElementById('selAnular');
+        const selectedOption = sel.options[sel.selectedIndex];
+        
+        if (selectedOption.value !== "") {
+            document.getElementById('FactAnular').value = selectedOption.value;
+            document.getElementById('ValorAnular').value = selectedOption.dataset.valor || '0';
+        }
     });
 
     function confirmar(tipo, fact, sede) {
