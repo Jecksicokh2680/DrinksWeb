@@ -184,11 +184,12 @@ body{
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
 <!-- <a class="nav-link" href="ConteoAjuste.php" target="contentFrame">Conteo Ajuste</a> -->
 <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Ver Ajustes Conteos</a>
+<a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
+<a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>
 <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
 </div>
 </div>
 </div>
-
 <div class="accordion-item">
 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminFin">
 💰 Finanzas
