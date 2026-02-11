@@ -111,8 +111,8 @@ function Autorizacion($User, $Solicitud) {
 }
 
 $AUT_BORRAR   = Autorizacion($usuario, '1810');
-$AUT_CORREGIR = Autorizacion($usuario, '9999'); // Autorización para Corregir/Ver Especial
-$AUT_VERSTOCK = Autorizacion($usuario, '1801'); // Autorización para Ver Stock Sistema
+$AUT_CORREGIR = Autorizacion($usuario, '9999'); 
+$AUT_VERSTOCK = Autorizacion($usuario, '1801'); 
 
 // Borrar Conteo
 if (isset($_POST['borrar_conteo'])) {
@@ -190,7 +190,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIA | Conteo <?= $nombreSede ?></title>
+    <title>SIA | Inventario <?= $nombreSede ?></title>
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px; color:#333;}
         .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
@@ -208,12 +208,12 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:20px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block;}
         table{width:100%; border-collapse:collapse; margin-top:20px;}
-        th,td{padding:12px; border-bottom:1px solid #f0f0f0; text-align:left;}
+        th,td{padding:10px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
         .verde{background:#28a745;} .rojo{background:#dc3545;}
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
-        .modal-content { background:#fff; margin:5% auto; padding:25px; width:90%; max-width:650px; border-radius:15px; max-height:80vh; overflow-y:auto; position:relative;}
+        .modal-content { background:#fff; margin:5% auto; padding:25px; width:95%; max-width:700px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
         .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
     </style>
 </head>
@@ -284,45 +284,54 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php if($conteos): ?>
         <div style="margin-top:40px;">
             <h4 style="margin-bottom:15px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Hora</th>
-                        <th>Categoría</th>
-                        <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?><th>Sistema</th><?php endif; ?>
-                        <th>Físico</th>
-                        <th>Estado</th>
-                        <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($conteos as $c): 
-                        $dif = (float)$c['diferencia'];
-                        $color = (abs($dif) > 0.2) ? 'rojo' : 'verde';
-                    ?>
-                    <tr>
-                        <td style="color:#999; font-size:11px;"><?= $c['hora'] ?></td>
-                        <td><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
-                        
-                        <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?>
-                            <td style="color:#666;"><?= number_format($c['stock_sistema'],2) ?></td>
-                        <?php endif; ?>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Categoría</th>
+                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                                <th>Sis.</th>
+                                <th>Dif.</th>
+                            <?php endif; ?>
+                            <th>Físico</th>
+                            <th>Edo.</th>
+                            <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($conteos as $c): 
+                            $dif = (float)$c['diferencia'];
+                            // Lógica corregida: SOLO ROJO SI ES NEGATIVO (Falta mercancía)
+                            $color = ($dif < 0) ? 'rojo' : 'verde';
+                        ?>
+                        <tr>
+                            <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
+                            <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
+                            
+                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                                <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
+                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif < 0) ? '#dc3545' : '#28a745' ?>;">
+                                    <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
+                                </td>
+                            <?php endif; ?>
 
-                        <td style="font-size:16px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
-                        <td align="center"><span class="semaforo <?= $color ?>"></span></td>
-                        
-                        <?php if($AUT_BORRAR==='SI'): ?>
-                        <td>
-                            <form method="POST" onsubmit="return confirm('¿Anular registro?')">
-                                <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
-                                <button name="borrar_conteo" style="background:none; border:none; cursor:pointer;">🗑️</button>
-                            </form>
-                        </td>
-                        <?php endif; ?>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                            <td style="font-size:15px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
+                            <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
+                            
+                            <?php if($AUT_BORRAR==='SI'): ?>
+                            <td>
+                                <form method="POST" onsubmit="return confirm('¿Anular registro?')">
+                                    <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
+                                    <button name="borrar_conteo" style="background:none; border:none; cursor:pointer; font-size:16px;">🗑️</button>
+                                </form>
+                            </td>
+                            <?php endif; ?>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     <?php endif; ?>
 </div>
@@ -330,7 +339,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 <div id="modalProductos" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="cerrarModal()">&times;</span>
-        <h3 id="modal-titulo">Detalle de Productos</h3>
+        <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px;">Detalle de Productos</h3>
         <div id="tabla-productos">Cargando...</div>
     </div>
 </div>
