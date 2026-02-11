@@ -101,7 +101,7 @@ $fFac      = $_GET['facturador'] ?? '';
 $f_ini = str_replace('-', '', $f_ini_raw);
 $f_fin = str_replace('-', '', $f_fin_raw);
 
-// Carga de datos con filtro de producto incluido
+// Carga de datos
 $rows = array_merge(
     obtenerDatos($mysqliCentral,'CENTRAL', $f_ini, $f_fin, $f_prod),
     obtenerDatos($mysqliDrinks,'DRINKS', $f_ini, $f_fin, $f_prod)
@@ -147,7 +147,6 @@ if($skus){
     input:focus{ border-color: #0288d1; }
     button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px 20px;}
     button:hover{ background: #01579b;}
-    /* Estilo botón excel */
     .btn-excel{ background: #2e7d32 !important; }
     .btn-excel:hover{ background: #1b5e20 !important; }
 
@@ -209,14 +208,18 @@ if($skus){
             <tr>
                 <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
                 <th>Sku</th><th>Producto</th><th>Costo</th>
-                <th>Cajas</th><th>Und</th><th>Total</th>
+                <th style="text-align:center">Cajas</th>
+                <th style="text-align:center">Und</th>
+                <th>Total</th>
             </tr>
         </thead>
         <tbody>
             <?php
             $gran=0; $sub=0; $docAnt='';
+            $totalCajasGlobal = 0; // Acumulador total cajas
+            $totalUndsGlobal  = 0; // Acumulador total unidades
+
             foreach($rows as $r){
-                // Filtros secundarios (Sucursal y Facturador)
                 if($fSuc && $r['SUCURSAL']!=$fSuc) continue;
                 if($fFac && $r['FACTURADOR']!=$fFac) continue;
 
@@ -231,6 +234,10 @@ if($skus){
                 $unds  = round(($cant_total - $cajas) * $uni);
                 $total_item = $cant_total * $r['VALORPROD'];
 
+                // Sumamos a los totales globales
+                $totalCajasGlobal += $cajas;
+                $totalUndsGlobal  += $unds;
+
                 $badge_class = ($r['SUCURSAL'] == 'CENTRAL') ? 'central' : 'drinks';
 
                 echo "<tr>
@@ -241,8 +248,8 @@ if($skus){
                     <td><code>{$r['Barcode']}</code></td>
                     <td>{$r['PRODUCTO']}</td>
                     <td>".number_format($r['VALORPROD'],0,'.','.')."</td>
-                    <td>$cajas</td>
-                    <td>$unds</td>
+                    <td align='center'>$cajas</td>
+                    <td align='center'>$unds</td>
                     <td><strong>".number_format($total_item,0,'.','.')."</strong></td>
                 </tr>";
 
@@ -254,7 +261,9 @@ if($skus){
             echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>".number_format($sub,0,'.','.')."</td></tr>";
             ?>
             <tr class="gran-total">
-                <td colspan="9" style="text-align:right">GRAN TOTAL GENERAL:</td>
+                <td colspan="7" style="text-align:right">GRAN TOTAL GENERAL:</td>
+                <td align="center"><?=number_format($totalCajasGlobal,0)?></td>
+                <td align="center"><?=number_format($totalUndsGlobal,0)?></td>
                 <td><?=number_format($gran,0,'.','.')?></td>
             </tr>
         </tbody>
@@ -280,4 +289,6 @@ function exportarExcel() {
 
 </body>
 </html>
-<?php } ?>
+<?php 
+} // Cierre de Lista_Pedido
+?>
