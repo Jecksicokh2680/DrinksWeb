@@ -57,7 +57,7 @@ function Autorizacion($User, $Solicitud) {
 }
 
 /* ============================================================
-    LÓGICA DE FECHA
+    LÓGICA DE FECHA Y FILTROS
 ============================================================ */
 date_default_timezone_set('America/Bogota');
 $FechaHoy = date("Y-m-d");
@@ -65,11 +65,14 @@ $HoraHoy  = date("H:i");
 
 $puedeModificarFechaConsulta = Autorizacion($UsuarioSesion, "0013") === "SI";
 
-if ($puedeModificarFechaConsulta && isset($_POST['fechaConsulta'])) {
-    $fechaConsulta = $_POST['fechaConsulta'];
+// Priorizar GET para que los filtros por URL (cajero) funcionen con la fecha
+if ($puedeModificarFechaConsulta && isset($_REQUEST['fechaConsulta'])) {
+    $fechaConsulta = $_REQUEST['fechaConsulta'];
 } else {
     $fechaConsulta = $FechaHoy;
 }
+
+$filtroCajero = $_GET['fCajero'] ?? '';
 
 /* ============================================================
     AJAX — SUCURSALES
@@ -166,9 +169,14 @@ if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $where .= " AND t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 
+// Filtro por Cajero seleccionado
+if (!empty($filtroCajero)) {
+    $where .= " AND t.CedulaNit = '".$mysqli->real_escape_string($filtroCajero)."'";
+}
+
 $consultaSQL = "
     SELECT t.IdTransfer, t.Fecha, t.Hora, e.NombreComercial, s.Direccion AS Sucursal,
-           tr.Nombre AS Tercero, m.Nombre AS Medio, t.Monto, t.RevisadoLogistica, t.RevisadoGerencia
+            tr.Nombre AS Tercero, m.Nombre AS Medio, t.Monto, t.RevisadoLogistica, t.RevisadoGerencia
     FROM Relaciontransferencias t
     INNER JOIN empresa e ON e.Nit = t.NitEmpresa
     INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
@@ -185,7 +193,7 @@ $resumenSQL = "
     $where GROUP BY t.CedulaNit ORDER BY TotalCajero DESC";
 $resumenPorCajero = $mysqli->query($resumenSQL);
 
-// RESUMEN POR MEDIO DE PAGO (SOLICITADO)
+// RESUMEN POR MEDIO DE PAGO
 $resumenMedioSQL = "
     SELECT m.Nombre AS Medio, SUM(t.Monto) AS TotalMedio, COUNT(*) AS Cantidad
     FROM Relaciontransferencias t
@@ -198,8 +206,10 @@ $totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias t $where AND
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 
 $empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
-$tercerosArray = $mysqli->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
 $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
+
+// Obtener lista de cajeros que tienen movimientos hoy para el filtro
+$resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM Relaciontransferencias t INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit WHERE t.Fecha = '$safeFecha' ORDER BY tr.Nombre");
 ?>
 
 <!DOCTYPE html>
@@ -214,6 +224,7 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
         .card { border-radius: 10px; border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .table thead { background-color: #212529; color: white; }
         .bg-resumen { background-color: #f8f9fa; }
+        .table-xs { font-size: 0.85rem; }
     </style>
 </head>
 <body>
@@ -228,22 +239,31 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
     <?php endif; ?>
 
     <div class="row mb-4 align-items-center">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <?php if (Autorizacion($UsuarioSesion, "0007") === "SI"): ?>
                 <button class="btn btn-primary btn-lg px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalTransferencia">
                     + Nueva Transferencia
                 </button>
             <?php endif; ?>
         </div>
-        <div class="col-md-8 d-flex justify-content-md-end mt-3 mt-md-0">
+        <div class="col-md-9 d-flex justify-content-md-end mt-3 mt-md-0">
             <div class="card p-2 shadow-sm border">
-                <form method="POST" class="row g-2 align-items-center">
+                <form method="GET" class="row g-2 align-items-center">
+                    <div class="col-auto"><label class="small fw-bold">CAJERO:</label></div>
+                    <div class="col-auto">
+                        <select name="fCajero" class="form-select form-select-sm" onchange="this.form.submit()">
+                            <option value="">-- Todos los Cajeros --</option>
+                            <?php while($c = $resCajerosFiltro->fetch_assoc()): ?>
+                                <option value="<?= $c['CedulaNit'] ?>" <?= ($filtroCajero == $c['CedulaNit'])?'selected':'' ?>><?= $c['Nombre'] ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
                     <div class="col-auto"><label class="small fw-bold">FECHA:</label></div>
-                    <div class="col">
-                        <input type="date" name="fechaConsulta" class="form-control" value="<?= $fechaConsulta ?>" <?= $puedeModificarFechaConsulta?'':'readonly' ?>>
+                    <div class="col-auto">
+                        <input type="date" name="fechaConsulta" class="form-control form-control-sm" value="<?= $fechaConsulta ?>" <?= $puedeModificarFechaConsulta?'':'readonly' ?>>
                     </div>
                     <?php if ($puedeModificarFechaConsulta): ?>
-                    <div class="col-auto"><button type="submit" class="btn btn-dark">Filtrar</button></div>
+                    <div class="col-auto"><button type="submit" class="btn btn-sm btn-dark">Filtrar</button></div>
                     <?php endif; ?>
                 </form>
             </div>
@@ -253,7 +273,7 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
     <div class="card p-4 mb-4">
         <h4 class="mb-3">Detalle del día: <span class="text-primary"><?= date("d/m/Y", strtotime($fechaConsulta)) ?></span></h4>
         <div class="table-responsive">
-            <table class="table table-hover align-middle border">
+            <table class="table table-hover align-middle border table-xs">
                 <thead>
                     <tr>
                         <th>Hora</th>
@@ -270,31 +290,34 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
                     <?php 
                     $pLog = Autorizacion($UsuarioSesion, "0009")==="SI";
                     $pGer = Autorizacion($UsuarioSesion, "0010")==="SI";
-                    $count = 0;
-                    while ($row = $transferencias->fetch_assoc()): $count++; ?>
-                        <tr>
-                            <td><?= $row['Hora'] ?></td>
-                            <td><strong><?= $row['NombreComercial'] ?></strong><br><small><?= $row['Sucursal'] ?></small></td>
-                            <td><?= $row['Tercero'] ?></td>
-                            <td><span class="badge bg-secondary"><?= $row['Medio'] ?></span></td>
-                            <td class="fw-bold text-end"><?= number_format($row['Monto'], 2) ?></td>
-                            <td class="text-center">
-                                <input type="checkbox" class="form-check-input" <?= $row['RevisadoLogistica']?'checked':'' ?> <?= $pLog?'':'disabled' ?> onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoLogistica',this)">
-                            </td>
-                            <td class="text-center">
-                                <input type="checkbox" class="form-check-input" <?= $row['RevisadoGerencia']?'checked':'' ?> <?= $pGer?'':'disabled' ?> onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoGerencia',this)">
-                            </td>
-                            <td class="text-center">
-                                <?php if(Autorizacion($UsuarioSesion, "0003") === "SI"): ?>
-                                    <a href="?borrar=<?= $row['IdTransfer'] ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar?')">Borrar</a>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endwhile; ?>
+                    if($transferencias->num_rows > 0):
+                        while ($row = $transferencias->fetch_assoc()): ?>
+                            <tr>
+                                <td><?= $row['Hora'] ?></td>
+                                <td><strong><?= $row['NombreComercial'] ?></strong><br><small><?= $row['Sucursal'] ?></small></td>
+                                <td><?= $row['Tercero'] ?></td>
+                                <td><span class="badge bg-secondary"><?= $row['Medio'] ?></span></td>
+                                <td class="fw-bold text-end"><?= number_format($row['Monto'], 2) ?></td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input" <?= $row['RevisadoLogistica']?'checked':'' ?> <?= $pLog?'':'disabled' ?> onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoLogistica',this)">
+                                </td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input" <?= $row['RevisadoGerencia']?'checked':'' ?> <?= $pGer?'':'disabled' ?> onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoGerencia',this)">
+                                </td>
+                                <td class="text-center">
+                                    <?php if(Autorizacion($UsuarioSesion, "0003") === "SI"): ?>
+                                        <a href="?borrar=<?= $row['IdTransfer'] ?>&fechaConsulta=<?= $fechaConsulta ?>&fCajero=<?= $filtroCajero ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar?')">Borrar</a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endwhile; 
+                    else: ?>
+                        <tr><td colspan="8" class="text-center text-muted">No se encontraron registros para este filtro.</td></tr>
+                    <?php endif; ?>
                 </tbody>
                 <tfoot class="table-light">
                     <tr>
-                        <th colspan="4" class="text-end">TOTAL REVISADO:</th>
+                        <th colspan="4" class="text-end">TOTAL REVISADO (LOG/GER):</th>
                         <th class="text-end text-success fs-5"><?= number_format($totalMontos, 2) ?></th>
                         <th colspan="3"></th>
                     </tr>
@@ -392,6 +415,7 @@ $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Est
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function cargarSucursales() {
     let nit = document.getElementById("NitEmpresa").value;
@@ -406,13 +430,20 @@ function cargarSucursales() {
 }
 function actualizarCheck(idTransfer, campo, checkbox) {
     let valor = checkbox.checked ? 1 : 0;
-    fetch(window.location.href, {
+    fetch(window.location.pathname, {
         method: 'POST',
         headers: {'Content-Type':'application/x-www-form-urlencoded'},
         body: `ajax=actualizar_check&idTransfer=${idTransfer}&campo=${campo}&valor=${valor}`
-    }).then(() => location.reload());
+    }).then(res => res.json())
+      .then(data => {
+          if(data.status !== 'ok') {
+              alert(data.msg);
+              checkbox.checked = !checkbox.checked;
+          } else {
+              location.reload();
+          }
+      });
 }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
