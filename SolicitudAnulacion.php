@@ -60,11 +60,12 @@ if (isset($_GET['setSede'])) {
 if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
-    // CORRECCIÓN: Limpieza del valor asegurando formato decimal para bind_param "d"
     $v = str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
     $v = (float)$v; 
     
-    if ($factura === $reemplazo) {
+    // Si se selecciona "NO LLEVA NADA", el valor llega vacío o como string "null" dependiendo del manejo, 
+    // aquí lo validamos contra el ID del documento original.
+    if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
     }
 
@@ -181,6 +182,7 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <?php foreach($docsArray as $d): ?>
                             <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
                         <?php endforeach; ?>
+                        <option value="N/A" class="fw-bold text-danger">-- NO LLEVA NADA --</option>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -270,7 +272,6 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
         });
     });
 
-    // CORRECCIÓN: Captura segura al momento del envío
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
         const selectedOption = sel.options[sel.selectedIndex];
