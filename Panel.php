@@ -162,6 +162,7 @@ body{
 <div id="adminOp" class="accordion-collapse collapse">
 <div class="accordion-body">
 <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
+<a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Ingresos Efectivo BnmA</a>
 <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
 <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
 <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
@@ -198,6 +199,8 @@ body{
 <div class="accordion-body">
 <a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
 <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">Cartera BNMA</a>
+<a class="nav-link" href="CarteraXProveedordiaadia.php" target="contentFrame">Cartera Proveedores por dia</a>
+
 </div>
 </div>
 </div>
