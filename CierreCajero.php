@@ -103,9 +103,11 @@ if($UsuarioFact !== ''){
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
-$saldo_efectivo =  $totalEgresos-$totalVentas ;
-// Variable para color condicional
+$saldo_efectivo = $totalEgresos-$totalVentas  ;
 $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
+
+// Variable de control de visibilidad de valores brutos y totales
+$ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
 <!DOCTYPE html>
@@ -159,7 +161,7 @@ $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
         <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>" style="padding:4px;"></div>
         
         <div>Facturador: <select name="nit" style="padding:5px; min-width:200px;">
-            <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
+            <?php if($ocultarValores): ?>
                 <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
             <?php else: ?>
                 <option value="">-- Seleccione Usuario --</option>
@@ -177,14 +179,17 @@ $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
     <div class="panel no-print">
         <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
         <table class="table" style="max-width: 500px;">
-            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b>$ <?= money($totalVentas) ?></b></td></tr>
+            <tr>
+                <td>(+) Ventas Brutas:</td>
+                <td class="text-end"><b><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($totalVentas) ?></b></td>
+            </tr>
             <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
             <tr><td>(-) Transferencias (Informativo):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
             <tr style="font-size:1.4em; border-top:2px solid #333; background:#f9f9f9;">
                 <td><b>TOTAL EFECTIVO:</b></td>
                 <td class="text-end">
                     <b style="<?= $color_saldo ?>">
-                        <?= ($permiso0003 === 'SI' || $permiso9999 === 'SI') ? '$ '.money($saldo_efectivo) : '*** Oculto ***' ?>
+                        <?= $ocultarValores ? '*** Oculto ***' : '$ '.money($saldo_efectivo) ?>
                     </b>
                 </td>
             </tr>
@@ -244,8 +249,11 @@ $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
         <?php endforeach; ?>
 
         const titulo = (tipo === 'precierre') ? 'VOUCHER DE PRECIERRE' : 'CIERRE DEFINITIVO';
-        let saldoDisplay = ('<?= $permiso0003 ?>' === 'SI' || '<?= $permiso9999 ?>' === 'SI') ? '$<?= money($saldo_efectivo) ?>' : '*** Oculto ***';
-        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1') ? 'color:red;' : 'color:#000;';
+        
+        // Lógica de ocultación en el ticket
+        let ventasDisplay = '<?= $ocultarValores ? "Oculto" : "$".money($totalVentas) ?>';
+        let saldoDisplay  = '<?= $ocultarValores ? "Oculto" : "$".money($saldo_efectivo) ?>';
+        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1' && !<?= $ocultarValores ? 'true' : 'false' ?>) ? 'color:red;' : 'color:#000;';
 
         let html = `
             <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px; color:#000; font-family:monospace;">
@@ -255,7 +263,7 @@ $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
                 <p style="margin:2px; font-size:11px;">Cajero: <?= $nombreCompleto ?></p>
             </div>
             <table class="ticket-table" style="font-family:monospace;">
-                <tr><td>Ventas Brutas:</td><td class="text-end">$<?= money($totalVentas) ?></td></tr>
+                <tr><td>Ventas Brutas:</td><td class="text-end">${ventasDisplay}</td></tr>
                 <tr><td>(-) Egresos:</td><td class="text-end">$<?= money($totalEgresos) ?></td></tr>
                 <tr><td>(-) Transfer:</td><td class="text-end">$<?= money($totalTransfer) ?></td></tr>
                 <tr style="font-size:14px; border-top:1px solid #000; font-weight:bold; ${colorRed}">
