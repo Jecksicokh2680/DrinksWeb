@@ -2,7 +2,7 @@
 require_once("ConnCentral.php");   // $mysqliCentral
 require_once("ConnDrinks.php");    // $mysqliDrinks
 require_once("Conexion.php");      // $mysqliWeb
-
+date_default_timezone_set('America/Bogota'); // <--- Hora de Bogotá activada
 /* ============================================================
     CONFIGURACIÓN DE EMPRESAS Y SEGURIDAD
 ============================================================ */
@@ -52,14 +52,12 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
     $dbDest = ($destino == "Central") ? $mysqliCentral : $mysqliDrinks;
     $nitDest = ($destino == "Central") ? NIT_CENTRAL : NIT_DRINKS;
 
-    // Buscar en origen
     $stmtO = $dbOrig->prepare("SELECT p.idproducto FROM productos p WHERE p.barcode=?");
     $stmtO->bind_param("s", $barcode);
     $stmtO->execute();
     $dataO = $stmtO->get_result()->fetch_assoc();
     if(!$dataO) return ['error'=>'Producto no existe en origen'];
 
-    // Buscar en destino
     $stmtD = $dbDest->prepare("SELECT idproducto FROM productos WHERE barcode=?");
     $stmtD->bind_param("s", $barcode);
     $stmtD->execute();
@@ -71,12 +69,10 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
         $mysqliDrinks->begin_transaction();
         $mysqliWeb->begin_transaction();
 
-        // 1. Descontar de Origen
         $upO = $dbOrig->prepare("UPDATE inventario SET cantidad = cantidad - ? WHERE idproducto = ?");
         $upO->bind_param("di", $cantidad, $dataO['idproducto']);
         $upO->execute();
 
-        // 2. Aumentar en Destino
         $checkD = $dbDest->prepare("SELECT idproducto FROM inventario WHERE idproducto = ?");
         $checkD->bind_param("i", $idDest);
         $checkD->execute();
@@ -88,7 +84,6 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
         $upD->bind_param("di", $cantidad, $idDest);
         $upD->execute();
 
-        // 3. Registrar Log Movimiento
         $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado) VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?, 1)";
         $suc = SUC_DEFAULT;
         $usu = $_SESSION['Usuario'] ?? 'SISTEMA';
@@ -96,7 +91,6 @@ function moverInventario($barcode, $cantidad, $origen, $destino, $observacion, $
         $stmtLog->bind_param("ssssddss", $nitOrig, $suc, $usu, $barcode, $cantidad, $nitDest, $suc, $observacion);
         $stmtLog->execute();
 
-        // 4. NUEVO: Marcar categoría en catproductos -> categorias
         $resCat = $mysqliWeb->prepare("SELECT CodCat FROM catproductos WHERE sku = ? LIMIT 1");
         $resCat->bind_param("s", $barcode);
         $resCat->execute();
@@ -199,6 +193,24 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         .modal{display:<?= isset($_GET['f_inicio']) ? 'block' : 'none' ?>; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(3px);}
         .modal-content{background:#fff; margin:40px auto; padding:25px; border-radius:10px; width:90%; max-height:80vh; overflow-y:auto; position:relative;}
         .close{position:absolute; right:20px; top:15px; font-size:28px; cursor:pointer; color:#999;}
+
+        /* AJUSTES PARA IMPRESIÓN MÁS OSCURA Y DEFINIDA */
+        @media print {
+            @page { margin: 0; }
+            body * { visibility: hidden; }
+            #modal table, #modal table * { visibility: visible; color: #000 !important; }
+            #modal table { 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100% !important; 
+                border: 2px solid #000 !important;
+                font-family: 'Courier New', Courier, monospace !important;
+                font-weight: bold !important;
+            }
+            th { background: #000 !important; color: #fff !important; border: 1px solid #000 !important; font-size: 14px !important; }
+            td { border: 1px solid #000 !important; font-size: 13px !important; }
+        }
     </style>
 </head>
 <body>
@@ -275,53 +287,83 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                 <input type="date" name="f_fin" value="<?= $f_fin ?>" class="input-s">
             </div>
             <button type="submit" class="btn-move" style="background:#34495e">Filtrar Historial</button>
-            <button type="button" onclick="printMovimientos()" class="btn-move" style="background:#2980b9">🖨 Imprimir</button>
+            <button type="button" onclick="printMovimientos()" class="btn-move" style="background:#2980b9">🖨 Imprimir Historial</button>
         </form>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Fecha / Hora</th><th>Usuario</th><th>Barcode</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Observación</th><th>Estado</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php while($r = $resMov->fetch_assoc()): ?>
-                <tr>
-                    <td style="font-size:11px;"><?= $r['fecha'] ?></td>
-                    <td><?= $r['usuario_Orig'] ?></td>
-                    <td><code><?= $r['barcode'] ?></code></td>
-                    <td style="font-weight:bold;"><?= number_format($r['cant'],2) ?></td>
-                    <td><small><?= $r['NitEmpresa_Orig'] ?></small></td>
-                    <td><small><?= $r['NitEmpresa_Dest'] ?></small></td>
-                    <td style="font-style:italic;"><?= htmlspecialchars($r['Observacion']) ?></td>
-                    <td>
-                        <?php if($aut_9999=="SI" && $r['Aprobado']==1): ?>
-                            <form method="POST" onsubmit="return confirm('¿Desea reversar este movimiento? Los stocks volverán a su estado anterior.')">
-                                <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
-                                <button type="submit" name="aprobar" style="cursor:pointer; background:none; border:none; font-size:18px;" title="Reversar">✅</button>
-                            </form>
-                        <?php else: echo $r['Aprobado']==1 ? '✅' : '<span style="color:red;">❌ Reversado</span>'; endif; ?>
-                    </td>
-                </tr>
-                <?php endwhile; ?>
-            </tbody>
-        </table>
+        <div id="printSection">
+            <table id="tableHistory">
+                <thead>
+                    <tr>
+                        <th>Fecha / Hora</th><th>Usuario</th><th>Barcode</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Observación</th><th class="no-print-col">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php while($r = $resMov->fetch_assoc()): ?>
+                    <tr>
+                        <td style="font-size:11px;"><?= $r['fecha'] ?></td>
+                        <td><?= $r['usuario_Orig'] ?></td>
+                        <td><code><?= $r['barcode'] ?></code></td>
+                        <td style="font-weight:bold;"><?= number_format($r['cant'],2) ?></td>
+                        <td><small><?= $r['NitEmpresa_Orig'] ?></small></td>
+                        <td><small><?= $r['NitEmpresa_Dest'] ?></small></td>
+                        <td style="font-style:italic;"><?= htmlspecialchars($r['Observacion']) ?></td>
+                        <td class="no-print-col">
+                            <?php if($aut_9999=="SI" && $r['Aprobado']==1): ?>
+                                <form method="POST" onsubmit="return confirm('¿Desea reversar este movimiento? Los stocks volverán a su estado anterior.')">
+                                    <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
+                                    <button type="submit" name="aprobar" style="cursor:pointer; background:none; border:none; font-size:18px;" title="Reversar">✅</button>
+                                </form>
+                            <?php else: echo $r['Aprobado']==1 ? '✅' : '<span style="color:red;">❌ Reversado</span>'; endif; ?>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script>
 function printMovimientos(){
-    var div = document.querySelector("#modal table").outerHTML;
-    var win = window.open('', '', 'height=800,width=1000');
-    win.document.write('<html><head><title>Reporte de Movimientos</title>');
-    win.document.write('<style>table{width:100%;border-collapse:collapse;font-family:sans-serif;} th,td{border:1px solid #ddd;padding:8px;font-size:11px;} th{background:#eee;}</style></head><body>');
-    win.document.write('<h2>Reporte de Traslados de Mercancía</h2>' + div);
-    win.document.write('</body></html>');
+    const content = document.getElementById('tableHistory').outerHTML;
+    const win = window.open('', '', 'height=800,width=1000');
+    
+    win.document.write(`
+        <html>
+        <head>
+            <title>Reporte de Traslados</title>
+            <style>
+                @page { margin: 2mm; }
+                body { font-family: 'Courier New', Courier, monospace; color: #000; margin: 0; padding: 0; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { 
+                    border: 1px solid #000; 
+                    padding: 4px; 
+                    font-size: 11px; 
+                    font-weight: bold; 
+                    text-align: center;
+                }
+                th { background: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
+                .no-print-col { display: none !important; } /* Ocultar columna de checks al imprimir */
+                h2 { text-align: center; font-size: 16px; margin-bottom: 5px; }
+                code { font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h2>REPORTE DE TRASLADOS DE MERCANCÍA</h2>
+            <p style="text-align:center; font-size:10px; margin-top:0;">Fecha Reporte: <?= date('Y-m-d H:i') ?></p>
+            ${content}
+        </body>
+        </html>
+    `);
+    
     win.document.close();
-    win.print();
+    setTimeout(() => {
+        win.print();
+        win.close();
+    }, 500);
 }
 
-// Cerrar modal al hacer clic fuera
 window.onclick = function(event) {
     if (event.target == document.getElementById('modal')) {
         document.getElementById('modal').style.display = 'none';
