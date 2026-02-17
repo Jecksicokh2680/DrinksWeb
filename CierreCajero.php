@@ -51,7 +51,7 @@ function Autorizacion($User, $Solicitud) {
 // CARGA DE PERMISOS
 $permiso9999 = Autorizacion($UsuarioSesion, '9999'); // Admin
 $permiso7777 = Autorizacion($UsuarioSesion, '7777'); // Supervisor
-$permiso0003 = Autorizacion($UsuarioSesion, '0003'); // Ver cierres ajenos y Saldo Efectivo
+$permiso0003 = Autorizacion($UsuarioSesion, '0003'); // Ver cierres ajenos
 
 // FILTROS INICIALES
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
@@ -103,10 +103,8 @@ if($UsuarioFact !== ''){
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
-$saldo_efectivo = $totalEgresos-$totalVentas  ;
+$saldo_efectivo = $totalEgresos-$totalVentas ;
 $color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
-
-// Variable de control de visibilidad de valores brutos y totales
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
@@ -127,13 +125,38 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: white; margin: 2% auto; padding: 25px; width: 95%; max-width: 400px; border-radius: 12px; }
 
+        /* AJUSTES PARA IMPRESIÓN MÁS DEFINIDA */
         @media print {
             body * { visibility: hidden !important; }
-            #modalVoucher, #modalVoucher * { visibility: visible !important; }
-            #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; display: block !important; background: white !important; }
-            #printArea { width: 72mm !important; margin: 0 !important; padding: 10px !important; }
+            #modalVoucher, #modalVoucher * { 
+                visibility: visible !important; 
+                color: #000 !important; 
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            #modalVoucher { 
+                position: absolute !important; 
+                left: 0 !important; 
+                top: 0 !important; 
+                width: 100% !important; 
+                display: block !important; 
+                background: white !important; 
+            }
+            #printArea { 
+                width: 72mm !important; 
+                margin: 0 !important; 
+                padding: 5px !important;
+                font-weight: 700 !important; /* Letra más gruesa */
+            }
             .no-print { display: none !important; }
-            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 12px !important; font-family: monospace !important; }
+            .ticket-table { 
+                width: 100% !important; 
+                border-collapse: collapse !important; 
+                font-size: 13px !important; /* Un punto más grande */
+                font-family: 'Courier New', Courier, monospace !important; 
+                color: #000 !important;
+            }
+            h2, p, td { color: #000 !important; }
         }
     </style>
     <script>
@@ -157,9 +180,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
             <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
             <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
         </select></div>
-        
         <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>" style="padding:4px;"></div>
-        
         <div>Facturador: <select name="nit" style="padding:5px; min-width:200px;">
             <?php if($ocultarValores): ?>
                 <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
@@ -170,7 +191,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <?php endwhile; endif; ?>
             <?php endif; ?>
         </select></div>
-        
         <button class="button" type="submit">Consultar Caja</button>
     </form>
 </div>
@@ -179,19 +199,12 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
     <div class="panel no-print">
         <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
         <table class="table" style="max-width: 500px;">
-            <tr>
-                <td>(+) Ventas Brutas:</td>
-                <td class="text-end"><b><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($totalVentas) ?></b></td>
-            </tr>
+            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($totalVentas) ?></b></td></tr>
             <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-            <tr><td>(-) Transferencias (Informativo):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+            <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
             <tr style="font-size:1.4em; border-top:2px solid #333; background:#f9f9f9;">
                 <td><b>TOTAL EFECTIVO:</b></td>
-                <td class="text-end">
-                    <b style="<?= $color_saldo ?>">
-                        <?= $ocultarValores ? '*** Oculto ***' : '$ '.money($saldo_efectivo) ?>
-                    </b>
-                </td>
+                <td class="text-end"><b style="<?= $color_saldo ?>"><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($saldo_efectivo) ?></b></td>
             </tr>
         </table>
     </div>
@@ -199,28 +212,14 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
     <div class="panel no-print">
         <h3>💸 Egresos de Caja</h3>
         <table class="table">
-            <thead>
-                <tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th style="text-align:center;">Acción</th></tr>
-            </thead>
+            <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
             <tbody>
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
                 <tr>
                     <td><?= $idE ?></td>
-                    <td>
-                        <?php if($permiso9999 === 'SI'): ?>
-                            <input type="text" id="motivo_<?= $idE ?>" class="input-edit" value="<?= htmlspecialchars($eg['MOTIVO']) ?>">
-                        <?php else: echo $eg['MOTIVO']; endif; ?>
-                    </td>
-                    <td class="text-end">
-                        <?php if($permiso9999 === 'SI'): ?>
-                            <input type="number" id="valor_<?= $idE ?>" class="input-edit text-end" value="<?= $eg['VALOR'] ?>">
-                        <?php else: echo "$".money($eg['VALOR']); endif; ?>
-                    </td>
-                    <td style="text-align:center;">
-                        <?php if($permiso9999 === 'SI'): ?>
-                            <button class="btn-save" onclick="guardarEgreso(<?= $idE ?>)">💾 Actualizar</button>
-                        <?php else: echo "-"; endif; ?>
-                    </td>
+                    <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                    <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                    <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -232,9 +231,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
     </div>
 
-    <div id="modalVoucher" class="modal">
-        <div class="modal-content" id="printArea"></div>
-    </div>
+    <div id="modalVoucher" class="modal"><div class="modal-content" id="printArea"></div></div>
 <?php endif; ?>
 
 <script>
@@ -242,53 +239,47 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         if(tipo === 'cierre' && '<?= $permiso7777 ?>' !== 'SI' && '<?= $permiso9999 ?>' !== 'SI') {
             alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); return;
         }
-
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td>- <?= $e['MOTIVO'] ?></td><td class="text-end">$<?= money($e['VALOR']) ?></td></tr>`;
+            egresosHtml += `<tr><td style="padding:2px;">- <?= $e['MOTIVO'] ?></td><td class="text-end">$<?= money($e['VALOR']) ?></td></tr>`;
         <?php endforeach; ?>
 
         const titulo = (tipo === 'precierre') ? 'VOUCHER DE PRECIERRE' : 'CIERRE DEFINITIVO';
-        
-        // Lógica de ocultación en el ticket
         let ventasDisplay = '<?= $ocultarValores ? "Oculto" : "$".money($totalVentas) ?>';
         let saldoDisplay  = '<?= $ocultarValores ? "Oculto" : "$".money($saldo_efectivo) ?>';
-        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1' && !<?= $ocultarValores ? 'true' : 'false' ?>) ? 'color:red;' : 'color:#000;';
+        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1' && !<?= $ocultarValores ? 'true' : 'false' ?>) ? 'color:red; font-weight:900;' : 'color:#000;';
 
         let html = `
-            <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px; color:#000; font-family:monospace;">
-                <h2 style="margin:5px; font-size:16px;">${titulo}</h2>
-                <p style="margin:2px; font-size:11px;">Sede: <?= $nombre_sede_display ?></p>
-                <p style="margin:2px; font-size:11px;">Fecha: <?= $fecha_input ?></p>
-                <p style="margin:2px; font-size:11px;">Cajero: <?= $nombreCompleto ?></p>
+            <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px; color:#000; font-family:monospace;">
+                <h2 style="margin:5px; font-size:18px; text-transform:uppercase;">${titulo}</h2>
+                <p style="margin:2px; font-size:12px;">Sede: <?= $nombre_sede_display ?></p>
+                <p style="margin:2px; font-size:12px;">Fecha: <?= $fecha_input ?></p>
+                <p style="margin:2px; font-size:12px;">Cajero: <?= $nombreCompleto ?></p>
             </div>
-            <table class="ticket-table" style="font-family:monospace;">
+            <table class="ticket-table">
                 <tr><td>Ventas Brutas:</td><td class="text-end">${ventasDisplay}</td></tr>
                 <tr><td>(-) Egresos:</td><td class="text-end">$<?= money($totalEgresos) ?></td></tr>
                 <tr><td>(-) Transfer:</td><td class="text-end">$<?= money($totalTransfer) ?></td></tr>
-                <tr style="font-size:14px; border-top:1px solid #000; font-weight:bold; ${colorRed}">
-                    <td style="padding-top:5px;">EFECTIVO CAJA:</td>
-                    <td class="text-end" style="padding-top:5px;">${saldoDisplay}</td>
+                <tr style="font-size:15px; border-top:2px solid #000; font-weight:bold; ${colorRed}">
+                    <td style="padding-top:8px;">EFECTIVO CAJA:</td>
+                    <td class="text-end" style="padding-top:8px;">${saldoDisplay}</td>
                 </tr>
             </table>
-            <div style="margin-top:10px; border-bottom:1px solid #000; font-size:11px; font-weight:bold;">DETALLE DE EGRESOS</div>
-            <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
-            <div style="margin-top:40px; display:flex; justify-content:space-between;">
-                <div style="border-top:1px solid #000; width:45%; text-align:center; font-size:9px;">Firma Cajero</div>
-                <div style="border-top:1px solid #000; width:45%; text-align:center; font-size:9px;">Supervisor</div>
+            <div style="margin-top:15px; border-bottom:1px solid #000; font-size:12px; font-weight:bold;">DETALLE DE EGRESOS</div>
+            <table class="ticket-table" style="font-size:12px;">${egresosHtml}</table>
+            <div style="margin-top:50px; display:flex; justify-content:space-between;">
+                <div style="border-top:2px solid #000; width:45%; text-align:center; font-size:10px; font-weight:bold; padding-top:5px;">Firma Cajero</div>
+                <div style="border-top:2px solid #000; width:45%; text-align:center; font-size:10px; font-weight:bold; padding-top:5px;">Supervisor</div>
             </div>
             <div class="no-print" style="margin-top:20px;">
                 <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">Imprimir Ticket</button>
                 <button class="button" style="background:#7f8c8d; width:100%; margin-top:5px;" onclick="cerrarModal()">Cerrar</button>
             </div>
         `;
-
         document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
-
     function cerrarModal() { document.getElementById('modalVoucher').style.display = 'none'; }
-    window.onclick = function(e) { if (e.target == document.getElementById('modalVoucher')) cerrarModal(); }
 </script>
 </body>
 </html>
