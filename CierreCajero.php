@@ -15,6 +15,7 @@ require("ConnCentral.php");
 require("Conexion.php");    
 require("ConnDrinks.php");  
 
+// Selección de Sede
 $sede_actual = $_GET['sede'] ?? 'central';
 if ($sede_actual === 'drinks') {
     if ($mysqliDrinks->connect_error) die("Error Sede Drinks: " . $mysqliDrinks->connect_error);
@@ -25,6 +26,7 @@ if ($sede_actual === 'drinks') {
     $nombre_sede_display = "CENTRAL";
 }
 
+// Control de Inactividad
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
     session_unset(); session_destroy();
     header("Location: Login.php?msg=Sesion expirada"); exit;
@@ -34,6 +36,9 @@ $_SESSION['ultimo_acceso'] = time();
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if ($UsuarioSesion === '') { header("Location: Login.php?msg=Debe iniciar sesion"); exit; }
 
+/* ============================================================
+    FUNCIÓN DE PERMISOS
+============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli; 
     $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=?");
@@ -44,16 +49,18 @@ function Autorizacion($User, $Solicitud) {
 }
 
 // CARGA DE PERMISOS
-$permiso9999 = Autorizacion($UsuarioSesion, '9999'); // Admin / Root
-$permiso7777 = Autorizacion($UsuarioSesion, '7777'); // Supervisor / Cierre
-$permiso0003 = Autorizacion($UsuarioSesion, '0003'); // Ver Saldo Efectivo
+$permiso9999 = Autorizacion($UsuarioSesion, '9999'); // Admin
+$permiso7777 = Autorizacion($UsuarioSesion, '7777'); // Supervisor
+$permiso0003 = Autorizacion($UsuarioSesion, '0003'); // Ver cierres ajenos y Saldo Efectivo
 
+// FILTROS INICIALES
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
 $fecha       = str_replace('-', '', $fecha_input); 
 $UsuarioFact = trim($_GET['nit'] ?? '');
 
-// Si no es admin, solo puede verse a sí mismo
-if($permiso9999 !== 'SI') $UsuarioFact = $UsuarioSesion;
+if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
+    $UsuarioFact = $UsuarioSesion;
+}
 
 $fecha_esc       = $mysqliActiva->real_escape_string($fecha);
 $UsuarioFact_esc = $mysqliActiva->real_escape_string($UsuarioFact);
@@ -96,43 +103,35 @@ if($UsuarioFact !== ''){
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
-$saldo_efectivo = $totalEgresos-$totalVentas  ;
+$saldo_efectivo =  $totalEgresos-$totalVentas ;
+// Variable para color condicional
+$color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Corte - <?= $nombre_sede_display ?></title>
+    <title>Corte de Caja - <?= $nombre_sede_display ?></title>
     <style>
         body{font-family:"Segoe UI",sans-serif; margin:20px; background:#eef3f7; color:#333;}
         .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
         .table{width:100%; border-collapse:collapse;}
-        .table td, .table th{padding:8px; border-bottom:1px solid #eee; text-align: left;}
-        .button{padding:10px 15px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;}
-        .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px; border-radius:4px; cursor:pointer;}
+        .table td, .table th{padding:10px; border-bottom:1px solid #eee; text-align: left;}
+        .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;}
+        .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;}
         .text-end{ text-align: right; }
-        .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; font-weight: 500; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow: auto; }
-        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 95%; max-width: 450px; border-radius: 12px; }
+        .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 95%; max-width: 400px; border-radius: 12px; }
 
         @media print {
             body * { visibility: hidden !important; }
-            #modalVoucher, #modalVoucher * { 
-                visibility: visible !important; 
-                color: #000 !important; 
-                font-weight: bold !important; 
-            }
+            #modalVoucher, #modalVoucher * { visibility: visible !important; }
             #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; display: block !important; background: white !important; }
-            #printArea { 
-                width: 72mm !important; 
-                margin: 0 !important; padding: 0 !important; 
-                font-family: "Courier New", Courier, monospace !important;
-            }
+            #printArea { width: 72mm !important; margin: 0 !important; padding: 10px !important; }
             .no-print { display: none !important; }
-            @page { margin: 0; size: auto; }
-            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; }
-            .ticket-table td { padding: 2px 0 !important; color: #000 !important; }
+            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 12px !important; font-family: monospace !important; }
         }
     </style>
     <script>
@@ -151,43 +150,52 @@ $saldo_efectivo = $totalEgresos-$totalVentas  ;
 <body>
 
 <div class="panel no-print">
-    <form method="GET">
-        Sede: <select name="sede" onchange="this.form.submit()">
-            <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>Sede Central</option>
-            <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>Sede Drinks (AWS)</option>
-        </select>
-        &nbsp; Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>">
-        &nbsp; Facturador: <select name="nit">
-            <option value="">-- Seleccione --</option>
-            <?php if($factList): while($f=$factList->fetch_assoc()): ?>
-                <option value="<?= $f['FACTURADOR_NIT'] ?>" <?= ($f['FACTURADOR_NIT']===$UsuarioFact)?'selected':'' ?>><?= $f['FACTURADOR'] ?></option>
-            <?php endwhile; endif; ?>
-        </select>
-        <button class="button" type="submit">Consultar</button>
+    <form method="GET" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
+        <div>Sede: <select name="sede" onchange="this.form.submit()" style="padding:5px;">
+            <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
+            <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
+        </select></div>
+        
+        <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>" style="padding:4px;"></div>
+        
+        <div>Facturador: <select name="nit" style="padding:5px; min-width:200px;">
+            <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
+                <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
+            <?php else: ?>
+                <option value="">-- Seleccione Usuario --</option>
+                <?php if($factList): while($f=$factList->fetch_assoc()): ?>
+                    <option value="<?= $f['FACTURADOR_NIT'] ?>" <?= ($f['FACTURADOR_NIT']===$UsuarioFact)?'selected':'' ?>><?= $f['FACTURADOR'] ?></option>
+                <?php endwhile; endif; ?>
+            <?php endif; ?>
+        </select></div>
+        
+        <button class="button" type="submit">Consultar Caja</button>
     </form>
 </div>
 
 <?php if($UsuarioFact !== ''): ?>
     <div class="panel no-print">
-        <h3>📊 Resumen de Caja: <?= htmlspecialchars($nombreCompleto) ?></h3>
+        <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
         <table class="table" style="max-width: 500px;">
-            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><?= ($permiso9999 === 'SI') ? '$ '.money($totalVentas) : '*** Oculto ***' ?></td></tr>
+            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b>$ <?= money($totalVentas) ?></b></td></tr>
             <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-            <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
-            <tr style="font-size:1.3em; border-top:2px solid #333;">
+            <tr><td>(-) Transferencias (Informativo):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+            <tr style="font-size:1.4em; border-top:2px solid #333; background:#f9f9f9;">
                 <td><b>TOTAL EFECTIVO:</b></td>
                 <td class="text-end">
-                    <b><?= ($permiso0003 === 'SI' || $permiso9999 === 'SI') ? '$ '.money($saldo_efectivo) : '*** Oculto ***' ?></b>
+                    <b style="<?= $color_saldo ?>">
+                        <?= ($permiso0003 === 'SI' || $permiso9999 === 'SI') ? '$ '.money($saldo_efectivo) : '*** Oculto ***' ?>
+                    </b>
                 </td>
             </tr>
         </table>
     </div>
 
     <div class="panel no-print">
-        <h3>💸 Detallado de Egresos (Editable)</h3>
+        <h3>💸 Egresos de Caja</h3>
         <table class="table">
             <thead>
-                <tr><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th style="text-align:center;">Acción</th></tr>
+                <tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th style="text-align:center;">Acción</th></tr>
             </thead>
             <tbody>
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
@@ -205,8 +213,8 @@ $saldo_efectivo = $totalEgresos-$totalVentas  ;
                     </td>
                     <td style="text-align:center;">
                         <?php if($permiso9999 === 'SI'): ?>
-                            <button class="btn-save" onclick="guardarEgreso(<?= $idE ?>)">💾 Guardar</button>
-                        <?php endif; ?>
+                            <button class="btn-save" onclick="guardarEgreso(<?= $idE ?>)">💾 Actualizar</button>
+                        <?php else: echo "-"; endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -214,7 +222,7 @@ $saldo_efectivo = $totalEgresos-$totalVentas  ;
         </table>
     </div>
 
-    <div class="panel no-print">
+    <div class="panel no-print" style="text-align:center;">
         <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
         <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
     </div>
@@ -226,7 +234,6 @@ $saldo_efectivo = $totalEgresos-$totalVentas  ;
 
 <script>
     function mostrarVoucher(tipo) {
-        // VALIDACIÓN DE CIERRE: Permite si tiene 7777 O 9999
         if(tipo === 'cierre' && '<?= $permiso7777 ?>' !== 'SI' && '<?= $permiso9999 ?>' !== 'SI') {
             alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); return;
         }
@@ -237,39 +244,33 @@ $saldo_efectivo = $totalEgresos-$totalVentas  ;
         <?php endforeach; ?>
 
         const titulo = (tipo === 'precierre') ? 'VOUCHER DE PRECIERRE' : 'CIERRE DEFINITIVO';
-        
-        // Mostrar ventas si es admin
-        let ventasDisplay = (tipo === 'precierre' && '<?= $permiso9999 ?>' !== 'SI') ? '*** Oculto ***' : '$<?= money($totalVentas) ?>';
-        
-        // Mostrar saldo si tiene permiso 0003 o 9999
         let saldoDisplay = ('<?= $permiso0003 ?>' === 'SI' || '<?= $permiso9999 ?>' === 'SI') ? '$<?= money($saldo_efectivo) ?>' : '*** Oculto ***';
+        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1') ? 'color:red;' : 'color:#000;';
 
         let html = `
-            <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px; color:#000;">
-                <h2 style="margin:5px; font-size:18px; font-weight:bold;">${titulo}</h2>
-                <p style="margin:2px; font-size:12px; font-weight:bold;">Sede: <?= $nombre_sede_display ?></p>
-                <p style="margin:2px; font-size:12px; font-weight:bold;">Fecha: <?= $fecha_input ?></p>
-                <p style="margin:2px; font-size:12px; font-weight:bold;">Cajero: <?= $nombreCompleto ?></p>
+            <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px; color:#000; font-family:monospace;">
+                <h2 style="margin:5px; font-size:16px;">${titulo}</h2>
+                <p style="margin:2px; font-size:11px;">Sede: <?= $nombre_sede_display ?></p>
+                <p style="margin:2px; font-size:11px;">Fecha: <?= $fecha_input ?></p>
+                <p style="margin:2px; font-size:11px;">Cajero: <?= $nombreCompleto ?></p>
             </div>
-            <table class="ticket-table" style="font-weight:bold; color:#000;">
-                <tr><td>Ventas Brutas:</td><td class="text-end">${ventasDisplay}</td></tr>
+            <table class="ticket-table" style="font-family:monospace;">
+                <tr><td>Ventas Brutas:</td><td class="text-end">$<?= money($totalVentas) ?></td></tr>
                 <tr><td>(-) Egresos:</td><td class="text-end">$<?= money($totalEgresos) ?></td></tr>
                 <tr><td>(-) Transfer:</td><td class="text-end">$<?= money($totalTransfer) ?></td></tr>
-                <tr style="font-size:15px; border-top:1.5px solid #000;">
+                <tr style="font-size:14px; border-top:1px solid #000; font-weight:bold; ${colorRed}">
                     <td style="padding-top:5px;">EFECTIVO CAJA:</td>
                     <td class="text-end" style="padding-top:5px;">${saldoDisplay}</td>
                 </tr>
             </table>
-            <div style="margin-top:15px; border-bottom:1.5px solid #000; font-weight:bold; font-size:12px; color:#000;">DETALLE DE EGRESOS</div>
-            <table class="ticket-table" style="font-weight:bold; color:#000;">
-                ${egresosHtml}
-            </table>
-            <div style="margin-top:45px; display:flex; justify-content:space-between; color:#000;">
-                <div style="border-top:1.5px solid #000; width:45%; text-align:center; font-size:10px; padding-top:5px; font-weight:bold;">Firma Cajero</div>
-                <div style="border-top:1.5px solid #000; width:45%; text-align:center; font-size:10px; padding-top:5px; font-weight:bold;">Supervisor</div>
+            <div style="margin-top:10px; border-bottom:1px solid #000; font-size:11px; font-weight:bold;">DETALLE DE EGRESOS</div>
+            <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
+            <div style="margin-top:40px; display:flex; justify-content:space-between;">
+                <div style="border-top:1px solid #000; width:45%; text-align:center; font-size:9px;">Firma Cajero</div>
+                <div style="border-top:1px solid #000; width:45%; text-align:center; font-size:9px;">Supervisor</div>
             </div>
-            <div class="no-print" style="margin-top:20px; text-align:center;">
-                <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">🖨️ Imprimir</button>
+            <div class="no-print" style="margin-top:20px;">
+                <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">Imprimir Ticket</button>
                 <button class="button" style="background:#7f8c8d; width:100%; margin-top:5px;" onclick="cerrarModal()">Cerrar</button>
             </div>
         `;
