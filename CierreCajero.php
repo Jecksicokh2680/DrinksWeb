@@ -4,7 +4,7 @@
 ============================================================ */
 $session_timeout  = 3600;
 $inactive_timeout = 2400;
-date_default_timezone_set('America/Bogota');
+date_default_timezone_set('America/Bogota'); 
 ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);
 
@@ -15,7 +15,6 @@ require("ConnCentral.php");
 require("Conexion.php");    
 require("ConnDrinks.php");  
 
-// Selección de Sede
 $sede_actual = $_GET['sede'] ?? 'central';
 if ($sede_actual === 'drinks') {
     if ($mysqliDrinks->connect_error) die("Error Sede Drinks: " . $mysqliDrinks->connect_error);
@@ -26,7 +25,6 @@ if ($sede_actual === 'drinks') {
     $nombre_sede_display = "CENTRAL";
 }
 
-// Control de Inactividad
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
     session_unset(); session_destroy();
     header("Location: Login.php?msg=Sesion expirada"); exit;
@@ -48,12 +46,10 @@ function Autorizacion($User, $Solicitud) {
     return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
 
-// CARGA DE PERMISOS
-$permiso9999 = Autorizacion($UsuarioSesion, '9999'); // Admin
-$permiso7777 = Autorizacion($UsuarioSesion, '7777'); // Supervisor
-$permiso0003 = Autorizacion($UsuarioSesion, '0003'); // Ver cierres ajenos
+$permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
+$permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
+$permiso0003 = Autorizacion($UsuarioSesion, '0003'); 
 
-// FILTROS INICIALES
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
 $fecha       = str_replace('-', '', $fecha_input); 
 $UsuarioFact = trim($_GET['nit'] ?? '');
@@ -79,6 +75,7 @@ $factList = $mysqliActiva->query($qryFacturadores);
 
 $totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0;
 $listaEgresos = [];
+$yaExisteTransferEnEgresos = false;
 
 if($UsuarioFact !== ''){
     $qryV = "SELECT SUM(T) AS TOTAL, NOM FROM (
@@ -96,15 +93,30 @@ if($UsuarioFact !== ''){
     $resE = $mysqliActiva->query("SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
         INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
         WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$UsuarioFact_esc'");
-    if($resE){ while($eg=$resE->fetch_assoc()){ $totalEgresos += (float)$eg['VALOR']; $listaEgresos[] = $eg; } }
+    if($resE){ 
+        while($eg=$resE->fetch_assoc()){ 
+            $totalEgresos += (float)$eg['VALOR']; 
+            $listaEgresos[] = $eg; 
+            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false) {
+                $yaExisteTransferEnEgresos = true;
+            }
+        } 
+    }
 
     $resT = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$UsuarioFact_esc'");
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
-$saldo_efectivo = $totalEgresos-$totalVentas ;
-$color_saldo = ($saldo_efectivo < 0) ? 'color:red;' : '';
+
+$efectivo_sin_transfer =  $totalEgresos-$totalVentas ; 
+
+if ($yaExisteTransferEnEgresos) {
+    $efectivo_neto_final = $efectivo_sin_transfer; 
+} else {
+    $efectivo_neto_final = $efectivo_sin_transfer - $totalTransfer;
+}
+
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
@@ -123,54 +135,35 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         .text-end{ text-align: right; }
         .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
-        .modal-content { background: white; margin: 2% auto; padding: 25px; width: 95%; max-width: 400px; border-radius: 12px; }
+        .modal-content { background: white; margin: 2% auto; padding: 15px; width: 98%; max-width: 420px; border-radius: 12px; }
 
-        /* AJUSTES PARA IMPRESIÓN MÁS DEFINIDA */
+        /* AJUSTES DE IMPRESIÓN REFORZADOS */
         @media print {
+            @page { margin: 0; }
             body * { visibility: hidden !important; }
-            #modalVoucher, #modalVoucher * { 
-                visibility: visible !important; 
-                color: #000 !important; 
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            #modalVoucher { 
-                position: absolute !important; 
-                left: 0 !important; 
-                top: 0 !important; 
-                width: 100% !important; 
-                display: block !important; 
-                background: white !important; 
-            }
+            #modalVoucher, #modalVoucher * { visibility: visible !important; }
+            #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; display: block !important; }
+            
             #printArea { 
-                width: 72mm !important; 
+                width: 95% !important; 
                 margin: 0 !important; 
-                padding: 5px !important;
-                font-weight: 700 !important; /* Letra más gruesa */
+                padding: 1mm 2mm !important; 
+                color: #000 !important; 
+                font-family: Arial, sans-serif !important; 
+                font-weight: 900 !important; /* Negrita máxima */
+                line-height: 1.2 !important;
             }
+            .ticket-header h2 { font-size: 18px !important; margin: 0 !important; padding-bottom: 2px !important; font-weight: 900 !important; text-transform: uppercase; }
+            .ticket-header p { font-size: 12px !important; margin: 2px 0 !important; font-weight: 900 !important; }
+            
+            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; }
+            .ticket-table td { padding: 3px 0 !important; font-weight: 900 !important; color: #000 !important; }
+            
+            hr { border: none !important; border-top: 2px solid #000 !important; margin: 5px 0 !important; opacity: 1 !important; }
             .no-print { display: none !important; }
-            .ticket-table { 
-                width: 100% !important; 
-                border-collapse: collapse !important; 
-                font-size: 13px !important; /* Un punto más grande */
-                font-family: 'Courier New', Courier, monospace !important; 
-                color: #000 !important;
-            }
-            h2, p, td { color: #000 !important; }
+            b { font-weight: 900 !important; }
         }
     </style>
-    <script>
-        function guardarEgreso(id){
-            const mot = document.getElementById('motivo_'+id).value;
-            const val = document.getElementById('valor_'+id).value;
-            if(!confirm('¿Desea actualizar este egreso?')) return;
-            fetch('update_egreso.php', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?= $sede_actual ?>`
-            }).then(r => r.text()).then(t => { alert(t); location.reload(); });
-        }
-    </script>
 </head>
 <body>
 
@@ -199,13 +192,17 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
     <div class="panel no-print">
         <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
         <table class="table" style="max-width: 500px;">
-            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($totalVentas) ?></b></td></tr>
+            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
             <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-            <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
-            <tr style="font-size:1.4em; border-top:2px solid #333; background:#f9f9f9;">
-                <td><b>TOTAL EFECTIVO:</b></td>
-                <td class="text-end"><b style="<?= $color_saldo ?>"><?= $ocultarValores ? '*** Oculto ***' : '$ '.money($saldo_efectivo) ?></b></td>
+            <tr style="background:#f9f9f9;"><td><b>(=) EFECTIVO SIN TRANSF:</b></td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_sin_transfer) ?></b></td></tr>
+            <tr><td>(-) Transferencias (Ref):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+            <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
+                <td><b>TOTAL FÍSICO EN CAJA:</b></td>
+                <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
             </tr>
+            <?php if($yaExisteTransferEnEgresos): ?>
+                <tr><td colspan="2" style="font-size:10px; color:green;">* Transferencias ya incluidas en Egresos.</td></tr>
+            <?php endif; ?>
         </table>
     </div>
 
@@ -241,45 +238,61 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         }
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td style="padding:2px;">- <?= $e['MOTIVO'] ?></td><td class="text-end">$<?= money($e['VALOR']) ?></td></tr>`;
+            egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
         <?php endforeach; ?>
 
-        const titulo = (tipo === 'precierre') ? 'VOUCHER DE PRECIERRE' : 'CIERRE DEFINITIVO';
-        let ventasDisplay = '<?= $ocultarValores ? "Oculto" : "$".money($totalVentas) ?>';
-        let saldoDisplay  = '<?= $ocultarValores ? "Oculto" : "$".money($saldo_efectivo) ?>';
-        let colorRed = ('<?= $saldo_efectivo < 0 ?>' == '1' && !<?= $ocultarValores ? 'true' : 'false' ?>) ? 'color:red; font-weight:900;' : 'color:#000;';
-
+        const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
+        const horaImpresion = '<?= date("h:i a") ?>';
+        
         let html = `
-            <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px; color:#000; font-family:monospace;">
-                <h2 style="margin:5px; font-size:18px; text-transform:uppercase;">${titulo}</h2>
-                <p style="margin:2px; font-size:12px;">Sede: <?= $nombre_sede_display ?></p>
-                <p style="margin:2px; font-size:12px;">Fecha: <?= $fecha_input ?></p>
-                <p style="margin:2px; font-size:12px;">Cajero: <?= $nombreCompleto ?></p>
+            <div class="ticket-header" style="text-align:center;">
+                <h2 style="margin:0;"><b>${titulo}</b></h2>
+                <p style="margin:0;"><b>SEDE: <?= strtoupper($nombre_sede_display) ?></b></p>
+                <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
+                <p style="margin:0;">CAJERO: <?= strtoupper(substr($nombreCompleto, 0, 25)) ?></p>
+                <hr>
             </div>
             <table class="ticket-table">
-                <tr><td>Ventas Brutas:</td><td class="text-end">${ventasDisplay}</td></tr>
-                <tr><td>(-) Egresos:</td><td class="text-end">$<?= money($totalEgresos) ?></td></tr>
-                <tr><td>(-) Transfer:</td><td class="text-end">$<?= money($totalTransfer) ?></td></tr>
-                <tr style="font-size:15px; border-top:2px solid #000; font-weight:bold; ${colorRed}">
-                    <td style="padding-top:8px;">EFECTIVO CAJA:</td>
-                    <td class="text-end" style="padding-top:8px;">${saldoDisplay}</td>
+                <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($totalVentas) ?></b></td></tr>
+                <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
+                <tr style="border-top:1px dashed #000;">
+                    <td>EFECT. BRUTO:</td>
+                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_sin_transfer) ?></b></td>
+                </tr>
+                <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
+                <tr><td colspan="2"><hr></td></tr>
+                <tr style="font-size:16px;">
+                    <td><b>TOTAL FÍSICO:</b></td>
+                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final) ?></b></td>
                 </tr>
             </table>
-            <div style="margin-top:15px; border-bottom:1px solid #000; font-size:12px; font-weight:bold;">DETALLE DE EGRESOS</div>
-            <table class="ticket-table" style="font-size:12px;">${egresosHtml}</table>
-            <div style="margin-top:50px; display:flex; justify-content:space-between;">
-                <div style="border-top:2px solid #000; width:45%; text-align:center; font-size:10px; font-weight:bold; padding-top:5px;">Firma Cajero</div>
-                <div style="border-top:2px solid #000; width:45%; text-align:center; font-size:10px; font-weight:bold; padding-top:5px;">Supervisor</div>
+            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
+            <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
+            
+            <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
             </div>
+
             <div class="no-print" style="margin-top:20px;">
-                <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">Imprimir Ticket</button>
-                <button class="button" style="background:#7f8c8d; width:100%; margin-top:5px;" onclick="cerrarModal()">Cerrar</button>
+                <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
+                <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
             </div>
         `;
         document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
-    function cerrarModal() { document.getElementById('modalVoucher').style.display = 'none'; }
+
+    function guardarEgreso(id){
+        const mot = document.getElementById('motivo_'+id).value;
+        const val = document.getElementById('valor_'+id).value;
+        if(!confirm('¿Desea actualizar este egreso?')) return;
+        fetch('update_egreso.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?= $sede_actual ?>`
+        }).then(r => r.text()).then(t => { alert(t); location.reload(); });
+    }
 </script>
 </body>
 </html>
