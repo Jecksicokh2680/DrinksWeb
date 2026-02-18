@@ -324,35 +324,113 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
 </div>
 
 <script>
+
 function printMovimientos(){
-    const content = document.getElementById('tableHistory').outerHTML;
-    const win = window.open('', '', 'height=800,width=1000');
+    // 1. Clonamos la tabla para manipularla
+    const tableClone = document.getElementById('tableHistory').cloneNode(true);
+    
+    const header = tableClone.querySelector('thead tr');
+    const rows = tableClone.querySelectorAll('tbody tr');
+    
+    // Cambiamos el texto del encabezado de "Fecha / Hora" a solo "Hora"
+    if(header.cells[0]) header.cells[0].innerText = "Hora";
+
+    // Mapeo de NITs a Nombres
+    const nombresSedes = {
+        '86057267-8': 'CENTRAL',
+        '86057267': 'CENTRAL',
+        '901724534': 'DRINK',
+        '901724534-7': 'DRINK'
+    };
+
+    // 2. Procesamos las filas
+    rows.forEach(row => {
+        // Extraer solo la hora
+        const fullDateTime = row.cells[0].innerText;
+        const timeOnly = fullDateTime.split(' ')[1] || fullDateTime;
+        row.cells[0].innerText = timeOnly;
+
+        // Reemplazar NITs por nombres en Origen (celda 4) y Destino (celda 5) tras eliminar columnas
+        // Nota: Los índices cambian después de deleteCell, por eso lo hacemos antes de borrar o ajustamos el orden
+        const nitOrig = row.cells[4].innerText.trim();
+        const nitDest = row.cells[5].innerText.trim();
+        
+        row.cells[4].innerText = nombresSedes[nitOrig] || nitOrig;
+        row.cells[5].innerText = nombresSedes[nitDest] || nitDest;
+
+        // Eliminar columnas no deseadas: 7 (Acción), 6 (Observación), 1 (Usuario)
+        row.deleteCell(7);
+        row.deleteCell(6);
+        row.deleteCell(1);
+    });
+
+    // Eliminar los mismos encabezados
+    header.deleteCell(7);
+    header.deleteCell(6);
+    header.deleteCell(1);
+
+    const fechaFiltro = document.getElementsByName('f_inicio')[0].value;
+    const win = window.open('', '', 'height=700,width=800');
     
     win.document.write(`
         <html>
         <head>
             <title>Reporte de Traslados</title>
             <style>
-                @page { margin: 2mm; }
-                body { font-family: 'Courier New', Courier, monospace; color: #000; margin: 0; padding: 0; }
-                table { width: 100%; border-collapse: collapse; }
+                @page { 
+                    size: portrait; 
+                    margin: 0.2cm; 
+                }
+                body { 
+                    font-family: 'Courier New', Courier, monospace; 
+                    padding: 5px; 
+                    color: #000; 
+                    font-weight: bold; /* Todo en negrilla */
+                }
+                h2 { 
+                    text-align: center; 
+                    font-size: 14px; 
+                    margin: 0; 
+                    font-weight: bold;
+                    text-transform: uppercase;
+                }
+                .header-info { 
+                    text-align: center; 
+                    font-size: 11px; 
+                    margin-bottom: 8px; 
+                    border-bottom: 2px solid #000; 
+                    padding-bottom: 4px; 
+                    font-weight: bold;
+                }
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                }
                 th, td { 
                     border: 1px solid #000; 
-                    padding: 4px; 
+                    padding: 5px 2px; 
                     font-size: 11px; 
-                    font-weight: bold; 
-                    text-align: center;
+                    text-align: center; 
+                    font-weight: bold; /* Refuerzo de negrilla en celdas */
                 }
-                th { background: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
-                .no-print-col { display: none !important; } /* Ocultar columna de checks al imprimir */
-                h2 { text-align: center; font-size: 16px; margin-bottom: 5px; }
-                code { font-weight: bold; }
+                th { 
+                    background: #000 !important; 
+                    color: #fff !important; 
+                    -webkit-print-color-adjust: exact;
+                }
+                /* Ajuste de anchos optimizado */
+                th:nth-child(1), td:nth-child(1) { width: 12%; } /* Hora */
+                th:nth-child(2), td:nth-child(2) { width: 15%; } /* Barcode */
+                th:nth-child(3), td:nth-child(3) { width: 43%; text-align: left; } /* Descripción */
+                th:nth-child(4), td:nth-child(4) { width: 10%; font-size: 12px; } /* Cant */
+                th:nth-child(5), td:nth-child(5) { width: 10%; font-size: 9px; } /* Origen (CENTRAL/DRINK) */
+                th:nth-child(6), td:nth-child(6) { width: 10%; font-size: 9px; } /* Destino (CENTRAL/DRINK) */
             </style>
         </head>
         <body>
-            <h2>REPORTE DE TRASLADOS DE MERCANCÍA</h2>
-            <p style="text-align:center; font-size:10px; margin-top:0;">Fecha Reporte: <?= date('Y-m-d H:i') ?></p>
-            ${content}
+            <h2>REPORTE TRASLADOS - FECHA: ${fechaFiltro}</h2>
+            <div class="header-info">Generado el: <?= date('Y-m-d H:i') ?></div>
+            ${tableClone.outerHTML}
         </body>
         </html>
     `);
