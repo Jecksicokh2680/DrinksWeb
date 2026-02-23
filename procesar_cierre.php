@@ -1,54 +1,47 @@
 <?php
-session_start();
-require("Conexion.php"); // Conexión a la base donde guardas los cierres
+// Habilitar errores para ver qué pasa exactamente si falla
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
-// Verificar si el usuario tiene permiso 9999 para realizar el cierre final
-if (!isset($_SESSION['Usuario']) || !isset($_SESSION['Autorizaciones'])) {
-    echo json_encode(['status' => 'error', 'msg' => 'Sesión no válida']);
-    exit;
+// 1. Usamos Conexion.php porque ahí está la tabla cierres_caja
+require("Conexion.php"); 
+date_default_timezone_set('America/Bogota');
+
+// 2. Recibir datos
+$fecha   = $_POST['fecha'] ?? '';
+$nit     = $_POST['nit'] ?? '';
+$monto   = $_POST['monto'] ?? 0;
+$sede    = $_POST['sede'] ?? '';
+$usuario = $_POST['usuario'] ?? '';
+$ahora   = date("Y-m-d H:i:s");
+
+// 3. Validar conexión (usando la variable de tu archivo Conexion.php)
+if (!$mysqli || $mysqli->connect_error) {
+    die("Error de conexión a BnmaWeb: " . ($mysqli->connect_error ?? "Variable no definida"));
 }
 
-$permisos = $_SESSION['Autorizaciones'][$_SESSION['Usuario'] . '_9999'] ?? 'NO';
-
-if ($permisos !== 'SI') {
-    echo json_encode(['status' => 'error', 'msg' => 'No tiene autorización para cerrar caja']);
-    exit;
+// 4. Evitar Duplicados
+$stmtCheck = $mysqli->prepare("SELECT IdCierre FROM cierres_caja WHERE FechaCorte = ? AND NitFacturador = ? AND Sede = ?");
+$stmtCheck->bind_param("sss", $fecha, $nit, $sede);
+$stmtCheck->execute();
+if ($stmtCheck->get_result()->num_rows > 0) {
+    die("Error: Ya existe un cierre registrado para este usuario hoy.");
 }
 
-// Recibir datos
-$nit_cajero = $_POST['nit'] ?? '';
-$fecha_cierre = $_POST['fecha'] ?? '';
-$sede = $_POST['sede'] ?? '';
-$ventas = (float)($_POST['ventas'] ?? 0);
-$egresos = (float)($_POST['egresos'] ?? 0);
-$transfer = (float)($_POST['transfer'] ?? 0);
-$saldo = (float)($_POST['saldo'] ?? 0);
-$usuario_autoriza = $_SESSION['Usuario'];
-
-if (empty($nit_cajero) || empty($fecha_cierre)) {
-    echo json_encode(['status' => 'error', 'msg' => 'Datos incompletos']);
-    exit;
-}
-
-// 1. Verificar si ya existe un cierre definitivo para este cajero en esta fecha y sede
-$check = $mysqli->prepare("SELECT id FROM cierres_caja WHERE nit_cajero = ? AND fecha_caja = ? AND sede = ?");
-$check->bind_param("sss", $nit_cajero, $fecha_cierre, $sede);
-$check->execute();
-if ($check->get_result()->num_rows > 0) {
-    echo json_encode(['status' => 'error', 'msg' => 'Ya existe un cierre definitivo registrado para este cajero en esta fecha']);
-    exit;
-}
-
-// 2. Insertar el registro de cierre
-$sql = "INSERT INTO cierres_caja (nit_cajero, fecha_caja, sede, ventas_brutas, total_egresos, total_transfer, saldo_efectivo, usuario_autoriza, fecha_registro) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-
+// 5. Insertar
+// Asegúrate que los nombres de columnas coincidan con tu tabla en BnmaWeb
+$sql = "INSERT INTO cierres_caja (FechaCorte, NitFacturador, MontoFinal, Sede, UsuarioCierre, FechaRegistro) VALUES (?, ?, ?, ?, ?, ?)";
 $stmt = $mysqli->prepare($sql);
-$stmt->bind_param("sssdddds", $nit_cajero, $fecha_cierre, $sede, $ventas, $egresos, $transfer, $saldo, $usuario_autoriza);
+
+if (!$stmt) {
+    die("Error en Prepare: " . $mysqli->error);
+}
+
+$stmt->bind_param("ssdsss", $fecha, $nit, $monto, $sede, $usuario, $ahora);
 
 if ($stmt->execute()) {
-    echo json_encode(['status' => 'ok', 'msg' => 'Cierre definitivo guardado con éxito']);
+    echo "OK";
 } else {
-    echo json_encode(['status' => 'error', 'msg' => 'Error al guardar en base de datos: ' . $mysqli->error]);
+    echo "Error al insertar: " . $stmt->error;
 }
 ?>

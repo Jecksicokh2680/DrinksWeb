@@ -4,7 +4,7 @@ require_once("ConnDrinks.php");    // $mysqliDrinks
 require_once("Conexion.php");      // $mysqliWeb
 
 /* ============================================================
-   RELACIÓN PRODUCTO → CATEGORÍA (Se necesita para el Backup)
+   RELACIÓN PRODUCTO → CATEGORÍA
 ============================================================ */
 $prodCat = [];
 $resPC = $mysqliWeb->query("SELECT sku, CodCat FROM catproductos");
@@ -13,12 +13,11 @@ while ($r = $resPC->fetch_assoc()) {
 }
 
 /* ============================================================
-   LÓGICA DE BACKUP: INSERTAR O ACTUALIZAR (UPSERT) CON CODCAT
+   LÓGICA DE BACKUP: INSERTAR O ACTUALIZAR (UPSERT)
 ============================================================ */
 if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
     $fecha_actual = date("Y-m-d");
 
-    // Traemos el stock actual de ambas sedes
     $sqlAll = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as cant 
                FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
                WHERE p.estado='1' GROUP BY p.barcode";
@@ -33,7 +32,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
 
     $todos_barcodes = array_unique(array_merge(array_keys($dataC), array_keys($dataD)));
 
-    // SQL UPSERT incluyendo codcat
     $sqlUpsert = "INSERT INTO historial_stock 
                   (barcode, descripcion, codcat, stock_central, stock_drinks, stock_total, fecha_registro) 
                   VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -42,18 +40,17 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
                   stock_drinks  = VALUES(stock_drinks),
                   stock_total   = VALUES(stock_total),
                   descripcion   = VALUES(descripcion),
-                  codcat        = VALUES(codcat)";
+                  codcat         = VALUES(codcat)";
 
     $stmtIns = $mysqliWeb->prepare($sqlUpsert);
 
     foreach($todos_barcodes as $bc){
         $desc_ins = $dataC[$bc]['descripcion'] ?? ($dataD[$bc]['descripcion'] ?? 'Sin nombre');
-        $cat_ins  = $prodCat[$bc] ?? 'SIN'; // Obtenemos el CodCat
+        $cat_ins  = $prodCat[$bc] ?? 'SIN'; 
         $c_ins    = $dataC[$bc]['cant'] ?? 0;
         $d_ins    = $dataD[$bc]['cant'] ?? 0;
         $t_ins    = $c_ins + $d_ins;
         
-        // s = string, d = double/decimal
         $stmtIns->bind_param("ssdddds", $bc, $desc_ins, $cat_ins, $c_ins, $d_ins, $t_ins, $fecha_actual);
         $stmtIns->execute();
     }
@@ -66,16 +63,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
 $categoria = $_GET['categoria'] ?? '';
 $term      = $_GET['term'] ?? '';
 $page      = max(1, (int)($_GET['page'] ?? 1));
-$limit     = 15;
+$limit     = 100; // Aumentado para ver totales por categoría más fácilmente
 $offset    = ($page - 1) * $limit;
 $like      = "%$term%";
 
-// Categorías para el selector
 $cats = [];
 $resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1' ORDER BY CodCat ASC");
 while ($c = $resCat->fetch_assoc()) { $cats[$c['CodCat']] = $c['Nombre']; }
 
-// Barcodes filtrados por categoría (si aplica)
 $barcodesCat = [];
 if ($categoria) {
     $stmtCat = $mysqliWeb->prepare("SELECT sku FROM catproductos WHERE CodCat = ?");
@@ -92,7 +87,6 @@ if ($categoria) {
     $where .= " AND p.barcode IN ($in)";
 }
 
-/* CONTADOR Y CONSULTA PARA LA TABLA VISUAL */
 $sqlCount = "SELECT COUNT(DISTINCT p.barcode) total FROM productos p WHERE $where";
 $stmtCnt = $mysqliCentral->prepare($sqlCount);
 $stmtCnt->bind_param("ss", $like, $like);
@@ -119,8 +113,9 @@ $drinks = [];
 while ($r = $resD->fetch_assoc()) { $drinks[$r['barcode']] = $r; }
 
 $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
+// IMPORTANTE: Ordenar por categoría para que los subtotales funcionen
 usort($barcodes, function($a, $b) use($prodCat) {
-    return ($prodCat[$a] ?? '') <=> ($prodCat[$b] ?? '');
+    return ($prodCat[$a] ?? 'SIN') <=> ($prodCat[$b] ?? 'SIN');
 });
 ?>
 
@@ -140,7 +135,8 @@ usort($barcodes, function($a, $b) use($prodCat) {
         table{width:100%;border-collapse:collapse;min-width:700px}
         th,td{padding:12px 8px;text-align:center;border-bottom:1px solid #e1e1e1}
         th{background:#007bff;color:#fff}
-        tr.subtotal{background:#f1f1f1;font-weight:700}
+        tr.subtotal{background:#f8f9fa;font-weight:700;color:#007bff;border-top: 2px solid #007bff;}
+        tr.total-general{background:#2c3e50;color:#fff;font-weight:700;font-size:1.1em}
         .paginacion{text-align:center;margin-top:15px}
         .paginacion a{padding:6px 10px;margin:2px;border:1px solid #007bff;color:#007bff;text-decoration:none;border-radius:5px}
         .paginacion a.activa{background:#007bff;color:#fff}
@@ -183,18 +179,20 @@ usort($barcodes, function($a, $b) use($prodCat) {
             </thead>
             <tbody>
             <?php
-            $lastCat = '';
+            $lastCat = null;
             $subD = $subC = $subT = 0;
+            $genD = $genC = $genT = 0; // Totales Generales
 
-            foreach ($barcodes as $b):
-                $c = $central[$b] ?? ['cantidad'=>0,'descripcion'=>''];
+            foreach ($barcodes as $index => $b):
+                $c = $central[$b] ?? ['cantidad'=>0,'descripcion'=>'Sin descripción'];
                 $d = $drinks[$b] ?? ['cantidad'=>0];
                 $cat = $prodCat[$b] ?? 'SIN';
-                $nombreCat = $cats[$cat] ?? 'SIN';
+                $nombreCat = $cats[$cat] ?? 'SIN CATEGORÍA';
 
-                if($lastCat !== '' && $lastCat !== $cat){
+                // Si cambia la categoría y no es el primer registro, mostramos subtotal
+                if($lastCat !== null && $lastCat !== $cat){
                     echo "<tr class='subtotal'>
-                            <td colspan='4'>Subtotal {$lastCat}</td>
+                            <td colspan='4' style='text-align:right;'>SUBTOTAL ".($cats[$lastCat] ?? 'SIN CATEGORÍA')." ({$lastCat})</td>
                             <td>".number_format($subD,0)."</td>
                             <td>".number_format($subC,0)."</td>
                             <td>".number_format($subT,0)."</td>
@@ -202,7 +200,13 @@ usort($barcodes, function($a, $b) use($prodCat) {
                     $subD = $subC = $subT = 0;
                 }
 
-                $subD += $d['cantidad']; $subC += $c['cantidad']; $subT += ($c['cantidad'] + $d['cantidad']);
+                $cantD = $d['cantidad'];
+                $cantC = $c['cantidad'];
+                $totalUnit = $cantC + $cantD;
+
+                $subD += $cantD; $subC += $cantC; $subT += $totalUnit;
+                $genD += $cantD; $genC += $cantC; $genT += $totalUnit;
+                
                 $lastCat = $cat;
             ?>
             <tr>
@@ -210,12 +214,31 @@ usort($barcodes, function($a, $b) use($prodCat) {
                 <td><?= $nombreCat ?></td>
                 <td><?= $b ?></td>
                 <td style="text-align:left;"><?= htmlspecialchars($c['descripcion']) ?></td>
-                <td><?= number_format($d['cantidad'],0) ?></td>
-                <td><?= number_format($c['cantidad'],0) ?></td>
-                <td><strong><?= number_format($c['cantidad']+$d['cantidad'],0) ?></strong></td>
+                <td><?= number_format($cantD,0) ?></td>
+                <td><?= number_format($cantC,0) ?></td>
+                <td><strong><?= number_format($totalUnit,0) ?></strong></td>
             </tr>
-            <?php endforeach; ?>
+            <?php 
+                // Si es el último registro del loop, mostrar el último subtotal
+                if ($index === count($barcodes) - 1) {
+                    echo "<tr class='subtotal'>
+                            <td colspan='4' style='text-align:right;'>SUBTOTAL {$nombreCat} ({$cat})</td>
+                            <td>".number_format($subD,0)."</td>
+                            <td>".number_format($subC,0)."</td>
+                            <td>".number_format($subT,0)."</td>
+                          </tr>";
+                }
+            endforeach; 
+            ?>
             </tbody>
+            <tfoot>
+                <tr class="total-general">
+                    <td colspan="4" style="text-align:right;">TOTAL EN ESTA PÁGINA:</td>
+                    <td><?= number_format($genD,0) ?></td>
+                    <td><?= number_format($genC,0) ?></td>
+                    <td><?= number_format($genT,0) ?></td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 
