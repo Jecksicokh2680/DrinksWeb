@@ -155,6 +155,14 @@ while($c=$resCat->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 $prodCat=[]; $resPC = $mysqliWeb->query("SELECT sku,CodCat FROM catproductos");
 while($r=$resPC->fetch_assoc()) $prodCat[$r['sku']]=$r['CodCat'];
 
+// CREAMOS UN DICCIONARIO GLOBAL DE PRODUCTOS (BARCODE -> DESCRIPCIÓN)
+$nombresGlobales = [];
+$resNom = $mysqliCentral->query("SELECT barcode, descripcion FROM productos");
+while($rn = $resNom->fetch_assoc()) $nombresGlobales[$rn['barcode']] = $rn['descripcion'];
+$resNomD = $mysqliDrinks->query("SELECT barcode, descripcion FROM productos");
+while($rnd = $resNomD->fetch_assoc()) if(!isset($nombresGlobales[$rnd['barcode']])) $nombresGlobales[$rnd['barcode']] = $rnd['descripcion'];
+
+
 $barcodes = []; $central = []; $drinks = [];
 if($term !== '' || $categoria !== ''){
     $like = "%$term%";
@@ -298,11 +306,13 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while($r = $resMov->fetch_assoc()): ?>
+                    <?php while($r = $resMov->fetch_assoc()): 
+                        $nomProducto = $nombresGlobales[$r['barcode']] ?? 'Desconocido';
+                    ?>
                     <tr>
                         <td style="font-size:11px;"><?= $r['fecha'] ?></td>
                         <td><?= $r['usuario_Orig'] ?></td>
-                        <td><code><?= $r['barcode'] ?></code></td>
+                        <td data-nombre="<?= htmlspecialchars($nomProducto) ?>"><code><?= $r['barcode'] ?></code></td>
                         <td style="font-weight:bold;"><?= number_format($r['cant'],2) ?></td>
                         <td><small><?= $r['NitEmpresa_Orig'] ?></small></td>
                         <td><small><?= $r['NitEmpresa_Dest'] ?></small></td>
@@ -324,18 +334,17 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
 </div>
 
 <script>
-
 function printMovimientos(){
-    // 1. Clonamos la tabla para manipularla
     const tableClone = document.getElementById('tableHistory').cloneNode(true);
-    
     const header = tableClone.querySelector('thead tr');
     const rows = tableClone.querySelectorAll('tbody tr');
     
     // Cambiamos el texto del encabezado de "Fecha / Hora" a solo "Hora"
     if(header.cells[0]) header.cells[0].innerText = "Hora";
+    
+    // Cambiamos el encabezado de Barcode para indicar que incluye descripción
+    if(header.cells[2]) header.cells[2].innerText = "Producto / Barcode";
 
-    // Mapeo de NITs a Nombres
     const nombresSedes = {
         '86057267-8': 'CENTRAL',
         '86057267': 'CENTRAL',
@@ -343,88 +352,55 @@ function printMovimientos(){
         '901724534-7': 'DRINK'
     };
 
-    // 2. Procesamos las filas
     rows.forEach(row => {
-        // Extraer solo la hora
-        const fullDateTime = row.cells[0].innerText;
-        const timeOnly = fullDateTime.split(' ')[1] || fullDateTime;
+        
+        // Extraer la hora y recortar a HH:mm (quitando los segundos)
+        const fullDateTime = row.cells[0].innerText; // Ejemplo: "2026-02-25 08:30:45"
+        const timePart = fullDateTime.split(' ')[1] || fullDateTime;
+        const timeOnly = timePart.substring(0, 5); // Resultado: "08:30"
         row.cells[0].innerText = timeOnly;
 
-        // Reemplazar NITs por nombres en Origen (celda 4) y Destino (celda 5) tras eliminar columnas
-        // Nota: Los índices cambian después de deleteCell, por eso lo hacemos antes de borrar o ajustamos el orden
+        // MODIFICACIÓN CLAVE: Insertamos el nombre del producto al lado del barcode
+        const celdaBarcode = row.cells[2];
+        const nombreProd = celdaBarcode.getAttribute('data-nombre');
+        celdaBarcode.innerHTML = `<div style="font-size:10px; text-align:left;">${nombreProd}</div><code style="font-size:9px;">${celdaBarcode.innerText}</code>`;
+
         const nitOrig = row.cells[4].innerText.trim();
         const nitDest = row.cells[5].innerText.trim();
         
         row.cells[4].innerText = nombresSedes[nitOrig] || nitOrig;
         row.cells[5].innerText = nombresSedes[nitDest] || nitDest;
 
-        // Eliminar columnas no deseadas: 7 (Acción), 6 (Observación), 1 (Usuario)
-        row.deleteCell(7);
-        row.deleteCell(6);
-        row.deleteCell(1);
+        // Eliminamos columnas innecesarias
+        row.deleteCell(7); // Estado
+        row.deleteCell(6); // Observación
+        row.deleteCell(1); // Usuario
     });
 
-    // Eliminar los mismos encabezados
     header.deleteCell(7);
     header.deleteCell(6);
     header.deleteCell(1);
 
     const fechaFiltro = document.getElementsByName('f_inicio')[0].value;
-    const win = window.open('', '', 'height=700,width=800');
+    const win = window.open('', '', 'height=700,width=900');
     
     win.document.write(`
         <html>
         <head>
             <title>Reporte de Traslados</title>
             <style>
-                @page { 
-                    size: portrait; 
-                    margin: 0.2cm; 
-                }
-                body { 
-                    font-family: 'Courier New', Courier, monospace; 
-                    padding: 5px; 
-                    color: #000; 
-                    font-weight: bold; /* Todo en negrilla */
-                }
-                h2 { 
-                    text-align: center; 
-                    font-size: 14px; 
-                    margin: 0; 
-                    font-weight: bold;
-                    text-transform: uppercase;
-                }
-                .header-info { 
-                    text-align: center; 
-                    font-size: 11px; 
-                    margin-bottom: 8px; 
-                    border-bottom: 2px solid #000; 
-                    padding-bottom: 4px; 
-                    font-weight: bold;
-                }
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                }
-                th, td { 
-                    border: 1px solid #000; 
-                    padding: 5px 2px; 
-                    font-size: 11px; 
-                    text-align: center; 
-                    font-weight: bold; /* Refuerzo de negrilla en celdas */
-                }
-                th { 
-                    background: #000 !important; 
-                    color: #fff !important; 
-                    -webkit-print-color-adjust: exact;
-                }
-                /* Ajuste de anchos optimizado */
-                th:nth-child(1), td:nth-child(1) { width: 12%; } /* Hora */
-                th:nth-child(2), td:nth-child(2) { width: 15%; } /* Barcode */
-                th:nth-child(3), td:nth-child(3) { width: 43%; text-align: left; } /* Descripción */
-                th:nth-child(4), td:nth-child(4) { width: 10%; font-size: 12px; } /* Cant */
-                th:nth-child(5), td:nth-child(5) { width: 10%; font-size: 9px; } /* Origen (CENTRAL/DRINK) */
-                th:nth-child(6), td:nth-child(6) { width: 10%; font-size: 9px; } /* Destino (CENTRAL/DRINK) */
+                @page { size: portrait; margin: 0.2cm; }
+                body { font-family: 'Courier New', Courier, monospace; padding: 5px; color: #000; font-weight: bold; }
+                h2 { text-align: center; font-size: 14px; margin: 0; font-weight: bold; text-transform: uppercase; }
+                .header-info { text-align: center; font-size: 11px; margin-bottom: 8px; border-bottom: 2px solid #000; padding-bottom: 4px; font-weight: bold; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #000; padding: 4px 2px; font-size: 11px; text-align: center; font-weight: bold; }
+                th { background: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
+                th:nth-child(1), td:nth-child(1) { width: 10%; } /* Hora */
+                th:nth-child(2), td:nth-child(2) { width: 55%; text-align: left; } /* Producto / Barcode */
+                th:nth-child(3), td:nth-child(3) { width: 10%; font-size: 12px; } /* Cant */
+                th:nth-child(4), td:nth-child(4) { width: 12%; font-size: 9px; } /* Origen */
+                th:nth-child(5), td:nth-child(5) { width: 12%; font-size: 9px; } /* Destino */
             </style>
         </head>
         <body>
@@ -436,10 +412,7 @@ function printMovimientos(){
     `);
     
     win.document.close();
-    setTimeout(() => {
-        win.print();
-        win.close();
-    }, 500);
+    setTimeout(() => { win.print(); win.close(); }, 500);
 }
 
 window.onclick = function(event) {
