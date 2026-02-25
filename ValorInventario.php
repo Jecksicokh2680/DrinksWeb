@@ -6,7 +6,7 @@ require_once("ConnDrinks.php");
 require_once("Conexion.php"); 
 
 /* ===============================
-   ZONA HORARIA BOGOTÁ
+    ZONA HORARIA BOGOTÁ
 ================================ */
 date_default_timezone_set('America/Bogota');
 
@@ -23,7 +23,7 @@ $anio = date('Y');
 $nitEmpresa = $_SESSION['datos']['NitEmpresa'] ?? '000000000';
 
 /* ===============================
-   FUNCIÓN DE CÁLCULO POR SUCURSAL
+    FUNCIÓN DE CÁLCULO POR SUCURSAL
 ================================ */
 function analizarSucursal($mysqli){
     global $mes, $anio, $fechaSQL;
@@ -46,6 +46,12 @@ function analizarSucursal($mysqli){
             FROM PEDIDOS P
             INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO
             WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
+            UNION ALL
+            /* RESTA DE DEVOLUCIONES DEL DÍA */
+            SELECT (DDV.CANTIDAD * DDV.VALORPROD) * -1
+            FROM DEVVENTAS DV
+            INNER JOIN detdevventas DDV ON DV.iddevventas = DDV.iddevventas
+            WHERE DATE(DV.fecha)='$fechaSQL'
         ) X
     ")->fetch_assoc()['venta_dia'] ?? 0;
 
@@ -66,6 +72,15 @@ function analizarSucursal($mysqli){
             INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO
             INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO
             WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'
+            UNION ALL
+            /* RESTA DE DEVOLUCIONES DEL MES Y SU IMPACTO EN UTILIDAD */
+            SELECT 
+                (DDV.CANTIDAD * DDV.VALORPROD) * -1,
+                ((DDV.CANTIDAD * DDV.VALORPROD) - (DDV.CANTIDAD * P.costo)) * -1
+            FROM DEVVENTAS DV
+            INNER JOIN detdevventas DDV ON DV.iddevventas = DDV.iddevventas
+            INNER JOIN productos P ON P.idproducto = DDV.idproducto
+            WHERE MONTH(DV.fecha)='$mes' AND YEAR(DV.fecha)='$anio'
         ) T
     ")->fetch_assoc();
 
@@ -78,13 +93,13 @@ function analizarSucursal($mysqli){
 }
 
 /* ===============================
-   PROCESAR SUCURSALES
+    PROCESAR SUCURSALES
 ================================ */
 $central = analizarSucursal($mysqliCentral);
 $drinks  = analizarSucursal($mysqliDrinks);
 
 /* ===============================
-   TOTALES
+    TOTALES
 ================================ */
 $totalInv    = $central['inventario'] + $drinks['inventario'];
 $totalVentaD = $central['venta_dia']  + $drinks['venta_dia'];
@@ -93,7 +108,7 @@ $totalUtil   = $central['utilidad']   + $drinks['utilidad'];
 $totalPct    = ($totalVentaM > 0) ? round(($totalUtil / $totalVentaM) * 100,1) : 0;
 
 /* ===============================
-   DEUDA PROVEEDORES
+    DEUDA PROVEEDORES
 ================================ */
 $deudaProv = $mysqli->query("
     SELECT SUM(Saldo) AS total FROM (
@@ -109,7 +124,7 @@ $deudaProv = $mysqli->query("
 $inventarioNeto = $totalInv + $deudaProv;
 
 /* ===============================
-   INSERTAR / ACTUALIZAR
+    INSERTAR / ACTUALIZAR
 ================================ */
 function guardarDia($mysqli, $fecha, $nit, $sucursal, $inv, $vd, $vm, $util){
     $stmt = $mysqli->prepare("
@@ -134,7 +149,7 @@ guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS',
     $drinks['inventario'], $drinks['venta_dia'], $drinks['venta_mes'], $drinks['utilidad']);
 
 /* ===============================
-   HISTÓRICO
+    HISTÓRICO
 ================================ */
 $hist = $mysqli->query("
     SELECT fecha, sucursal, valor_bodega, venta_dia, venta_mes, utilidad_mes
@@ -171,7 +186,7 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 <body>
 
 <h2 style="text-align:center">
-📊 Consolidado Central + Drinks<br>
+📊 Consolidado Central + Drinks (Neto)<br>
 <small><?= "$anio-$mes-01 a $anio-$mes-31" ?></small>
 </h2>
 
@@ -183,7 +198,7 @@ box-shadow:0 2px 10px rgba(0,0,0,.1);text-align:center}
 <div class="cards">
 <div class="card">
 <h3>🏢 Central</h3>
-<div class="small">Venta Día</div>
+<div class="small">Venta Día (Neto)</div>
 <div class="valor"><?= moneda($central['venta_dia']) ?></div>
 <div class="line"></div>
 Venta Mes: <span class="orange"><?= moneda($central['venta_mes']) ?></span><br>
@@ -193,7 +208,7 @@ Valor Bodega: <b><?= moneda($central['inventario']) ?></b>
 
 <div class="card">
 <h3>🍹 Drinks</h3>
-<div class="small">Venta Día</div>
+<div class="small">Venta Día (Neto)</div>
 <div class="valor"><?= moneda($drinks['venta_dia']) ?></div>
 <div class="line"></div>
 Venta Mes: <span class="orange"><?= moneda($drinks['venta_mes']) ?></span><br>
