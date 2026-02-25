@@ -106,7 +106,7 @@ if($UsuarioFact !== ''){
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-$efectivo_sin_transfer = $totalVentas - $totalEgresos; 
+$efectivo_sin_transfer =  $totalEgresos-$totalVentas ; 
 $efectivo_neto_final = $yaExisteTransferEnEgresos ? $efectivo_sin_transfer : ($efectivo_sin_transfer - $totalTransfer);
 
 /* ============================================================
