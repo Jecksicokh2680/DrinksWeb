@@ -135,7 +135,7 @@ body{
 <div class="accordion-body">
 <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
 <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
-<a class="nav-link" href="CierreCajero.php" target="contentFrame">🧮 Cierre Cajero</a>
+<a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Cajero Final</a>
 <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Solicitud Anulación</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Traslados de mercancia</a>
 <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
