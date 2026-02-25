@@ -5,11 +5,16 @@ include 'ConnCentral.php';  // Base Central ($mysqliPos)
 
 $self = basename($_SERVER['PHP_SELF']);
 
-// 1. VARIABLES DE SESIÓN
+// 1. VARIABLES DE SESIÓN Y PERIODO
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? '';
 $Usuario     = $_SESSION['Usuario'] ?? '';
 $NroSucursal = $_SESSION['NroSucursal'] ?? '';
-$periodoActual = (date('j') <= 15 ? "1ra Quinc" : "2da Quinc") . " " . date('m-Y');
+
+$mesActual = (int)date('m');
+$anioActual = (int)date('Y');
+$diaActual = (int)date('j');
+
+$periodoActual = ($diaActual <= 15 ? "1ra Quinc" : "2da Quinc") . " " . date('m-Y');
 
 // --- 2. LÓGICA DE ELIMINACIÓN ---
 if (isset($_GET['eliminar'])) {
@@ -19,7 +24,7 @@ if (isset($_GET['eliminar'])) {
     exit();
 }
 
-// --- 3. LÓGICA DE GUARDADO (INSERT O UPDATE) ---
+// --- 3. LÓGICA DE GUARDADO ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     $cedula  = $mysqli->real_escape_string($_POST['CedulaNit']);
     $periodo = $periodoActual;
@@ -31,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     $desc      = floatval($_POST['descuentos']);
     $salud     = floatval($_POST['salud']);
     $pension   = floatval($_POST['pension']);
-    $dias_lab  = intval($_POST['dias_laborados']);
+    $dias_lab  = floatval($_POST['dias_laborados']);
     
     $c_hed  = floatval($_POST['cant_hed']);
     $c_rn   = floatval($_POST['cant_rn']);
@@ -92,18 +97,18 @@ if (!empty($_GET['cedula'])) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Nómina Pro 2026</title>
+    <title>Nómina Pro 2026 - Febrero</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
         body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
         .card-nomina { border-top: 5px solid #2c3e50; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
         .lbl-ley { font-size: 10px; font-weight: 800; color: #7f8c8d; text-transform: uppercase; }
-        .bg-resumen { background: #2c3e50; color: white; border-radius: 8px; padding: 20px; }
         .table-cronograma { font-size: 0.7rem; text-align: center; }
         .bg-festivo { background-color: #ff00ff !important; color: white !important; }
         .bg-dia { background-color: #ffff00 !important; color: #000; }
         .input-cron { width: 38px; border: 1px solid #ddd; text-align: center; font-size: 0.75rem; }
+        .bg-aux { background-color: #e3f2fd !important; }
     </style>
 </head>
 <body class="p-4">
@@ -116,14 +121,10 @@ if (!empty($_GET['cedula'])) {
 
     <div class="card mb-4 border-0 shadow-sm">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0 text-secondary">LIQUIDACIÓN | <?= $Usuario ?> | <?= $periodoActual ?></h6>
-                <button type="button" class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalProcesados">📂 VER PROCESADOS & EXPORTAR</button>
-            </div>
             <form method="GET" action="<?= $self ?>" class="row g-2">
                 <div class="col-md-10">
                     <select name="cedula" id="buscar_colaborador" class="form-select" onchange="this.form.submit()">
-                        <option value="">-- Buscar Colaborador --</option>
+                        <option value="">-- Seleccionar Colaborador --</option>
                         <?php
                         $list = $mysqli->query("SELECT CedulaNit FROM colaborador WHERE NitEmpresa = '$NitEmpresa' AND estado = 'ACTIVO'");
                         while($row = $list->fetch_assoc()) {
@@ -145,10 +146,9 @@ if (!empty($_GET['cedula'])) {
     </div>
 
     <?php if ($colaborador): 
-        $sueldo_q = $colaborador['salario'] / 2;
         $v_h = $colaborador['salario'] / 240; 
-        $diaActual = (int)date('j'); $mesActual = (int)date('m'); $anioActual = (int)date('Y');
-        if ($diaActual <= 15) { $inicio = 1; $fin = 15; } else { $inicio = 16; $fin = date('t'); }
+        if ($diaActual <= 15) { $inicio = 1; $fin = 15; } 
+        else { $inicio = 16; $fin = date('t', mktime(0,0,0,$mesActual,1,$anioActual)); }
         $nombresDias = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
 
         $cronPre = [];
@@ -166,7 +166,7 @@ if (!empty($_GET['cedula'])) {
                 <div class="row mb-3">
                     <div class="col-md-8">
                         <h2 class="fw-bold text-dark mb-0"><?= $nombreCompletoForm ?></h2>
-                        <span class="text-muted fw-bold">Sueldo Base Mensual: $<?= number_format($colaborador['salario']) ?></span>
+                        <span class="text-muted fw-bold">Periodo: <?= $periodoActual ?></span>
                     </div>
                     <div class="col-md-4 text-md-end">
                         <label class="lbl-ley">Neto a Pagar</label>
@@ -191,15 +191,28 @@ if (!empty($_GET['cedula'])) {
                         </thead>
                         <tbody>
                             <?php 
-                            $filas = ["Días Lab"=>"d_lab", "Rec Noct"=>"r_noc", "Ext Diur"=>"ext", "Dom/Fest"=>"h_df", "RN Fest"=>"rn_df"];
+                            $filas = [
+                                "Días Lab"=>"d_lab", 
+                                "Aux. Transp"=>"d_aux", // NUEVA FILA
+                                "Rec Noct"=>"r_noc", 
+                                "Ext Diur"=>"ext", 
+                                "Dom/Fest"=>"h_df", 
+                                "RN Fest"=>"rn_df"
+                            ];
                             foreach($filas as $lbl => $code): ?>
                             <tr>
-                                <td class="text-start ps-2 fw-bold"><?= $lbl ?></td>
+                                <td class="text-start ps-2 fw-bold <?= $code=='d_aux'?'bg-aux':'' ?>"><?= $lbl ?></td>
                                 <?php for($i=$inicio; $i<=$fin; $i++): 
-                                    $def = ($code == 'd_lab') ? 1 : 0;
+                                    $def = ($code == 'd_lab' || $code == 'd_aux') ? 1 : 0;
                                     $val = $cronPre[$code][$i] ?? $def;
                                 ?>
-                                    <td><input type="number" step="0.5" class="input-cron" name="cron[<?= $code ?>][<?= $i ?>]" value="<?= $val ?>"></td>
+                                    <td class="<?= $code=='d_aux'?'bg-aux':'' ?>">
+                                        <input type="number" step="0.5" 
+                                               class="input-cron <?= $code=='d_lab'?'master-dia':'' ?>" 
+                                               name="cron[<?= $code ?>][<?= $i ?>]" 
+                                               data-dia="<?= $i ?>"
+                                               value="<?= $val ?>">
+                                    </td>
                                 <?php endfor; ?>
                                 <td class="bg-light fw-bold" id="total_<?= $code ?>">0</td>
                             </tr>
@@ -212,10 +225,10 @@ if (!empty($_GET['cedula'])) {
                     <div class="col-md-8 border-end">
                         <h6 class="text-success fw-bold">DEVENGADOS</h6>
                         <div class="row g-2">
-                            <div class="col-md-3"><label class="lbl-ley">Días</label><input type="number" name="dias_laborados" id="inp_d_lab" class="form-control fw-bold" readonly></div>
-                            <div class="col-md-3"><label class="lbl-ley">Básico</label><input type="number" name="basico" id="basico" class="form-control" readonly></div>
-                            <div class="col-md-3"><label class="lbl-ley">Aux Transp</label><input type="number" name="aux_transp" id="aux_transp" class="form-control calc" value="<?= $nominaExistente['auxilio_transporte'] ?? 124547 ?>"></div>
-                            <div class="col-md-3"><label class="lbl-ley">Bonos</label><input type="number" name="bonificaciones" id="bonos" class="form-control calc" value="<?= $nominaExistente['bonificaciones'] ?? 0 ?>"></div>
+                            <div class="col-md-3"><label class="lbl-ley">Días Lab</label><input type="number" name="dias_laborados" id="inp_d_lab" class="form-control fw-bold" readonly></div>
+                            <div class="col-md-3"><label class="lbl-ley">Básico</label><input type="number" name="basico" id="basico" class="form-control bg-light" readonly></div>
+                            <div class="col-md-3"><label class="lbl-ley">Aux Transp (Días: <span id="total_aux_lbl">0</span>)</label><input type="number" name="aux_transp" id="aux_transp" class="form-control bg-light" readonly></div>
+                            <div class="col-md-3"><label class="lbl-ley">Bonificaciones</label><input type="number" name="bonificaciones" id="bonos" class="form-control calc" value="<?= $nominaExistente['bonificaciones'] ?? 0 ?>"></div>
                         </div>
                         <div class="row g-2 mt-2">
                             <div class="col-md-3"><label class="lbl-ley">HED</label><input type="number" id="hed" class="form-control" name="cant_hed" readonly></div>
@@ -225,15 +238,15 @@ if (!empty($_GET['cedula'])) {
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <h6 class="text-danger fw-bold">DEDUCCIONES</h6>
-                        <div class="mb-2"><label class="lbl-ley">Salud (4%)</label><input type="number" name="salud" id="salud" class="form-control bg-light" readonly></div>
-                        <div class="mb-2"><label class="lbl-ley">Pensión (4%)</label><input type="number" name="pension" id="pension" class="form-control bg-light" readonly></div>
+                        <h6 class="text-danger fw-bold">DEDUCCIONES (Editables)</h6>
+                        <div class="mb-2"><label class="lbl-ley">Salud (4%)</label><input type="number" name="salud" id="salud" class="form-control calc" value="<?= $nominaExistente['salud'] ?? 0 ?>"></div>
+                        <div class="mb-2"><label class="lbl-ley">Pensión (4%)</label><input type="number" name="pension" id="pension" class="form-control calc" value="<?= $nominaExistente['pension'] ?? 0 ?>"></div>
                         <div class="mb-2"><label class="lbl-ley">Otros Dctos</label><input type="number" name="descuentos" id="desc" class="form-control calc border-warning" value="<?= $nominaExistente['descuentos'] ?? 0 ?>"></div>
                     </div>
                 </div>
 
                 <div class="mt-4 text-end">
-                    <button type="submit" class="btn btn-primary btn-lg fw-bold px-5">💾 GUARDAR CAMBIOS Y LIQUIDAR</button>
+                    <button type="submit" class="btn btn-primary btn-lg fw-bold px-5 shadow">💾 GUARDAR Y LIQUIDAR</button>
                 </div>
             </div>
         </form>
@@ -241,117 +254,98 @@ if (!empty($_GET['cedula'])) {
     <?php endif; ?>
 </div>
 
-<div class="modal fade" id="modalProcesados" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Historial de Pagos - <?= $periodoActual ?></h5>
-                <div>
-                    <button onclick="exportarExcel()" class="btn btn-success btn-sm fw-bold me-2">📊 EXPORTAR A EXCEL</button>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-            </div>
-            <div class="modal-body p-0">
-                <table class="table table-sm align-middle mb-0" id="tablaHistorial">
-                    <thead class="table-secondary">
-                        <tr>
-                            <th>ID</th><th>Nombre</th><th>Días</th><th>HED</th><th>RN</th><th>DOM</th><th>RNDF</th>
-                            <th>IBC</th><th>Deducciones</th><th>Total Neto</th><th>Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                        $res_h = $mysqli->query("SELECT * FROM nomina_pagos WHERE NitEmpresa = '$NitEmpresa' AND periodo = '$periodoActual' ORDER BY id DESC");
-                        while ($p = $res_h->fetch_assoc()) {
-                            $ced_p = $p['CedulaNit'];
-                            $n_h = "Sincronizando...";
-                            if($mysqliPos){
-                                $qH = $mysqliPos->query("SELECT nombres, apellidos FROM terceros WHERE nit = '$ced_p' LIMIT 1");
-                                if($tH = $qH->fetch_assoc()) $n_h = trim("{$tH['nombres']} {$tH['apellidos']}");
-                            }
-                            ?>
-                            <tr>
-                                <td><?= $ced_p ?></td>
-                                <td><?= $n_h ?></td>
-                                <td class="text-center"><?= $p['dias_laborados'] ?></td>
-                                <td class="text-center"><?= $p['cant_hed'] ?></td>
-                                <td class="text-center"><?= $p['cant_rn'] ?></td>
-                                <td class="text-center"><?= $p['cant_dom'] ?></td>
-                                <td class="text-center"><?= $p['cant_rndf'] ?></td>
-                                <td>$<?= number_format($p['salario_base'] + $p['valor_extras_total']) ?></td>
-                                <td class="text-danger">$<?= number_format($p['salud'] + $p['pension'] + $p['descuentos']) ?></td>
-                                <td class="fw-bold text-primary">$<?= number_format($p['total_pagado']) ?></td>
-                                <td><a href="<?= $self ?>?eliminar=<?= $p['id'] ?>" class="btn btn-sm btn-danger">🗑</a></td>
-                            </tr>
-                        <?php } ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
 <script>
 $(document).ready(function() {
     $('#buscar_colaborador').select2();
     if(document.getElementById('inp_d_lab')) sumarCronograma();
+
+    // Sincronizar Auxilio de Transporte con Días Laborados automáticamente
+    $(document).on('input', '.master-dia', function() {
+        let dia = $(this).data('dia');
+        let val = $(this).val();
+        $(`input[name="cron[d_aux][${dia}]"]`).val(val);
+        sumarCronograma();
+    });
 });
 
 function sumarCronograma() {
-    const filas = { 'd_lab': 'inp_d_lab', 'r_noc': 'rn', 'ext': 'hed', 'h_df': 'dom', 'rn_df': 'rndf' };
+    const filas = { 'd_lab': 'inp_d_lab', 'd_aux': 'total_aux_lbl', 'r_noc': 'rn', 'ext': 'hed', 'h_df': 'dom', 'rn_df': 'rndf' };
     for (let key in filas) {
         let total = 0;
         document.querySelectorAll(`input[name^="cron[${key}]"]`).forEach(i => total += parseFloat(i.value) || 0);
         document.getElementById(`total_${key}`).innerText = total;
-        document.getElementById(filas[key]).value = total;
+        
+        // Si es el label de auxilio o el input de días, actualizamos
+        if(key === 'd_aux') document.getElementById('total_aux_lbl').innerText = total;
+        else document.getElementById(filas[key]).value = total;
     }
-    calcular();
+    calcular(true);
 }
 
-function calcular() {
-    const sueldoQ = <?= $sueldo_q ?? 0 ?>;
+function calcular(isInitial = false) {
+    const SMMLV = 1750905;
+    const AUX_TRANSPORTE = 249095;
+    const TOPE_AUX = SMMLV * 2;
+
+    const salarioMensual = parseFloat(<?= $colaborador['salario'] ?? 0 ?>);
     const vH = parseFloat(document.getElementById('v_hora').value || 0);
-    const dias = parseFloat(document.getElementById('inp_d_lab').value || 0);
-    
-    // Cálculo proporcional: 15 días es el 100% de la quincena
-    let basico = Math.round((sueldoQ / 15) * dias);
+    const diasLab = parseFloat(document.getElementById('inp_d_lab').value || 0);
+    const diasAux = parseFloat(document.getElementById('total_aux_lbl').innerText || 0);
+
+    // Ajuste Febrero (2da quincena)
+    let diasLiquidarSueldo = diasLab;
+    let diasLiquidarAux = diasAux;
+    if (<?= $mesActual ?> === 2 && <?= $inicio ?? 0 ?> === 16 && diasLab >= 13) {
+        diasLiquidarSueldo = 15;
+        // Si marcó todos los días de transporte de la quincena, también le damos los 15 de auxilio
+        if(diasAux >= 13) diasLiquidarAux = 15;
+    }
+
+    // Sueldo Básico
+    let basico = Math.round((salarioMensual / 30) * diasLiquidarSueldo);
     document.getElementById('basico').value = basico;
 
-    let extras = (parseFloat(document.getElementById('hed').value)*vH*1.25) +
-                 (parseFloat(document.getElementById('rn').value)*vH*0.35) +
-                 (parseFloat(document.getElementById('dom').value)*vH*1.75) +
-                 (parseFloat(document.getElementById('rndf').value)*vH*2.10);
-    
-    let ibc = basico + extras + (parseFloat(document.getElementById('bonos').value)||0);
-    let salud = Math.round(ibc * 0.04);
-    let pension = Math.round(ibc * 0.04);
-    
-    document.getElementById('salud').value = salud;
-    document.getElementById('pension').value = pension;
-    
-    let neto = (ibc + (parseFloat(document.getElementById('aux_transp').value)||0)) - 
-               (salud + pension + (parseFloat(document.getElementById('desc').value)||0));
-    
+    // Auxilio Transporte (Basado en su propia fila del cronograma)
+    let valorAux = 0;
+    if (salarioMensual <= TOPE_AUX) {
+        valorAux = Math.round((AUX_TRANSPORTE / 30) * diasLiquidarAux);
+    }
+    document.getElementById('aux_transp').value = valorAux;
+
+    // Extras
+    let extras = Math.round(
+        (parseFloat(document.getElementById('hed').value || 0) * vH * 1.25) +
+        (parseFloat(document.getElementById('rn').value || 0) * vH * 0.35) +
+        (parseFloat(document.getElementById('dom').value || 0) * vH * 1.75) +
+        (parseFloat(document.getElementById('rndf').value || 0) * vH * 2.10)
+    );
+
+    let bonos = parseFloat(document.getElementById('bonos').value) || 0;
+    let ibc = basico + extras + bonos;
+
+    // Deducciones
+    if(isInitial && document.getElementById('salud').value == 0) {
+        document.getElementById('salud').value = Math.round(ibc * 0.04);
+        document.getElementById('pension').value = Math.round(ibc * 0.04);
+    }
+
+    let salud = parseFloat(document.getElementById('salud').value) || 0;
+    let pension = parseFloat(document.getElementById('pension').value) || 0;
+    let desc = parseFloat(document.getElementById('desc').value) || 0;
+
+    let neto = (ibc + valorAux) - (salud + pension + desc);
+
     document.getElementById('txt_neto').innerText = "$" + Math.round(neto).toLocaleString('es-CO');
     document.getElementById('input_neto').value = Math.round(neto);
 }
 
-// EXPORTACIÓN A EXCEL
-function exportarExcel() {
-    let table = document.getElementById("tablaHistorial");
-    // Eliminamos la última columna (Acción) para el Excel
-    let wb = XLSX.utils.table_to_book(table, { sheet: "Nomina_2026" });
-    XLSX.writeFile(wb, "Reporte_Nomina_<?= $periodoActual ?>.xlsx");
-}
-
 document.addEventListener('input', e => {
-    if (e.target.classList.contains('input-cron')) sumarCronograma();
-    if (e.target.classList.contains('calc')) calcular();
+    if (e.target.classList.contains('input-cron') && !e.target.classList.contains('master-dia')) sumarCronograma();
+    if (e.target.classList.contains('calc')) calcular(false);
 });
 </script>
 </body>
