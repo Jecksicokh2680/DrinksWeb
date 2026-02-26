@@ -24,7 +24,7 @@ $_SESSION['ultimo_acceso'] = time();
 /* ============================================================
     VARIABLES DE SESIÓN
 ============================================================ */
-$UsuarioSesion   = $_SESSION['Usuario']     ?? '';
+$UsuarioSesion   = $_SESSION['Usuario']    ?? '';
 $NitSesion       = $_SESSION['NitEmpresa']  ?? '';
 $SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
 
@@ -65,7 +65,6 @@ $HoraHoy  = date("H:i");
 
 $puedeModificarFechaConsulta = Autorizacion($UsuarioSesion, "0013") === "SI";
 
-// Priorizar GET para que los filtros por URL (cajero) funcionen con la fecha
 if ($puedeModificarFechaConsulta && isset($_REQUEST['fechaConsulta'])) {
     $fechaConsulta = $_REQUEST['fechaConsulta'];
 } else {
@@ -169,7 +168,6 @@ if (Autorizacion($UsuarioSesion, "0003") === "NO") {
     $where .= " AND t.CedulaNit = '".$mysqli->real_escape_string($UsuarioSesion)."'";
 }
 
-// Filtro por Cajero seleccionado
 if (!empty($filtroCajero)) {
     $where .= " AND t.CedulaNit = '".$mysqli->real_escape_string($filtroCajero)."'";
 }
@@ -185,12 +183,15 @@ $consultaSQL = "
     $where ORDER BY t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
 
-// RESUMEN POR CAJERO
+// RESUMEN POR CAJERO Y SEDE (CORREGIDO)
 $resumenSQL = "
-    SELECT tr.Nombre AS Cajero, SUM(t.Monto) AS TotalCajero, COUNT(*) AS Cantidad
+    SELECT s.Direccion AS Sede, tr.Nombre AS Cajero, SUM(t.Monto) AS TotalCajero, COUNT(*) AS Cantidad
     FROM Relaciontransferencias t
+    INNER JOIN empresa_sucursal s ON s.Nit = t.NitEmpresa AND s.NroSucursal = t.Sucursal
     INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit
-    $where GROUP BY t.CedulaNit ORDER BY TotalCajero DESC";
+    $where 
+    GROUP BY s.Direccion, tr.Nombre 
+    ORDER BY s.Direccion ASC, TotalCajero DESC";
 $resumenPorCajero = $mysqli->query($resumenSQL);
 
 // RESUMEN POR MEDIO DE PAGO
@@ -198,17 +199,18 @@ $resumenMedioSQL = "
     SELECT m.Nombre AS Medio, SUM(t.Monto) AS TotalMedio, COUNT(*) AS Cantidad
     FROM Relaciontransferencias t
     INNER JOIN mediopago m ON m.IdMedio = t.IdMedio
-    $where GROUP BY t.IdMedio ORDER BY TotalMedio DESC";
+    $where 
+    GROUP BY m.Nombre 
+    ORDER BY TotalMedio DESC";
 $resumenPorMedio = $mysqli->query($resumenMedioSQL);
 
 // TOTAL REVISADO
-$totalSQL = "SELECT SUM(Monto) AS Total FROM Relaciontransferencias t $where AND (RevisadoLogistica+RevisadoGerencia)>=1";
+$totalSQL = "SELECT SUM(t.Monto) AS Total FROM Relaciontransferencias t $where AND (t.RevisadoLogistica + t.RevisadoGerencia) >= 1";
 $totalMontos = $mysqli->query($totalSQL)->fetch_assoc()['Total'] ?? 0;
 
 $empresasArray = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estado=1 ORDER BY NombreComercial")->fetch_all(MYSQLI_ASSOC);
 $mediosArray   = $mysqli->query("SELECT IdMedio, Nombre FROM mediopago WHERE Estado=1 ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
 
-// Obtener lista de cajeros que tienen movimientos hoy para el filtro
 $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM Relaciontransferencias t INNER JOIN terceros tr ON tr.CedulaNit = t.CedulaNit WHERE t.Fecha = '$safeFecha' ORDER BY tr.Nombre");
 ?>
 
@@ -290,7 +292,7 @@ $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM
                     <?php 
                     $pLog = Autorizacion($UsuarioSesion, "0009")==="SI";
                     $pGer = Autorizacion($UsuarioSesion, "0010")==="SI";
-                    if($transferencias->num_rows > 0):
+                    if($transferencias && $transferencias->num_rows > 0):
                         while ($row = $transferencias->fetch_assoc()): ?>
                             <tr>
                                 <td><?= $row['Hora'] ?></td>
@@ -327,17 +329,18 @@ $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM
     </div>
 
     <div class="row mb-5 g-4">
-        <div class="col-md-6">
-            <div class="card h-100 shadow-sm">
-                <div class="card-header bg-dark text-white fw-bold">Resumen por Cajero</div>
+        <div class="col-md-7">
+            <div class="card h-100 shadow-sm border-dark">
+                <div class="card-header bg-dark text-white fw-bold">Resumen por Sede y Cajero</div>
                 <div class="card-body bg-resumen">
                     <table class="table table-sm table-bordered bg-white">
                         <thead class="table-secondary">
-                            <tr><th>Nombre</th><th class="text-center">Cant.</th><th class="text-end">Total</th></tr>
+                            <tr><th>Sede / Ubicación</th><th>Cajero</th><th class="text-center">Cant.</th><th class="text-end">Total</th></tr>
                         </thead>
                         <tbody>
-                            <?php $gtC = 0; while ($r = $resumenPorCajero->fetch_assoc()): $gtC += $r['TotalCajero']; ?>
+                            <?php $gtC = 0; if($resumenPorCajero) while ($r = $resumenPorCajero->fetch_assoc()): $gtC += $r['TotalCajero']; ?>
                                 <tr>
+                                    <td><strong><?= $r['Sede'] ?></strong></td>
                                     <td><?= $r['Cajero'] ?></td>
                                     <td class="text-center"><?= $r['Cantidad'] ?></td>
                                     <td class="text-end fw-bold"><?= number_format($r['TotalCajero'], 2) ?></td>
@@ -345,14 +348,14 @@ $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM
                             <?php endwhile; ?>
                         </tbody>
                         <tfoot class="table-secondary fw-bold">
-                            <tr><td colspan="2" class="text-end">TOTAL:</td><td class="text-end"><?= number_format($gtC, 2) ?></td></tr>
+                            <tr><td colspan="3" class="text-end">TOTAL:</td><td class="text-end"><?= number_format($gtC, 2) ?></td></tr>
                         </tfoot>
                     </table>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-5">
             <div class="card h-100 shadow-sm border-primary">
                 <div class="card-header bg-primary text-white fw-bold">Resumen por Medio de Pago</div>
                 <div class="card-body" style="background-color: #f0f7ff;">
@@ -361,7 +364,7 @@ $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM
                             <tr><th>Medio</th><th class="text-center">Cant.</th><th class="text-end">Total</th></tr>
                         </thead>
                         <tbody>
-                            <?php $gtM = 0; while ($rm = $resumenPorMedio->fetch_assoc()): $gtM += $rm['TotalMedio']; ?>
+                            <?php $gtM = 0; if($resumenPorMedio) while ($rm = $resumenPorMedio->fetch_assoc()): $gtM += $rm['TotalMedio']; ?>
                                 <tr>
                                     <td><span class="badge bg-info text-dark"><?= $rm['Medio'] ?></span></td>
                                     <td class="text-center"><?= $rm['Cantidad'] ?></td>
