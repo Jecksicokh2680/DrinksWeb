@@ -8,7 +8,6 @@ define('NIT_DRINKS',  '901724534-7');
 
 session_start();
 
-// Desactivar reporte de excepciones para manejar errores manualmente y evitar "Fatal Errors"
 mysqli_report(MYSQLI_REPORT_OFF);
 
 /* =====================================================
@@ -38,7 +37,7 @@ function Autorizacion($User, $Solicitud) {
 }
 
 if (Autorizacion($UsuarioSesion, '0003') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización para acceder a esta página</h2>");
+    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización</h2>");
 }
 
 date_default_timezone_set('America/Bogota');
@@ -55,7 +54,6 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
         $extraCond .= " AND (PRODUCTOS.Descripcion LIKE '%$busqProdEsc%' OR PRODUCTOS.Barcode LIKE '%$busqProdEsc%') ";
     }
     
-    // Filtro por facturador
     $condFactura = $extraCond;
     $condPedido = $extraCond;
     if ($f_fac != "") {
@@ -95,7 +93,6 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
-// 1. Capturar parámetros
 $f_ini_raw = $_GET['fecha_ini'] ?? date('Y-m-d');
 $f_fin_raw = $_GET['fecha_fin'] ?? date('Y-m-d');
 $f_prod    = trim($_GET['filtro_prod'] ?? '');
@@ -105,7 +102,6 @@ $fFac      = $_GET['facturador'] ?? '';
 $f_ini = str_replace('-', '', $f_ini_raw);
 $f_fin = str_replace('-', '', $f_fin_raw);
 
-// 2. Cargar datos (con validación de conexión)
 $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') {
     if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
@@ -118,7 +114,6 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     }
 }
 
-// 3. Extraer facturadores para el select (siempre obtener de la carga actual o sesión)
 if ($fFac == '' && !empty($rows)) {
     $listaFacturadores = array_unique(array_column($rows, 'FACTURADOR'));
     $_SESSION['UltimosFacturadores'] = $listaFacturadores;
@@ -127,7 +122,6 @@ if ($fFac == '' && !empty($rows)) {
 }
 sort($listaFacturadores);
 
-// 4. Mapeo de Unicaja
 $unicaja = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 if ($skus && isset($mysqliWeb)) {
@@ -152,6 +146,7 @@ if ($skus && isset($mysqliWeb)) {
         input, select, button{ padding: 10px; border: 1px solid #cfd8dc; border-radius: 6px; outline: none;}
         button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold;}
         .btn-excel{ background: #2e7d32 !important; }
+        .btn-print{ background: #455a64 !important; }
         .table-container { max-height: 600px; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
         table{ border-collapse: collapse; width: 100%; background: white; }
         th{ position: sticky; top: 0; background: #263238; color: white; padding: 12px; text-align: left; z-index: 2; }
@@ -194,20 +189,21 @@ if ($skus && isset($mysqliWeb)) {
 
         <button type="submit">🔍 Filtrar</button>
         <button type="button" class="btn-excel" onclick="exportarExcel()">Excel 📥</button>
+        <button type="button" class="btn-print" onclick="imprimirReporte()">Imprimir 🖨️</button>
     </form>
 
     <?php if(!$rows): ?>
-        <p style="margin-top:20px; text-align:center; color:#777;">No se encontraron registros. Verifique la conexión a las bases de datos.</p>
+        <p style="margin-top:20px; text-align:center; color:#777;">No se encontraron registros.</p>
     <?php else: ?>
     <div class="table-container">
         <table id="tablaVentas">
             <thead>
                 <tr>
                     <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
-                    <th>Sku</th><th>Producto</th><th>Costo</th>
+                    <th>Sku</th><th>Producto</th><th>Precio</th>
                     <th style="text-align:center">Cajas</th>
                     <th style="text-align:center">Und</th>
-                    <th>Total Item</th>
+                    <th>Subtotal</th>
                 </tr>
             </thead>
             <tbody>
@@ -253,7 +249,7 @@ if ($skus && isset($mysqliWeb)) {
             </tbody>
             <tfoot>
                 <tr class="gran-total">
-                    <td colspan="7" style="text-align:right">GRAN TOTAL GENERAL:</td>
+                    <td colspan="7" style="text-align:right">GRAN TOTAL:</td>
                     <td align="center"><?=number_format($totalCajasGlobal,0)?></td>
                     <td align="center"><?=number_format($totalUndsGlobal,0)?></td>
                     <td>$ <?=number_format($granTotal,0,'.','.')?></td>
@@ -273,6 +269,81 @@ function exportarExcel() {
         sheet: { name: "Ventas" }
     });
 }
-</script>
+
+function imprimirReporte() {
+    const rows = <?= json_encode($rows) ?>;
+    const unicaja = <?= json_encode($unicaja) ?>;
+    if (rows.length === 0) return;
+
+    let win = window.open('', '', 'width=400,height=600');
+    win.document.write('<html><head><title>POS Print</title>');
+    win.document.write('<style>');
+    // Reducimos el line-height a 1.0 y eliminamos paddings innecesarios
+    win.document.write('body{ font-family: "Courier New", Courier, monospace; width: 100%; margin: 0; padding: 0; font-size: 11px; line-height: 1.0; color: #000; font-weight: 700; }');
+    win.document.write('.text-center{ text-align: center; } .text-right{ text-align: right; }');
+    win.document.write('.border-dashed{ border-top: 1px dashed #000; margin: 2px 0; }');
+    win.document.write('.doc-header{ font-weight: 900; margin-top: 4px; font-size: 11px; }');
+    // Flex para poner nombre a la izquierda y precio a la derecha en una sola línea
+    win.document.write('.item-row{ display: flex; justify-content: space-between; margin-bottom: 1px; }');
+    win.document.write('.item-qty{ font-size: 10px; margin-bottom: 3px; border-bottom: 0.5px solid #eee; }');
+    win.document.write('.total-destacado{ font-size: 13px; font-weight: 900; margin-top: 5px; }');
+    win.document.write('</style></head><body>');
+    
+    win.document.write('<div class="text-center"><strong>SISTEMA DRINKS</strong><br>');
+    win.document.write('Rep: <?= $f_ini_raw ?> al <?= $f_fin_raw ?></div>');
+    win.document.write('<div class="border-dashed"></div>');
+
+    let gTotal = 0;
+    let subDoc = 0;
+    let docAnt = '';
+
+    const formatoCop = new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
+    rows.forEach((r, index) => {
+        if (docAnt !== '' && docAnt !== r.DOCUMENTO) {
+            win.document.write(`<div class="text-right">TOTAL DOC: $ ${formatoCop.format(subDoc)}</div>`);
+            win.document.write('<div class="border-dashed"></div>');
+            subDoc = 0;
+        }
+
+        if (docAnt !== r.DOCUMENTO) {
+            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.HORA}</div>`);
+        }
+
+        let uni = unicaja[r.Barcode] || 1;
+        let cTotal = parseFloat(r.CANTIDAD);
+        let cajas = Math.floor(cTotal);
+        let unds = Math.round((cTotal - cajas) * uni);
+        let itemTotal = cTotal * parseFloat(r.VALORPROD);
+
+        subDoc += itemTotal;
+        gTotal += itemTotal;
+        docAnt = r.DOCUMENTO;
+
+        // Fila de producto: Nombre a la izquierda, total item a la derecha
+        win.document.write('<div class="item-row">');
+        win.document.write(`<span>${r.PRODUCTO.substring(0, 20)}</span>`);
+        win.document.write(`<span>$${formatoCop.format(itemTotal)}</span>`);
+        win.document.write('</div>');
+        
+        // Fila de detalle (Cajas/Unds y precio unitario) en letra más pequeña
+        win.document.write(`<div class="item-qty">  ${cajas}Cj ${unds}Un x $${formatoCop.format(r.VALORPROD)}</div>`);
+
+        if (index === rows.length - 1) {
+            win.document.write(`<div class="text-right">TOTAL DOC: $ ${formatoCop.format(subDoc)}</div>`);
+        }
+    });
+
+    win.document.write('<div class="border-dashed"></div>');
+    win.document.write(`<div class="text-center total-destacado">TOTAL GENERAL: $ ${formatoCop.format(gTotal)}</div>`);
+    win.document.write('<div class="text-center" style="font-size:9px;"><br>*** FIN REPORTE ***</div><br><br>');
+
+    win.document.write('<script>window.onload = function() { window.print(); window.close(); };<\/script>');
+    win.document.write('</body></html>');
+    win.document.close();
+}</script>
 </body>
 </html>
