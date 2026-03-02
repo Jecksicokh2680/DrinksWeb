@@ -197,8 +197,8 @@ body{
 </button>
 <div id="adminFin" class="accordion-collapse collapse">
 <div class="accordion-body">
-<a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
 <a class="nav-link" href="CarteraXProveedorBnma.php" target="contentFrame">Cartera BNMA</a>
+<a class="nav-link" href="CarteraXProveedor.php" target="contentFrame">Cartera Proveedores</a>
 <a class="nav-link" href="CarteraXProveedordiaadia.php" target="contentFrame">Cartera Proveedores por dia</a>
 
 </div>
