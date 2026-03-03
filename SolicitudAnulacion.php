@@ -6,7 +6,7 @@ require_once 'Conexion.php';
 /* ============================================================
     ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
 ============================================================ */
-$Usuario     = $_SESSION['Usuario']    ?? 'INVITADO'; 
+$Usuario     = $_SESSION['Usuario']     ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
 $NroSucursal = $_SESSION['NroSucursal'] ?? '001';
 
@@ -14,7 +14,6 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
-// Validación para borrar solicitudes (Solo 9999 o 0003)
 $puedeBorrar = ($Usuario == '9999' || $Usuario == '0003');
 
 /* ============================================================
@@ -22,7 +21,10 @@ $puedeBorrar = ($Usuario == '9999' || $Usuario == '0003');
 ============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
-    $res = $mysqli->query("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit='$User' AND Nro_Auto='$Solicitud'");
+    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
+    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->execute();
+    $res = $stmt->get_result();
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
@@ -32,22 +34,30 @@ $fPosFormat    = date('Ymd', strtotime($fechaConsulta));
 
 function conectarPOS($sede) {
     if ($sede == '002') {
-        include 'ConnDrinks.php'; 
-        return $mysqliDrinks; 
+        include_once 'ConnDrinks.php'; 
+        return $GLOBALS['mysqliDrinks'] ?? null; 
     } else {
-        include 'ConnCentral.php'; 
-        return $mysqliPos; 
+        include_once 'ConnCentral.php'; 
+        return $GLOBALS['mysqliPos'] ?? null; 
     }
 }
 
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
-    $resP = $db->query("SELECT estado FROM PEDIDOS WHERE numero = '$NroDoc'");
-    if ($resP && $rowP = $resP->fetch_assoc()) {
+    
+    $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
+    $stmtP->bind_param("s", $NroDoc);
+    $stmtP->execute();
+    $resP = $stmtP->get_result();
+    if ($rowP = $resP->fetch_assoc()) {
         if ($rowP['estado'] != '0') return 1; 
     }
-    $resF = $db->query("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = '$NroDoc'");
+    
+    $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
+    $stmtF->bind_param("s", $NroDoc);
+    $stmtF->execute();
+    $resF = $stmtF->get_result();
     return ($resF && $resF->num_rows > 0) ? 1 : 0;
 }
 
@@ -56,18 +66,12 @@ function VerificarAnulacion($NroDoc, $sede) {
 ============================================================ */
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
-    header("Location: ?fConsulta=" . $fechaConsulta);
-    exit;
+    header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-// ACCIÓN DE BORRAR
 if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
-    $factBorrar = $_GET['factura'];
-    $fechaRef   = $_GET['f'];
-    $sedeRef    = $_GET['s'];
-
     $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-    $stmt->bind_param("sss", $factBorrar, $fechaRef, $sedeRef);
+    $stmt->bind_param("sss", $_GET['factura'], $_GET['f'], $_GET['s']);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -75,8 +79,7 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
 if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
-    $v = str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
-    $v = (float)$v; 
+    $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
     
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
@@ -121,10 +124,12 @@ $esGerente = (Autorizacion($Usuario, '2010') === 'SI');
 $esBodega  = (Autorizacion($Usuario, '0004') === 'SI');
 $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
-$queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fPosFormat' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fPosFormat' ORDER BY NUMERO DESC";
-$listaDocs = $dbSede->query($queryDocs);
 $docsArray = [];
-if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
+if ($dbSede) {
+    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fPosFormat' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fPosFormat' ORDER BY NUMERO DESC";
+    $listaDocs = $dbSede->query($queryDocs);
+    if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
+}
 ?>
 
 <!DOCTYPE html>
@@ -194,10 +199,10 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                 <div class="col-md-3">
                     <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
                         <option value="">-- Doc. Reemplazo --</option>
-                        <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
-                        <?php endforeach; ?>
                         <option value="N/A" class="fw-bold text-danger">-- NO LLEVA NADA --</option>
+                        <?php foreach($docsArray as $d): ?>
+                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -212,14 +217,8 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center">
-                <h6 class="mb-0 fw-bold me-3">HISTORIAL DE SOLICITUDES</h6>
-                <input type="date" class="form-control form-control-sm" style="width:150px" value="<?= $fechaConsulta ?>" onchange="location.href='?fConsulta='+this.value">
-                <?php if($fechaConsulta != date('Y-m-d')): ?>
-                    <a href="?" class="btn btn-sm btn-link text-decoration-none">Volver a Hoy</a>
-                <?php endif; ?>
-            </div>
-            <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar en esta tabla...">
+            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS (ESTADO 1)</h6>
+            <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-xs align-middle text-center mb-0" id="tablaPrincipal">
@@ -234,14 +233,17 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
-                        <?php if($puedeBorrar): ?>
-                        <th>ELIMINAR</th>
-                        <?php endif; ?>
+                        <?php if($puedeBorrar): ?><th>ELIMINAR</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    $resH = $mysqli->query("SELECT * FROM solicitud_anulacion WHERE F_Creacion = '$fechaConsulta' ORDER BY FH_CajeroCheck DESC");
+                    // FILTRO DE ESTADO 1 APLICADO AQUÍ
+                    $stmtH = $mysqli->prepare("SELECT * FROM solicitud_anulacion WHERE F_Creacion = ? AND Estado = '1' ORDER BY FH_CajeroCheck DESC");
+                    $stmtH->bind_param("s", $fechaConsulta);
+                    $stmtH->execute();
+                    $resH = $stmtH->get_result();
+
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
@@ -275,9 +277,7 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         </td>
                         <?php if($puedeBorrar): ?>
                         <td>
-                            <button class="btn-delete" title="Eliminar Solicitud" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">
-                                🗑️
-                            </button>
+                            <button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
                         </td>
                         <?php endif; ?>
                     </tr>
@@ -289,7 +289,6 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 </div>
 
 <script>
-    // Buscador rápido
     document.getElementById('inputFiltro').addEventListener('keyup', function() {
         let texto = this.value.toLowerCase();
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
@@ -299,11 +298,10 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
-        const selectedOption = sel.options[sel.selectedIndex];
-        
-        if (selectedOption.value !== "") {
-            document.getElementById('FactAnular').value = selectedOption.value;
-            document.getElementById('ValorAnular').value = selectedOption.dataset.valor || '0';
+        const opt = sel.options[sel.selectedIndex];
+        if (opt.value !== "") {
+            document.getElementById('FactAnular').value = opt.value;
+            document.getElementById('ValorAnular').value = opt.dataset.valor || '0';
         }
     });
 
@@ -316,7 +314,7 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
     }
 
     function borrarSolicitud(fact, sede, fecha) {
-        if (confirm(`¿Seguro que deseas ELIMINAR permanentemente la solicitud de la factura ${fact}?`)) {
+        if (confirm(`¿Eliminar permanentemente la solicitud de ${fact}?`)) {
             window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
         }
     }
