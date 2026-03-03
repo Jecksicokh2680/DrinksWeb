@@ -4,7 +4,7 @@ date_default_timezone_set('America/Bogota');
 require_once 'Conexion.php'; 
 
 /* ============================================================
-   ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
+    ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
 ============================================================ */
 $Usuario     = $_SESSION['Usuario']    ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
@@ -14,8 +14,11 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
+// Validación para borrar solicitudes (Solo 9999 o 0003)
+$puedeBorrar = ($Usuario == '9999' || $Usuario == '0003');
+
 /* ============================================================
-   FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
+    FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
 ============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli;
@@ -49,12 +52,24 @@ function VerificarAnulacion($NroDoc, $sede) {
 }
 
 /* ============================================================
-   PROCESAR ACCIONES (POST Y GET)
+    PROCESAR ACCIONES (POST Y GET)
 ============================================================ */
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
     header("Location: ?fConsulta=" . $fechaConsulta);
     exit;
+}
+
+// ACCIÓN DE BORRAR
+if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
+    $factBorrar = $_GET['factura'];
+    $fechaRef   = $_GET['f'];
+    $sedeRef    = $_GET['s'];
+
+    $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
+    $stmt->bind_param("sss", $factBorrar, $fechaRef, $sedeRef);
+    $stmt->execute();
+    header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
 if (isset($_POST['grabar'])) {
@@ -63,8 +78,6 @@ if (isset($_POST['grabar'])) {
     $v = str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
     $v = (float)$v; 
     
-    // Si se selecciona "NO LLEVA NADA", el valor llega vacío o como string "null" dependiendo del manejo, 
-    // aquí lo validamos contra el ID del documento original.
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
     }
@@ -101,7 +114,7 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
 }
 
 /* ============================================================
-   DATOS PARA LA VISTA
+    DATOS PARA LA VISTA
 ============================================================ */
 $dbSede = conectarPOS($NroSucursal);
 $esGerente = (Autorizacion($Usuario, '2010') === 'SI');
@@ -127,6 +140,8 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
         .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; }
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
+        .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
+        .btn-delete:hover { color: #a52834; transform: scale(1.1); transition: 0.2s; }
     </style>
 </head>
 <body class="bg-light">
@@ -219,6 +234,9 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
+                        <?php if($puedeBorrar): ?>
+                        <th>ELIMINAR</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
@@ -255,6 +273,13 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
                                 <?= ($anuladoPOS) ? 'ANULADO OK' : 'ACTIVO' ?>
                             </span>
                         </td>
+                        <?php if($puedeBorrar): ?>
+                        <td>
+                            <button class="btn-delete" title="Eliminar Solicitud" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">
+                                🗑️
+                            </button>
+                        </td>
+                        <?php endif; ?>
                     </tr>
                     <?php endwhile; ?>
                 </tbody>
@@ -287,6 +312,12 @@ if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
             window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}&f=<?= $fechaConsulta ?>`;
         } else {
             event.target.checked = false;
+        }
+    }
+
+    function borrarSolicitud(fact, sede, fecha) {
+        if (confirm(`¿Seguro que deseas ELIMINAR permanentemente la solicitud de la factura ${fact}?`)) {
+            window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
         }
     }
 </script>

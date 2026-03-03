@@ -171,6 +171,8 @@ body{
 <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
 <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
 <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
+<a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
+
 </div>
 </div>
 </div>
