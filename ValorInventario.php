@@ -131,13 +131,21 @@ function guardarDia($db, $fecha, $nit, $suc, $inv, $vd, $vm, $ut){
 guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'CENTRAL', $central['inventario'], $central['venta_dia'], $central['venta_mes'], $central['utilidad']);
 guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS', $drinks['inventario'], $drinks['venta_dia'], $drinks['venta_mes'], $drinks['utilidad']);
 
+// Cálculo de porcentajes para las gráficas
+$p_v_c = ($totalVentaD > 0) ? round(($central['venta_dia'] / $totalVentaD) * 100, 1) : 0;
+$p_v_d = ($totalVentaD > 0) ? round(($drinks['venta_dia'] / $totalVentaD) * 100, 1) : 0;
+$p_i_c = ($totalInv > 0) ? round(($central['inventario'] / $totalInv) * 100, 1) : 0;
+$p_i_d = ($totalInv > 0) ? round(($drinks['inventario'] / $totalInv) * 100, 1) : 0;
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180">
     <title>Consolidado General</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body{font-family:'Segoe UI',Arial;background:#f4f6f8;color:#333;margin:0;padding:20px}
         .cards{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;margin-bottom:30px}
@@ -154,7 +162,10 @@ guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS', $drinks['inventario'], $dr
         .btn-success{background:#198754}
         .btn-edit{background:#6c757d;padding:4px 8px;font-size:11px}
         
-        /* Modal Corregido */
+        /* Contenedores Gráficos */
+        .graficos-container { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; max-width: 1200px; margin: 30px auto; }
+        .chart-box { background: #fff; border-radius: 12px; padding: 20px; flex: 1; min-width: 350px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
         #modalHistorico{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:1000}
         .modal-content{background:#fff;width:95%;max-width:1000px;margin:40px auto;border-radius:15px;padding:25px;max-height:85vh;overflow-y:auto}
         table{width:100%;border-collapse:collapse;margin-top:15px}
@@ -165,12 +176,12 @@ guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS', $drinks['inventario'], $dr
 <body>
 
 <h2 style="text-align:center">📊 Consolidado Central + Drinks<br>
-    <small style="color:#666"><?= "Periodo: $anio-$mes" ?></small>
+    <small style="color:#666"><?= "Actualizado: $horaHoy | Periodo: $anio-$mes" ?></small>
 </h2>
 
 <div style="text-align:center;margin-bottom:30px">
     <button onclick="abrirModal()" class="btn btn-primary">📅 Ver Histórico Completo</button>
-    <button onclick="location.reload()" class="btn btn-success">🔄 Actualizar Datos</button>
+    <button onclick="location.reload()" class="btn btn-success">🔄 Actualizar Ahora</button>
 </div>
 
 <div class="cards">
@@ -210,10 +221,18 @@ guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS', $drinks['inventario'], $dr
     </div>
 </div>
 
+<div class="graficos-container">
+    <div class="chart-box">
+        <canvas id="graficoVentas"></canvas>
+    </div>
+    <div class="chart-box">
+        <canvas id="graficoInventario"></canvas>
+    </div>
+</div>
+
 <div id="modalHistorico">
     <div class="modal-content">
         <h3 style="text-align:center">📋 Histórico de Inventarios y Ventas</h3>
-        
         <table>
             <thead>
                 <tr>
@@ -247,7 +266,6 @@ guardarDia($mysqli, $fechaSQL, $nitEmpresa, 'DRINKS', $drinks['inventario'], $dr
                 <?php endif; ?>
             </tbody>
         </table>
-
         <div style="text-align:center;margin-top:20px">
             <button onclick="cerrarModal()" class="btn" style="background:#666">Cerrar</button>
         </div>
@@ -261,11 +279,48 @@ function cerrarModal(){ document.getElementById('modalHistorico').style.display=
 function editarRegistro(fecha, sucursal, valorActual) {
     let nuevoValor = prompt("Editar Valor de Bodega para " + sucursal + " (" + fecha + "):", valorActual);
     if (nuevoValor !== null && nuevoValor !== "") {
-        // Aquí podrías enviar por AJAX a un archivo PHP de actualización
-        alert("Función de edición activada. Enviando actualización para: " + nuevoValor);
-        // location.href = "update.php?fecha=" + fecha + "&suc=" + sucursal + "&val=" + nuevoValor;
+        // Aquí iría la lógica de actualización por AJAX si lo requieres luego
+        alert("Valor a actualizar: " + nuevoValor);
     }
 }
+
+// Configuración de Gráficos
+const labelsSedes = ['Central (<?= $p_v_c ?>%)', 'Drinks (<?= $p_v_d ?>%)'];
+const labelsInv = ['Central (<?= $p_i_c ?>%)', 'Drinks (<?= $p_i_d ?>%)'];
+
+// Ventas
+new Chart(document.getElementById('graficoVentas'), {
+    type: 'bar',
+    data: {
+        labels: labelsSedes,
+        datasets: [{
+            label: 'Ventas del Día',
+            data: [<?= $central['venta_dia'] ?>, <?= $drinks['venta_dia'] ?>],
+            backgroundColor: ['#0d6efd', '#0dcaf0']
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { title: { display: true, text: 'Participación en Ventas (Total: <?= moneda($totalVentaD) ?>)' }, legend: { display: false } }
+    }
+});
+
+// Inventario
+new Chart(document.getElementById('graficoInventario'), {
+    type: 'bar',
+    data: {
+        labels: labelsInv,
+        datasets: [{
+            label: 'Valor Bodega',
+            data: [<?= $central['inventario'] ?>, <?= $drinks['inventario'] ?>],
+            backgroundColor: ['#198754', '#20c997']
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { title: { display: true, text: 'Participación en Inventario (Total: <?= moneda($totalInv) ?>)' }, legend: { display: false } }
+    }
+});
 </script>
 
 </body>
