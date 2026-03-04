@@ -17,11 +17,42 @@ function moneda($v){
 $fechaHoy = date('Y-m-d');
 $horaHoy  = date('H:i:s');
 $fechaSQL = date('Y-m-d');
+$fechaSinGuion = date('Ymd'); // Formato estándar de tu tabla compras
 $mes  = date('m');
 $anio = date('Y');
 
 // Validación de sesión para el NIT
 $nitEmpresa = $_SESSION['datos']['NitEmpresa'] ?? '000000000';
+
+/* ===============================
+    NUEVA FUNCIÓN: COMPRAS DEL DÍA
+================================ */
+function obtenerComprasDia($mysqli_conn, $sede) {
+    global $fechaSinGuion;
+    if (!$mysqli_conn) return [];
+    
+    $data = [];
+    $res = $mysqli_conn->query("
+        SELECT 
+            CONCAT(T.nombres, ' ', T.apellidos) AS proveedor,
+            SUM(D.CANTIDAD * (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0)) + ( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * D.porciva / 100) + D.ValICUIUni)) AS total_compra
+        FROM compras C
+        INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO
+        INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra
+        WHERE C.FECHA = '$fechaSinGuion' AND C.ESTADO = '0'
+        GROUP BY T.NIT
+    ");
+
+    while($row = $res->fetch_assoc()) {
+        $row['sede'] = $sede;
+        $data[] = $row;
+    }
+    return $data;
+}
+
+$comprasCentral = obtenerComprasDia($mysqliCentral, 'CENTRAL');
+$comprasDrinks  = obtenerComprasDia($mysqliDrinks, 'DRINKS');
+$todasLasCompras = array_merge($comprasCentral, $comprasDrinks);
 
 /* ===============================
     FUNCIÓN DE CÁLCULO POR SUCURSAL
@@ -162,10 +193,18 @@ $p_i_d = ($totalInv > 0) ? round(($drinks['inventario'] / $totalInv) * 100, 1) :
         .btn-success{background:#198754}
         .btn-edit{background:#6c757d;padding:4px 8px;font-size:11px}
         
-        /* Contenedores Gráficos */
         .graficos-container { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; max-width: 1200px; margin: 30px auto; }
         .chart-box { background: #fff; border-radius: 12px; padding: 20px; flex: 1; min-width: 350px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
+        /* Estilo para el Resumen de Compras */
+        .compras-container { max-width: 1200px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .compras-table { width: 100%; border-collapse: collapse; }
+        .compras-table th { background: #212529; color: white; padding: 12px; text-align: left; }
+        .compras-table td { padding: 10px; border-bottom: 1px solid #eee; }
+        .badge-sede { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; color: white; }
+        .bg-central { background: #0d6efd; }
+        .bg-drinks { background: #198754; }
+
         #modalHistorico{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:1000}
         .modal-content{background:#fff;width:95%;max-width:1000px;margin:40px auto;border-radius:15px;padding:25px;max-height:85vh;overflow-y:auto}
         table{width:100%;border-collapse:collapse;margin-top:15px}
@@ -230,6 +269,41 @@ $p_i_d = ($totalInv > 0) ? round(($drinks['inventario'] / $totalInv) * 100, 1) :
     </div>
 </div>
 
+<div class="compras-container">
+    <h3 style="margin-top:0">🚚 Resumen de Compras del Día (<?= $fechaHoy ?>)</h3>
+    <table class="compras-table">
+        <thead>
+            <tr>
+                <th>Sede</th>
+                <th>Proveedor</th>
+                <th style="text-align:right">Total Comprado (Inc. IVA/Imp)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php 
+            $granTotalCompras = 0;
+            if(!empty($todasLasCompras)):
+                foreach($todasLasCompras as $c): 
+                    $granTotalCompras += $c['total_compra'];
+                    $claseSede = ($c['sede'] == 'CENTRAL') ? 'bg-central' : 'bg-drinks';
+            ?>
+                <tr>
+                    <td><span class="badge-sede <?= $claseSede ?>"><?= $c['sede'] ?></span></td>
+                    <td><?= $c['proveedor'] ?></td>
+                    <td style="text-align:right; font-weight:bold;"><?= moneda($c['total_compra']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+                <tr style="background:#f8f9fa;">
+                    <td colspan="2" style="text-align:right; font-weight:bold;">TOTAL COMPRAS HOY:</td>
+                    <td style="text-align:right; font-weight:bold; color:#dc3545; font-size:18px;"><?= moneda($granTotalCompras) ?></td>
+                </tr>
+            <?php else: ?>
+                <tr><td colspan="3" style="text-align:center; color:#999;">No se han registrado compras el día de hoy.</td></tr>
+            <?php endif; ?>
+        </tbody>
+    </table>
+</div>
+
 <div id="modalHistorico">
     <div class="modal-content">
         <h3 style="text-align:center">📋 Histórico de Inventarios y Ventas</h3>
@@ -279,7 +353,6 @@ function cerrarModal(){ document.getElementById('modalHistorico').style.display=
 function editarRegistro(fecha, sucursal, valorActual) {
     let nuevoValor = prompt("Editar Valor de Bodega para " + sucursal + " (" + fecha + "):", valorActual);
     if (nuevoValor !== null && nuevoValor !== "") {
-        // Aquí iría la lógica de actualización por AJAX si lo requieres luego
         alert("Valor a actualizar: " + nuevoValor);
     }
 }
@@ -288,7 +361,6 @@ function editarRegistro(fecha, sucursal, valorActual) {
 const labelsSedes = ['Central (<?= $p_v_c ?>%)', 'Drinks (<?= $p_v_d ?>%)'];
 const labelsInv = ['Central (<?= $p_i_c ?>%)', 'Drinks (<?= $p_i_d ?>%)'];
 
-// Ventas
 new Chart(document.getElementById('graficoVentas'), {
     type: 'bar',
     data: {
@@ -305,7 +377,6 @@ new Chart(document.getElementById('graficoVentas'), {
     }
 });
 
-// Inventario
 new Chart(document.getElementById('graficoInventario'), {
     type: 'bar',
     data: {
