@@ -221,7 +221,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         </div>
         
         <div class="wrap-box full-width">
-            <h3 style="margin-top:0">🚚 Egresos del Día (Editables)</h3>
+            <h3 style="margin-top:0">🚚 Compras del Dia (Editables)</h3>
             <table>
                 <thead>
                     <tr><th>Sede</th><th>Proveedor</th><th style="text-align:right">Valor Compra</th></tr>
