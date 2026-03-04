@@ -121,6 +121,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180"> 
     <title>Consolidado Administrativo</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
@@ -144,11 +145,14 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         td { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
         .total-row { background: #f9fafb; font-weight: bold; }
         .editable { color: #2563eb; font-weight: bold; border-bottom: 1px dashed; cursor: pointer; }
+        .refresh-text { font-size: 0.75rem; color: #9ca3af; text-align: right; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
+    <div class="refresh-text">Próxima actualización automática en 3 min (Última: <?php echo date("H:i:s"); ?>)</div>
+    
     <div class="grid-cards">
         <div class="card">
             <h3>🏢 Central</h3>
