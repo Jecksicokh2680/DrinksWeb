@@ -14,8 +14,7 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
-// Usuarios con permiso para borrado físico de la base de datos
-$puedeBorrarFisicamente = ($Usuario == '9999' || $Usuario == '0003');
+$puedeBorrar = ($Usuario == '9999' || $Usuario == '0003');
 
 /* ============================================================
     FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
@@ -31,7 +30,7 @@ function Autorizacion($User, $Solicitud) {
 
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
-$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
+$fPosFormat     = date('Ymd', strtotime($fechaConsulta));
 
 function conectarPOS($sede) {
     if ($sede == '002') {
@@ -47,7 +46,6 @@ function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
-    // Verificar en Pedidos
     $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
@@ -56,7 +54,6 @@ function VerificarAnulacion($NroDoc, $sede) {
         if ($rowP['estado'] != '0') return 1; 
     }
     
-    // Verificar en Facturas con Devolución
     $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
@@ -72,31 +69,10 @@ if (isset($_GET['setSede'])) {
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-// ACCIÓN: BORRAR FÍSICO (Solo Admin)
-if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrarFisicamente) {
+if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
     $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
     $stmt->bind_param("sss", $_GET['factura'], $_GET['f'], $_GET['s']);
     $stmt->execute();
-    header("Location: ?fConsulta=" . $fechaConsulta); exit;
-}
-
-// ACCIÓN: DESACTIVAR (Solo dueño y si está activo en POS)
-if (isset($_GET['accion']) && $_GET['accion'] == 'desactivar') {
-    $f = $_GET['factura'];
-    $s = $_GET['s'];
-    
-    // Validación de seguridad en el servidor
-    $stmtV = $mysqli->prepare("SELECT NitCajero FROM solicitud_anulacion WHERE NroFactAnular=? AND NroSucursal=?");
-    $stmtV->bind_param("ss", $f, $s);
-    $stmtV->execute();
-    $resV = $stmtV->get_result();
-    $dataV = $resV->fetch_assoc();
-
-    if ($dataV && $dataV['NitCajero'] == $Usuario && VerificarAnulacion($f, $s) == 0) {
-        $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET Estado = '0' WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-        $stmt->bind_param("sss", $f, $_GET['f'], $s);
-        $stmt->execute();
-    }
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
@@ -104,6 +80,7 @@ if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
     $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
+    $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
     
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
@@ -111,12 +88,12 @@ if (isset($_POST['grabar'])) {
 
     $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
     $ft = date('Y-m-d H:i:s');
-    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $_POST['motivo'], $reemplazo);
+    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-if (isset($_GET['accion']) && isset($_GET['factura']) && !in_array($_GET['accion'], ['borrar', 'desactivar'])) {
+if (isset($_GET['accion']) && isset($_GET['factura'])) {
     $factTarget = $_GET['factura'];
     $fechaRef   = $_GET['f'] ?? $fechaConsulta;
     $ahora      = date('Y-m-d H:i:s');
@@ -164,14 +141,16 @@ if ($dbSede) {
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .table-xs { font-size: 0.75rem; }
+        .table-xs { font-size: 0.72rem; }
         .header-bar { background: #1a1d20; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; border-bottom: 3px solid #0d6efd; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
         .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; }
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
         .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
-        .btn-desactivar { color: #fd7e14; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
-        .btn-delete:hover, .btn-desactivar:hover { transform: scale(1.2); transition: 0.2s; }
+        .btn-delete:hover { color: #a52834; transform: scale(1.1); transition: 0.2s; }
+        .uppercase-input { text-transform: uppercase; }
+        .nombre-cajero { font-weight: bold; color: #212529; display: block; }
+        .nit-cajero { font-size: 0.65rem; color: #6c757d; }
     </style>
 </head>
 <body class="bg-light">
@@ -208,7 +187,7 @@ if ($dbSede) {
     </div>
 
     <div class="card p-3 shadow-sm border-0 mb-4">
-        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD - <?= $fechaConsulta ?></h6>
+        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD PARA EL DÍA: <?= $fechaConsulta ?></h6>
         <form method="post" id="formAnulacion">
             <input type="hidden" name="FactAnular" id="FactAnular">
             <input type="hidden" name="ValorAnular" id="ValorAnular">
@@ -231,10 +210,10 @@ if ($dbSede) {
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <input type="text" name="motivo" class="form-control form-control-sm" required placeholder="Motivo...">
+                    <input type="text" name="motivo" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
                 </div>
                 <div class="col-md-2">
-                    <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">GRABAR</button>
+                    <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
                 </div>
             </div>
         </form>
@@ -242,8 +221,8 @@ if ($dbSede) {
 
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS</h6>
-            <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Filtrar...">
+            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS (ESTADO 1)</h6>
+            <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-xs align-middle text-center mb-0" id="tablaPrincipal">
@@ -251,19 +230,27 @@ if ($dbSede) {
                     <tr>
                         <th>HORA</th>
                         <th>SEDE</th>
+                        <th>CAJERO / FACTURADOR</th>
                         <th>DOC. ANULAR</th>
                         <th>VALOR</th>
                         <th>REEMPLAZO</th>
-                        <th>MOTIVO</th>
-                        <th>BOD</th>
-                        <th>GER</th>
+                        <th style="width: 20%;">MOTIVO</th>
+                        <th>BODEGA</th>
+                        <th>GERENCIA</th>
                         <th>ESTADO POS</th>
-                        <th>ACCIONES</th>
+                        <?php if($puedeBorrar): ?><th>ELIMINAR</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    $stmtH = $mysqli->prepare("SELECT * FROM solicitud_anulacion WHERE F_Creacion = ? AND Estado = '1' ORDER BY FH_CajeroCheck DESC");
+                    // Consulta con JOIN para obtener el nombre del cajero desde la tabla terceros
+                    $sql = "SELECT s.*, t.Nombre as NombreCajero 
+        FROM solicitud_anulacion s 
+        LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
+        WHERE s.F_Creacion = ? AND s.Estado = '1' 
+        ORDER BY s.FH_CajeroCheck DESC";
+                            
+                    $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
@@ -271,15 +258,17 @@ if ($dbSede) {
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
-                        
-                        // Solo el dueño puede desactivar y si el POS está activo
-                        $puedeDesactivar = ($r['NitCajero'] == $Usuario && $anuladoPOS == 0);
+                        $nombreDisplay = !empty($r['NombreCajero']) ? $r['NombreCajero'] : 'NO ENCONTRADO';
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
+                        <td class="text-start">
+                            <span class="nombre-cajero text-uppercase"><?= $nombreDisplay ?></span>
+                            <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
+                        </td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td>$<?= number_format($r['ValorFactAnular'], 0)?></td>
+                        <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
@@ -302,17 +291,11 @@ if ($dbSede) {
                                 <?= ($anuladoPOS) ? 'ANULADO OK' : 'ACTIVO' ?>
                             </span>
                         </td>
+                        <?php if($puedeBorrar): ?>
                         <td>
-                            <div class="d-flex justify-content-center gap-2">
-                                <?php if($puedeDesactivar): ?>
-                                    <button class="btn-desactivar" title="Desactivar mi solicitud" onclick="gestionarSolicitud('desactivar', '<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">⚠️</button>
-                                <?php endif; ?>
-                                
-                                <?php if($puedeBorrarFisicamente): ?>
-                                    <button class="btn-delete" title="Borrar" onclick="gestionarSolicitud('borrar', '<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
-                                <?php endif; ?>
-                            </div>
+                            <button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
                         </td>
+                        <?php endif; ?>
                     </tr>
                     <?php endwhile; ?>
                 </tbody>
@@ -322,7 +305,6 @@ if ($dbSede) {
 </div>
 
 <script>
-    // Filtro de búsqueda rápida
     document.getElementById('inputFiltro').addEventListener('keyup', function() {
         let texto = this.value.toLowerCase();
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
@@ -330,7 +312,6 @@ if ($dbSede) {
         });
     });
 
-    // Captura de datos del Select
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
         const opt = sel.options[sel.selectedIndex];
@@ -340,7 +321,6 @@ if ($dbSede) {
         }
     });
 
-    // Confirmación de firmas (Bodega/Gerencia)
     function confirmar(tipo, fact, sede) {
         if (confirm(`¿Autorizar ${tipo} para la factura ${fact}?`)) {
             window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}&f=<?= $fechaConsulta ?>`;
@@ -349,16 +329,12 @@ if ($dbSede) {
         }
     }
 
-    // Gestión de botones finales
-    function gestionarSolicitud(accion, fact, sede, fecha) {
-        let msg = (accion === 'borrar') ? 
-            `¿ELIMINAR PERMANENTEMENTE la solicitud de ${fact}?` : 
-            `¿DESACTIVAR la solicitud de ${fact}? (Se ocultará de la lista)`;
-        
-        if (confirm(msg)) {
-            window.location.href = `?accion=${accion}&factura=${fact}&s=${sede}&f=${fecha}`;
+    function borrarSolicitud(fact, sede, fecha) {
+        if (confirm(`¿Eliminar permanentemente la solicitud de ${fact}?`)) {
+            window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
         }
     }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
