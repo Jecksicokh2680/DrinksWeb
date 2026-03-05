@@ -42,27 +42,38 @@ function conectarPOS($sede) {
     }
 }
 
+/**
+ * FUNCIÓN ACTUALIZADA SEGÚN CAPTURA DE PANTALLA
+ */
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
+    // 1. Revisar en PEDIDOS
     $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != '0') return 1; 
+        // Según tu imagen, el estado 1 es Anulado. 
+        // Agregamos comprobación explícita para estado 1 y estado 9.
+        if ($rowP['estado'] == '0' || $rowP['estado'] == '9' || $rowP['estado'] != '0') {
+            return 1; 
+        }
     }
     
+    // 2. Revisar en FACTURAS (por si ya se cruzó a devolución)
     $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
-    return ($resF && $resF->num_rows > 0) ? 1 : 0;
+    if ($resF && $resF->num_rows > 0) return 1;
+    
+    return 0;
 }
 
 /* ============================================================
-    PROCESAR ACCIONES (POST Y GET)
+    PROCESAR ACCIONES
 ============================================================ */
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
@@ -147,8 +158,6 @@ if ($dbSede) {
         .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; }
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
         .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
-        .btn-delete:hover { color: #a52834; transform: scale(1.1); transition: 0.2s; }
-        .uppercase-input { text-transform: uppercase; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.65rem; color: #6c757d; }
     </style>
@@ -167,15 +176,10 @@ if ($dbSede) {
         <div class="d-flex align-items-center">
             <div class="header-info"><small class="text-secondary d-block">USUARIO</small><span class="fw-bold text-info"><?= $Usuario ?></span></div>
             <div class="header-info"><small class="text-secondary d-block">SEDE ACTUAL</small><span class="fw-bold"><?= $nombreSedeActual ?></span></div>
-            
-            <?php if($puedeCambiarFecha): ?>
             <div>
-                <small class="text-warning d-block fw-bold">FECHA DE TRABAJO (AUTORIZADA)</small>
+                <small class="text-warning d-block fw-bold">FECHA TRABAJO</small>
                 <input type="date" class="form-control form-control-sm bg-input-dark" value="<?= $fechaConsulta ?>" onchange="location.href='?fConsulta='+this.value">
             </div>
-            <?php else: ?>
-            <div><small class="text-secondary d-block">FECHA CONSULTA</small><span class="fw-bold"><?= $fechaConsulta ?></span></div>
-            <?php endif; ?>
         </div>
         <div class="text-end">
             <small class="text-secondary d-block">CAMBIAR SEDE</small>
@@ -186,42 +190,9 @@ if ($dbSede) {
         </div>
     </div>
 
-    <div class="card p-3 shadow-sm border-0 mb-4">
-        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD PARA EL DÍA: <?= $fechaConsulta ?></h6>
-        <form method="post" id="formAnulacion">
-            <input type="hidden" name="FactAnular" id="FactAnular">
-            <input type="hidden" name="ValorAnular" id="ValorAnular">
-            <div class="row g-2">
-                <div class="col-md-3">
-                    <select class="form-select form-select-sm" id="selAnular" required>
-                        <option value="">-- Seleccione a Anular --</option>
-                        <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
-                        <option value="">-- Doc. Reemplazo --</option>
-                        <option value="N/A" class="fw-bold text-danger">-- NO LLEVA NADA --</option>
-                        <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <input type="text" name="motivo" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
-                </div>
-            </div>
-        </form>
-    </div>
-
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS (ESTADO 1)</h6>
+            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS</h6>
             <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
         </div>
         <div class="table-responsive">
@@ -243,12 +214,12 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // Consulta con JOIN para obtener el nombre del cajero desde la tabla terceros
+                    // SQL con COLLATE para evitar Error 1267
                     $sql = "SELECT s.*, t.Nombre as NombreCajero 
-        FROM solicitud_anulacion s 
-        LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-        WHERE s.F_Creacion = ? AND s.Estado = '1' 
-        ORDER BY s.FH_CajeroCheck DESC";
+                            FROM solicitud_anulacion s 
+                            LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
+                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
+                            ORDER BY s.FH_CajeroCheck DESC";
                             
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
@@ -310,15 +281,6 @@ if ($dbSede) {
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
             fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
         });
-    });
-
-    document.getElementById('formAnulacion').addEventListener('submit', function(e) {
-        const sel = document.getElementById('selAnular');
-        const opt = sel.options[sel.selectedIndex];
-        if (opt.value !== "") {
-            document.getElementById('FactAnular').value = opt.value;
-            document.getElementById('ValorAnular').value = opt.dataset.valor || '0';
-        }
     });
 
     function confirmar(tipo, fact, sede) {
