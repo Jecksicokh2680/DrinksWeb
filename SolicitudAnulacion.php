@@ -44,16 +44,14 @@ function conectarPOS($sede) {
 
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
-    if (!$db) return 0;
-    
+    if (!$db) return 0;    
     $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
         if ($rowP['estado'] != '0') return 1; 
-    }
-    
+    }    
     $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
@@ -82,8 +80,17 @@ if (isset($_POST['grabar'])) {
     $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
     $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
     
+    // VALIDACIÓN 1: No sea el mismo documento
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
+    }
+
+    // VALIDACIÓN 2: Evitar duplicados (Solo una solicitud por factura en esta sede que esté activa)
+    $check = $mysqli->prepare("SELECT id FROM solicitud_anulacion WHERE NroFactAnular = ? AND NroSucursal = ? AND Estado = '1'");
+    $check->bind_param("ss", $factura, $NroSucursal);
+    $check->execute();
+    if ($check->get_result()->num_rows > 0) {
+        header("Location: ?error=ya_existe&fConsulta=".$fechaConsulta); exit;
     }
 
     $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
@@ -158,7 +165,11 @@ if ($dbSede) {
 
     <?php if(isset($_GET['error'])): ?>
         <div class="alert alert-danger alert-dismissible fade show">
-            <?= ($_GET['error'] == 'mismo_documento') ? "⚠️ No puedes usar el mismo documento como reemplazo." : "⚠️ El documento aún aparece ACTIVO en el POS." ?>
+            <?php 
+                if($_GET['error'] == 'mismo_documento') echo "⚠️ No puedes usar el mismo documento como reemplazo.";
+                elseif($_GET['error'] == 'no_anulado') echo "⚠️ El documento aún aparece ACTIVO en el POS.";
+                elseif($_GET['error'] == 'ya_existe') echo "⚠️ ERROR: Ya existe una solicitud de anulación para esta factura.";
+            ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
@@ -243,12 +254,11 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // Consulta con JOIN para obtener el nombre del cajero desde la tabla terceros
                     $sql = "SELECT s.*, t.Nombre as NombreCajero 
-        FROM solicitud_anulacion s 
-        LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-        WHERE s.F_Creacion = ? AND s.Estado = '1' 
-        ORDER BY s.FH_CajeroCheck DESC";
+                            FROM solicitud_anulacion s 
+                            LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
+                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
+                            ORDER BY s.FH_CajeroCheck DESC";
                             
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
