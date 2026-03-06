@@ -3,7 +3,6 @@
 // 1. CONFIGURACIÓN Y CONEXIONES
 // ====================================================================
 
-// Asegúrate de que estos archivos existan en la misma carpeta
 require 'ConnCentral.php'; 
 $connCentral = $mysqliCentral;
 $errorCentral = isset($mysqliCentral->connect_error) ? $mysqliCentral->connect_error : (isset($conn_error) ? $conn_error : null);
@@ -13,7 +12,6 @@ require 'ConnDrinks.php';
 $connDrinks = $mysqliDrinks;
 $errorDrinks = isset($mysqliDrinks->connect_error) ? $mysqliDrinks->connect_error : (isset($conn_error) ? $conn_error : null);
 
-// Variables para distinguir tipos de solicitudes AJAX
 $is_ajax_filter = isset($_POST['action']) && $_POST['action'] === 'filter';
 $is_ajax_save = isset($_POST['action']) && $_POST['action'] === 'save';
 
@@ -40,7 +38,6 @@ if ($is_ajax_save) {
     $msgs = [];
 
     if (!empty($barcode)) {
-        // --- ACTUALIZAR CENTRAL ---
         if ($connCentral && !$errorCentral) {
             $stmtC = $connCentral->prepare("UPDATE productos SET descripcion = ?, precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
             $typeStr = "sdddi" . (is_numeric($barcode) ? "i" : "s");
@@ -50,7 +47,6 @@ if ($is_ajax_save) {
             $stmtC->close();
         }
 
-        // --- ACTUALIZAR DRINKS (Sincronizando nombre) ---
         if ($connDrinks && !$errorDrinks) {
             $stmtD = $connDrinks->prepare("UPDATE productos SET descripcion = ?, precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
             $typeStrD = "sdddi" . (is_numeric($barcode) ? "i" : "s");
@@ -74,7 +70,7 @@ if ($is_ajax_save) {
 if ($is_ajax_filter) {
     header('Content-Type: application/json');
     if (!$connCentral || $errorCentral) {
-         echo json_encode(['html' => '<tr><td colspan="13">Error conexión Central</td></tr>']);
+         echo json_encode(['html' => '<tr><td colspan="14">Error conexión Central</td></tr>']);
          exit;
     }
 
@@ -104,6 +100,21 @@ if ($is_ajax_filter) {
         $stmt->close();
     }
 
+    // EXTRAER PRECIO PROMEDIO DE COMPRA (Últimos 30 días)
+    $promediosCompra = [];
+    if (!empty($barcodes)) {
+        $sqlP = "SELECT P.Barcode, 
+                 SUM(( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * (1 + D.porciva / 100) + D.ValICUIUni ) * D.CANTIDAD) / NULLIF(SUM(D.CANTIDAD), 0) as prom
+                 FROM DETCOMPRAS D
+                 JOIN compras C ON C.idcompra = D.idcompra
+                 JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
+                 WHERE C.ESTADO = '0' AND P.Barcode IN (".implode(',', $barcodes).")
+                 AND C.FECHA >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 30 DAY), '%Y%m%d')
+                 GROUP BY P.Barcode";
+        $resP = $connCentral->query($sqlP);
+        if ($resP) { while ($rowP = $resP->fetch_assoc()) { $promediosCompra[$rowP['Barcode']] = $rowP['prom']; } }
+    }
+
     $preciosDrinks = [];
     if (!empty($barcodes) && $connDrinks && !$errorDrinks) {
         $sqlD = "SELECT barcode, precioventa, precioespecial1, precioespecial2 FROM productos WHERE barcode IN (".implode(',', $barcodes).")";
@@ -115,21 +126,28 @@ if ($is_ajax_filter) {
     foreach ($productosCentral as $p) {
         $bc = $p['barcode'];
         $pD = $preciosDrinks[$bc] ?? ['precioventa'=>0, 'precioespecial1'=>0, 'precioespecial2'=>0];
-        $mkC = ($p['costo'] > 0) ? (($p['precioventa'] / $p['costo']) - 1) * 100 : 0;
-        $mkD = ($p['costo'] > 0) ? (($pD['precioventa'] / $p['costo']) - 1) * 100 : 0;
+        
+        // BASE DE CÁLCULO: Usar Precio Promedio de Compra, si no existe, usar costo de la ficha
+        $promC = $promediosCompra[$bc] ?? 0;
+        $baseCalculo = ($promC > 0) ? $promC : $p['costo'];
+        
+        // Ajuste de Markup: Precio Venta / Base - 1
+        $mkC = ($baseCalculo > 0) ? (($p['precioventa'] / $baseCalculo) - 1) * 100 : 0;
+        $mkD = ($baseCalculo > 0) ? (($pD['precioventa'] / $baseCalculo) - 1) * 100 : 0;
 
         $html .= '<tr data-barcode="'.htmlspecialchars($bc).'">
             <td><b>'.htmlspecialchars($bc).'</b></td>
             <td><input type="text" class="edit-desc" value="'.htmlspecialchars($p['descripcion']).'" style="width:300px"></td>
             <td>'.number_format($p['costo'], 2).'</td>
+            <td style="background:#f9f9f9; color:#555; font-weight:bold;">'.($promC > 0 ? number_format($promC, 2) : '-').'</td>
             <td style="background:#eaf2ff"><input type="number" class="ev-c" value="'.$p['precioventa'].'" step="0.01"></td>
             <td style="background:#eaf2ff"><input type="number" class="e1-c" value="'.$p['precioespecial1'].'" step="0.01"></td>
             <td style="background:#eaf2ff"><input type="number" class="e2-c" value="'.$p['precioespecial2'].'" step="0.01"></td>
             <td style="background:#fff4e6"><input type="number" class="ev-d" value="'.$pD['precioventa'].'" step="0.01"></td>
             <td style="background:#fff4e6"><input type="number" class="e1-d" value="'.$pD['precioespecial1'].'" step="0.01"></td>
             <td style="background:#fff4e6"><input type="number" class="e2-d" value="'.$pD['precioespecial2'].'" step="0.01"></td>
-            <td>'.number_format($mkC, 1).'%</td>
-            <td>'.number_format($mkD, 1).'%</td>
+            <td style="font-weight:bold; color:'.($mkC < 0 ? 'red' : 'green').'">'.number_format($mkC, 1).'%</td>
+            <td style="font-weight:bold; color:'.($mkD < 0 ? 'red' : 'green').'">'.number_format($mkD, 1).'%</td>
             <td>
                 <select class="e-est">
                     <option value="1" '.($p['estado']==1?'selected':'').'>Activo</option>
@@ -139,7 +157,7 @@ if ($is_ajax_filter) {
             <td><button class="btn-save">💾</button></td>
         </tr>';
     }
-    echo json_encode(['html' => $html ?: '<tr><td colspan="13">No hay resultados</td></tr>']);
+    echo json_encode(['html' => $html ?: '<tr><td colspan="14">No hay resultados</td></tr>']);
     exit;
 }
 ?>
@@ -180,9 +198,10 @@ if ($is_ajax_filter) {
                 <th rowspan="2">Código</th>
                 <th rowspan="2">Descripción</th>
                 <th rowspan="2">Costo</th>
+                <th rowspan="2" style="background:#666">Prom. Compra</th>
                 <th colspan="3" class="h-c">CENTRAL</th>
                 <th colspan="3" class="h-d">DRINKS</th>
-                <th colspan="2">Markup</th>
+                <th colspan="2">Markup (s/Prom)</th>
                 <th rowspan="2">Estado</th>
                 <th rowspan="2">Acción</th>
             </tr>
