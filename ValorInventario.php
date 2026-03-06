@@ -260,11 +260,11 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 
     <div class="sections-grid">
         <div class="wrap-box">
-            <h4 style="margin:0 0 15px 0; text-align:center;">📊 % Valor de Bodega por Sede</h4>
+            <h4 style="margin:0 0 15px 0; text-align:center;">📊 % PARTICIPACION DE INVENTARIOS</h4>
             <canvas id="graficoBarras" style="max-height: 250px;"></canvas>
         </div>
         <div class="wrap-box">
-            <h4 style="margin:0 0 15px 0; text-align:center;">🥧 % Participación Ventas Hoy</h4>
+            <h4 style="margin:0 0 15px 0; text-align:center;">🥧 % PARTICIPACION DE VENTAS</h4>
             <canvas id="graficoTorta" style="max-height: 250px;"></canvas>
         </div>
         
