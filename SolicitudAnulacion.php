@@ -30,7 +30,7 @@ function Autorizacion($User, $Solicitud) {
 
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
-$fPosFormat     = date('Ymd', strtotime($fechaConsulta));
+$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
 
 function conectarPOS($sede) {
     if ($sede == '002') {
@@ -42,38 +42,27 @@ function conectarPOS($sede) {
     }
 }
 
-/**
- * FUNCIÓN ACTUALIZADA SEGÚN CAPTURA DE PANTALLA
- */
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
-    // 1. Revisar en PEDIDOS
     $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        // Según tu imagen, el estado 1 es Anulado. 
-        // Agregamos comprobación explícita para estado 1 y estado 9.
-        if ($rowP['estado'] == '0' || $rowP['estado'] == '9' || $rowP['estado'] != '0') {
-            return 1; 
-        }
+        if ($rowP['estado'] != '0') return 1; 
     }
     
-    // 2. Revisar en FACTURAS (por si ya se cruzó a devolución)
     $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
-    if ($resF && $resF->num_rows > 0) return 1;
-    
-    return 0;
+    return ($resF && $resF->num_rows > 0) ? 1 : 0;
 }
 
 /* ============================================================
-    PROCESAR ACCIONES
+    PROCESAR ACCIONES (POST Y GET)
 ============================================================ */
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
@@ -91,7 +80,6 @@ if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
     $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
-    $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
     
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
@@ -99,7 +87,7 @@ if (isset($_POST['grabar'])) {
 
     $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
     $ft = date('Y-m-d H:i:s');
-    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo);
+    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $_POST['motivo'], $reemplazo);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -152,14 +140,13 @@ if ($dbSede) {
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .table-xs { font-size: 0.72rem; }
+        .table-xs { font-size: 0.75rem; }
         .header-bar { background: #1a1d20; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; border-bottom: 3px solid #0d6efd; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
         .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; }
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
         .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
-        .nombre-cajero { font-weight: bold; color: #212529; display: block; }
-        .nit-cajero { font-size: 0.65rem; color: #6c757d; }
+        .btn-delete:hover { color: #a52834; transform: scale(1.1); transition: 0.2s; }
     </style>
 </head>
 <body class="bg-light">
@@ -176,10 +163,15 @@ if ($dbSede) {
         <div class="d-flex align-items-center">
             <div class="header-info"><small class="text-secondary d-block">USUARIO</small><span class="fw-bold text-info"><?= $Usuario ?></span></div>
             <div class="header-info"><small class="text-secondary d-block">SEDE ACTUAL</small><span class="fw-bold"><?= $nombreSedeActual ?></span></div>
+            
+            <?php if($puedeCambiarFecha): ?>
             <div>
-                <small class="text-warning d-block fw-bold">FECHA TRABAJO</small>
+                <small class="text-warning d-block fw-bold">FECHA DE TRABAJO (AUTORIZADA)</small>
                 <input type="date" class="form-control form-control-sm bg-input-dark" value="<?= $fechaConsulta ?>" onchange="location.href='?fConsulta='+this.value">
             </div>
+            <?php else: ?>
+            <div><small class="text-secondary d-block">FECHA CONSULTA</small><span class="fw-bold"><?= $fechaConsulta ?></span></div>
+            <?php endif; ?>
         </div>
         <div class="text-end">
             <small class="text-secondary d-block">CAMBIAR SEDE</small>
@@ -190,9 +182,42 @@ if ($dbSede) {
         </div>
     </div>
 
+    <div class="card p-3 shadow-sm border-0 mb-4">
+        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD PARA EL DÍA: <?= $fechaConsulta ?></h6>
+        <form method="post" id="formAnulacion">
+            <input type="hidden" name="FactAnular" id="FactAnular">
+            <input type="hidden" name="ValorAnular" id="ValorAnular">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="selAnular" required>
+                        <option value="">-- Seleccione a Anular --</option>
+                        <?php foreach($docsArray as $d): ?>
+                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
+                        <option value="">-- Doc. Reemplazo --</option>
+                        <option value="N/A" class="fw-bold text-danger">-- NO LLEVA NADA --</option>
+                        <?php foreach($docsArray as $d): ?>
+                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" name="motivo" class="form-control form-control-sm" required placeholder="Explique el motivo...">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS</h6>
+            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS (ESTADO 1)</h6>
             <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
         </div>
         <div class="table-responsive">
@@ -201,11 +226,10 @@ if ($dbSede) {
                     <tr>
                         <th>HORA</th>
                         <th>SEDE</th>
-                        <th>CAJERO / FACTURADOR</th>
                         <th>DOC. ANULAR</th>
                         <th>VALOR</th>
                         <th>REEMPLAZO</th>
-                        <th style="width: 20%;">MOTIVO</th>
+                        <th>MOTIVO</th>
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
@@ -214,14 +238,8 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // SQL con COLLATE para evitar Error 1267
-                    $sql = "SELECT s.*, t.Nombre as NombreCajero 
-                            FROM solicitud_anulacion s 
-                            LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
-                            ORDER BY s.FH_CajeroCheck DESC";
-                            
-                    $stmtH = $mysqli->prepare($sql);
+                    // FILTRO DE ESTADO 1 APLICADO AQUÍ
+                    $stmtH = $mysqli->prepare("SELECT * FROM solicitud_anulacion WHERE F_Creacion = ? AND Estado = '1' ORDER BY FH_CajeroCheck DESC");
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
@@ -229,17 +247,12 @@ if ($dbSede) {
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
-                        $nombreDisplay = !empty($r['NombreCajero']) ? $r['NombreCajero'] : 'NO ENCONTRADO';
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
-                        <td class="text-start">
-                            <span class="nombre-cajero text-uppercase"><?= $nombreDisplay ?></span>
-                            <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
-                        </td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
+                        <td>$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
@@ -283,6 +296,15 @@ if ($dbSede) {
         });
     });
 
+    document.getElementById('formAnulacion').addEventListener('submit', function(e) {
+        const sel = document.getElementById('selAnular');
+        const opt = sel.options[sel.selectedIndex];
+        if (opt.value !== "") {
+            document.getElementById('FactAnular').value = opt.value;
+            document.getElementById('ValorAnular').value = opt.dataset.valor || '0';
+        }
+    });
+
     function confirmar(tipo, fact, sede) {
         if (confirm(`¿Autorizar ${tipo} para la factura ${fact}?`)) {
             window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}&f=<?= $fechaConsulta ?>`;
@@ -297,6 +319,5 @@ if ($dbSede) {
         }
     }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
