@@ -30,7 +30,7 @@ function Autorizacion($User, $Solicitud) {
 
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
-$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
+$fPosFormat     = date('Ymd', strtotime($fechaConsulta));
 
 function conectarPOS($sede) {
     if ($sede == '002') {
@@ -46,12 +46,15 @@ function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
-    $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
+    // Basado en tu tabla pedidos: revisamos estado y campos de anulación
+    $stmtP = $db->prepare("SELECT estado, fechaanul FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != '0') return 1; 
+        // Se considera anulado si estado es diferente a activo (0 suele ser anulado en muchos sistemas)
+        // o si el campo fechaanul ya tiene información
+        if ($rowP['estado'] == '0' || !empty($rowP['fechaanul'])) return 1; 
     }
     
     $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
@@ -81,13 +84,25 @@ if (isset($_POST['grabar'])) {
     $reemplazo = $_POST['NroFactReemplaza']; 
     $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
     
+    // MEJORA 1: Motivo siempre en MAYÚSCULAS
+    $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
+    
+    // VALIDACIÓN: No usar el mismo documento como reemplazo
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
     }
 
+    // MEJORA 2: VALIDACIÓN DE DUPLICADOS (Solo una solicitud activa por documento y sucursal)
+    $check = $mysqli->prepare("SELECT id FROM solicitud_anulacion WHERE NroFactAnular = ? AND NroSucursal = ? AND Estado = '1'");
+    $check->bind_param("ss", $factura, $NroSucursal);
+    $check->execute();
+    if ($check->get_result()->num_rows > 0) {
+        header("Location: ?error=ya_existe&fConsulta=".$fechaConsulta); exit;
+    }
+
     $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
     $ft = date('Y-m-d H:i:s');
-    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $_POST['motivo'], $reemplazo);
+    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -126,6 +141,7 @@ $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
+    // Nota: Se filtran documentos con ESTADO='0' (Activos en el POS) para elegir qué anular
     $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fPosFormat' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fPosFormat' ORDER BY NUMERO DESC";
     $listaDocs = $dbSede->query($queryDocs);
     if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
@@ -147,14 +163,20 @@ if ($dbSede) {
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
         .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
         .btn-delete:hover { color: #a52834; transform: scale(1.1); transition: 0.2s; }
+        .uppercase-input { text-transform: uppercase; }
     </style>
 </head>
 <body class="bg-light">
 <div class="container-fluid px-4 py-4">
 
     <?php if(isset($_GET['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show">
-            <?= ($_GET['error'] == 'mismo_documento') ? "⚠️ No puedes usar el mismo documento como reemplazo." : "⚠️ El documento aún aparece ACTIVO en el POS." ?>
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm">
+            <?php 
+                if($_GET['error'] == 'mismo_documento') echo "⚠️ No puedes usar el mismo documento como reemplazo.";
+                elseif($_GET['error'] == 'no_anulado') echo "⚠️ El documento aún aparece ACTIVO en el POS.";
+                elseif($_GET['error'] == 'ya_existe') echo "⚠️ ERROR: Ya existe una solicitud pendiente para esta factura en esta sede.";
+                else echo "⚠️ Ocurrió un error inesperado.";
+            ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
@@ -206,7 +228,7 @@ if ($dbSede) {
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <input type="text" name="motivo" class="form-control form-control-sm" required placeholder="Explique el motivo...">
+                    <input type="text" name="motivo" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
@@ -229,7 +251,7 @@ if ($dbSede) {
                         <th>DOC. ANULAR</th>
                         <th>VALOR</th>
                         <th>REEMPLAZO</th>
-                        <th>MOTIVO</th>
+                        <th style="width: 25%;">MOTIVO</th>
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
@@ -238,7 +260,7 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // FILTRO DE ESTADO 1 APLICADO AQUÍ
+                    // Filtro de estado 1 para la tabla principal
                     $stmtH = $mysqli->prepare("SELECT * FROM solicitud_anulacion WHERE F_Creacion = ? AND Estado = '1' ORDER BY FH_CajeroCheck DESC");
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
@@ -252,7 +274,7 @@ if ($dbSede) {
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td>$<?= number_format($r['ValorFactAnular'], 0)?></td>
+                        <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
@@ -289,6 +311,7 @@ if ($dbSede) {
 </div>
 
 <script>
+    // Filtro de búsqueda en tabla
     document.getElementById('inputFiltro').addEventListener('keyup', function() {
         let texto = this.value.toLowerCase();
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
@@ -296,6 +319,7 @@ if ($dbSede) {
         });
     });
 
+    // Carga de datos ocultos antes del submit
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
         const opt = sel.options[sel.selectedIndex];
@@ -319,5 +343,6 @@ if ($dbSede) {
         }
     }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
