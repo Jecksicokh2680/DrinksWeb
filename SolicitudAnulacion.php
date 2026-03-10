@@ -138,6 +138,7 @@ if ($dbSede) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -210,7 +211,7 @@ if ($dbSede) {
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <input type="text" name="motivo" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
+                    <input type="text" name="motivo" id="motivoInput" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
@@ -243,7 +244,6 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // Consulta con JOIN para obtener el nombre del cajero desde la tabla terceros
                     $sql = "SELECT s.*, t.Nombre as NombreCajero 
         FROM solicitud_anulacion s 
         LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
@@ -305,6 +305,7 @@ if ($dbSede) {
 </div>
 
 <script>
+    // Filtro de búsqueda en tabla
     document.getElementById('inputFiltro').addEventListener('keyup', function() {
         let texto = this.value.toLowerCase();
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
@@ -312,6 +313,7 @@ if ($dbSede) {
         });
     });
 
+    // Carga de datos ocultos para el POST
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
         const opt = sel.options[sel.selectedIndex];
@@ -334,6 +336,15 @@ if ($dbSede) {
             window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
         }
     }
+
+    // AVISO ANTES DE ACTUALIZAR: Si el usuario está escribiendo, lanzamos una alerta
+    // o simplemente avisamos en consola para evitar pérdida de datos inesperada.
+    setTimeout(function() {
+        const motivo = document.getElementById('motivoInput').value;
+        if(motivo.length > 0) {
+            console.warn("La página se actualizará en 10 segundos. Guarda tu progreso.");
+        }
+    }, 170000); // 170 segundos (10 segundos antes de los 180)
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
