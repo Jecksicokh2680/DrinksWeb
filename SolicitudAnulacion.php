@@ -221,7 +221,7 @@ if ($dbSede) {
 
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 fw-bold">SOLICITUDES ACTIVAS (ESTADO 1)</h6>
+            <h6 class="mb-0 fw-bold">SOLICITUDES DE ANULACION DE FACTURAS</h6>
             <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
         </div>
         <div class="table-responsive">
