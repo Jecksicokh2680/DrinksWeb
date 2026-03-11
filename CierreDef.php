@@ -230,9 +230,16 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
 <script>
     function mostrarVoucher(tipo) {
-        if(tipo === 'cierre' && '<?= $permiso7777 ?>' !== 'SI' && '<?= $permiso9999 ?>' !== 'SI') {
-            alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); return;
+        // Validación de seguridad ampliada
+        const p9999 = '<?= $permiso9999 ?>';
+        const p7777 = '<?= $permiso7777 ?>';
+        const p0003 = '<?= $permiso0003 ?>';
+
+        if(tipo === 'cierre' && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
+            alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); 
+            return;
         }
+
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
             egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
@@ -260,7 +267,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <tr><td colspan="2"><hr></td></tr>
                 <tr style="font-size:16px;">
                     <td><b>TOTAL FÍSICO:</b></td>
-                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final*-1) ?></b></td>
+                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final * -1) ?></b></td>
                 </tr>
             </table>
             <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
