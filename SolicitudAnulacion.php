@@ -49,36 +49,38 @@ function VerificarAnulacion($NroDoc, $sede) {
     $NroDoc = trim($NroDoc);
 
     // 1. VERIFICAR EN PEDIDOS
-    // Según tu estructura: estado 1 es activo, estado 0 es anulado.
-    // También validamos si existe fecha de anulación.
+    // Ajuste: Si estado != 1, se considera ANULADO o PROCESADO
     $stmtP = $db->prepare("SELECT estado, fechaanul FROM pedidos WHERE numero = ?");
-    $stmtP->bind_param("i", $NroDoc); // 'i' porque numero es INTEGER en tu tabla
+    $stmtP->bind_param("i", $NroDoc); 
     $stmtP->execute();
     $resP = $stmtP->get_result();
     
     if ($rowP = $resP->fetch_assoc()) {
-        // Si el estado es 0 O si el campo fechaanul no está vacío, está ANULADO
-        if ($rowP['estado'] == 0 || !empty($rowP['fechaanul'])) {
-            return 1; // Retorna 1 para decir "Sí, está anulado"
+        // Si el estado NO es 1 (activo), o tiene fecha de anulación, está ANULADO para este reporte
+        if ($rowP['estado'] != 1 || !empty($rowP['fechaanul'])) {
+            return 1; 
         }
     }
     
-    // 2. VERIFICAR EN FACTURAS (Caso de facturas anuladas con devolución)
-    $sqlF = "SELECT F.numero 
-             FROM facturas F 
-             INNER JOIN devventas D ON F.idfactura = D.idfactura 
-             WHERE F.numero = ?";
-    $stmtF = $db->prepare($sqlF);
+    // 2. VERIFICAR EN FACTURAS (Caso de facturas anuladas o con devolución)
+    $stmtF = $db->prepare("SELECT estado FROM facturas WHERE numero = ?");
     $stmtF->bind_param("i", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
-    
-    if ($resF && $resF->num_rows > 0) {
-        return 1;
+    if ($rowF = $resF->fetch_assoc()) {
+        if ($rowF['estado'] != 1) return 1;
     }
 
-    return 0; // Sigue activo
+    // 3. VERIFICAR DEVOLUCIONES
+    $sqlD = "SELECT F.numero FROM facturas F INNER JOIN devventas D ON F.idfactura = D.idfactura WHERE F.numero = ?";
+    $stmtD = $db->prepare($sqlD);
+    $stmtD->bind_param("i", $NroDoc);
+    $stmtD->execute();
+    if ($stmtD->get_result()->num_rows > 0) return 1;
+
+    return 0; // Sigue activo (Estado 1)
 }
+
 /* ============================================================
     PROCESAR ACCIONES (POST Y GET)
 ============================================================ */
@@ -145,7 +147,11 @@ $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
-    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='0' AND fecha='$fPosFormat' UNION ALL SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='0' AND fecha='$fPosFormat' ORDER BY NUMERO DESC";
+    // AJUSTE: Solo mostramos lo que está ACTIVO (Estado 1) para poder solicitar su anulación
+    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM FACTURAS WHERE ESTADO='1' AND fecha='$fPosFormat' 
+                  UNION ALL 
+                  SELECT NUMERO, VALORTOTAL FROM PEDIDOS WHERE ESTADO='1' AND fecha='$fPosFormat' 
+                  ORDER BY NUMERO DESC";
     $listaDocs = $dbSede->query($queryDocs);
     if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 }
@@ -156,8 +162,7 @@ if ($dbSede) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="180">
-    <title>Anulaciones - <?= $nombreSedeActual ?></title>
+    <meta http-equiv="refresh" content="180"> <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .table-xs { font-size: 0.72rem; }
@@ -177,7 +182,7 @@ if ($dbSede) {
 
     <?php if(isset($_GET['error'])): ?>
         <div class="alert alert-danger alert-dismissible fade show">
-            <?= ($_GET['error'] == 'mismo_documento') ? "⚠️ No puedes usar el mismo documento como reemplazo." : "⚠️ El documento aún aparece ACTIVO en el POS." ?>
+            <?= ($_GET['error'] == 'mismo_documento') ? "⚠️ No puedes usar el mismo documento como reemplazo." : "⚠️ El documento aún aparece ACTIVO en el POS. Debe anularlo primero en el sistema de ventas." ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
@@ -189,7 +194,7 @@ if ($dbSede) {
             
             <?php if($puedeCambiarFecha): ?>
             <div>
-                <small class="text-warning d-block fw-bold">FECHA DE TRABAJO (AUTORIZADA)</small>
+                <small class="text-warning d-block fw-bold">FECHA DE TRABAJO</small>
                 <input type="date" class="form-control form-control-sm bg-input-dark" value="<?= $fechaConsulta ?>" onchange="location.href='?fConsulta='+this.value">
             </div>
             <?php else: ?>
@@ -206,14 +211,14 @@ if ($dbSede) {
     </div>
 
     <div class="card p-3 shadow-sm border-0 mb-4">
-        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD PARA EL DÍA: <?= $fechaConsulta ?></h6>
+        <h6 class="fw-bold text-muted mb-3 small">NUEVA SOLICITUD (Solo documentos activos)</h6>
         <form method="post" id="formAnulacion">
             <input type="hidden" name="FactAnular" id="FactAnular">
             <input type="hidden" name="ValorAnular" id="ValorAnular">
             <div class="row g-2">
                 <div class="col-md-3">
                     <select class="form-select form-select-sm" id="selAnular" required>
-                        <option value="">-- Seleccione a Anular --</option>
+                        <option value="">-- Seleccione Activo a Anular --</option>
                         <?php foreach($docsArray as $d): ?>
                             <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
                         <?php endforeach; ?>
@@ -222,14 +227,14 @@ if ($dbSede) {
                 <div class="col-md-3">
                     <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
                         <option value="">-- Doc. Reemplazo --</option>
-                        <option value="N/A" class="fw-bold text-danger">-- NO LLEVA NADA --</option>
+                        <option value="N/A" class="fw-bold text-danger">-- NO LLEVA REEMPLAZO --</option>
                         <?php foreach($docsArray as $d): ?>
                             <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <input type="text" name="motivo" id="motivoInput" class="form-control form-control-sm uppercase-input" required placeholder="Explique el motivo...">
+                    <input type="text" name="motivo" id="motivoInput" class="form-control form-control-sm uppercase-input" required placeholder="¿Por qué se anula?">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" name="grabar" class="btn btn-primary btn-sm w-100 fw-bold">CREAR SOLICITUD</button>
@@ -239,9 +244,8 @@ if ($dbSede) {
     </div>
 
     <div class="card shadow-sm border-0">
-        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h6 class="mb-0 fw-bold">SOLICITUDES DE ANULACION DE FACTURAS</h6>
-            <input type="text" id="inputFiltro" class="form-control form-control-sm w-25" placeholder="🔍 Buscar...">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold">REGISTRO DE SOLICITUDES</h6>
         </div>
         <div class="table-responsive">
             <table class="table table-hover table-xs align-middle text-center mb-0" id="tablaPrincipal">
@@ -249,24 +253,24 @@ if ($dbSede) {
                     <tr>
                         <th>HORA</th>
                         <th>SEDE</th>
-                        <th>CAJERO / FACTURADOR</th>
+                        <th>CAJERO</th>
                         <th>DOC. ANULAR</th>
                         <th>VALOR</th>
                         <th>REEMPLAZO</th>
-                        <th style="width: 20%;">MOTIVO</th>
+                        <th style="width: 25%;">MOTIVO</th>
                         <th>BODEGA</th>
                         <th>GERENCIA</th>
                         <th>ESTADO POS</th>
-                        <?php if($puedeBorrar): ?><th>ELIMINAR</th><?php endif; ?>
+                        <?php if($puedeBorrar): ?><th></th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
                     <?php
                     $sql = "SELECT s.*, t.Nombre as NombreCajero 
-        FROM solicitud_anulacion s 
-        LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-        WHERE s.F_Creacion = ? AND s.Estado = '1' 
-        ORDER BY s.FH_CajeroCheck DESC";
+                            FROM solicitud_anulacion s 
+                            LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
+                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
+                            ORDER BY s.FH_CajeroCheck DESC";
                             
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
@@ -276,13 +280,12 @@ if ($dbSede) {
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
-                        $nombreDisplay = !empty($r['NombreCajero']) ? $r['NombreCajero'] : 'NO ENCONTRADO';
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                         <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
                         <td class="text-start">
-                            <span class="nombre-cajero text-uppercase"><?= $nombreDisplay ?></span>
+                            <span class="nombre-cajero"><?= $r['NombreCajero'] ?></span>
                             <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
                         </td>
                         <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
@@ -323,14 +326,6 @@ if ($dbSede) {
 </div>
 
 <script>
-    // Filtro de búsqueda en tabla
-    document.getElementById('inputFiltro').addEventListener('keyup', function() {
-        let texto = this.value.toLowerCase();
-        document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
-            fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
-        });
-    });
-
     // Carga de datos ocultos para el POST
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
@@ -354,15 +349,6 @@ if ($dbSede) {
             window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
         }
     }
-
-    // AVISO ANTES DE ACTUALIZAR: Si el usuario está escribiendo, lanzamos una alerta
-    // o simplemente avisamos en consola para evitar pérdida de datos inesperada.
-    setTimeout(function() {
-        const motivo = document.getElementById('motivoInput').value;
-        if(motivo.length > 0) {
-            console.warn("La página se actualizará en 10 segundos. Guarda tu progreso.");
-        }
-    }, 170000); // 170 segundos (10 segundos antes de los 180)
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
