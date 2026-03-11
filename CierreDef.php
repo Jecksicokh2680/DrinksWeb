@@ -5,8 +5,11 @@
 $session_timeout  = 3600;
 $inactive_timeout = 2400;
 date_default_timezone_set('America/Bogota'); 
+ini_set('session.gc_maxlifetime', $session_timeout);
+session_set_cookie_params($session_timeout);
 
 session_start();
+session_regenerate_id(true);
 
 require("ConnCentral.php"); 
 require("Conexion.php");    
@@ -51,9 +54,6 @@ $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
 $fecha       = str_replace('-', '', $fecha_input); 
 $UsuarioFact = trim($_GET['nit'] ?? '');
 
-// Control para revelar valores tras ejecución de cierre
-$revelarValores = (isset($_GET['revelar']) && $_GET['revelar'] === 'SI');
-
 if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
     $UsuarioFact = $UsuarioSesion;
 }
@@ -97,36 +97,32 @@ if($UsuarioFact !== ''){
         while($eg=$resE->fetch_assoc()){ 
             $totalEgresos += (float)$eg['VALOR']; 
             $listaEgresos[] = $eg; 
-            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false) { $yaExisteTransferEnEgresos = true; }
+            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false) {
+                $yaExisteTransferEnEgresos = true;
+            }
         } 
     }
+
     $resT = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$UsuarioFact_esc'");
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-$efectivo_sin_transfer =  $totalEgresos-$totalVentas ; 
-$efectivo_neto_final = $yaExisteTransferEnEgresos ? $efectivo_sin_transfer : ($efectivo_sin_transfer - $totalTransfer);
-
 /* ============================================================
-    GUARDADO EN TABLA cierres_caja
+    LÓGICA DE CALCULO CORREGIDA (SOLUCIÓN AL NEGATIVO)
 ============================================================ */
-if ($revelarValores && $UsuarioFact !== '') {
-    $checkCierre = $mysqli->prepare("SELECT IdCierre FROM cierres_caja WHERE FechaCorte=? AND NitFacturador=? AND Sede=?");
-    $checkCierre->bind_param("sss", $fecha_input, $UsuarioFact, $sede_actual);
-    $checkCierre->execute();
-    $resCheck = $checkCierre->get_result();
+// 1. Efectivo Bruto = Ventas - Egresos (Debe ser positivo)
+$efectivo_sin_transfer = $totalVentas - $totalEgresos; 
 
-    if ($resCheck->num_rows === 0) {
-        $fechaReg = date('Y-m-d H:i:s');
-        $ins = $mysqli->prepare("INSERT INTO cierres_caja (FechaCorte, NitFacturador, MontoFinal, Sede, UsuarioCierre, FechaRegistro) VALUES (?, ?, ?, ?, ?, ?)");
-        $ins->bind_param("ssdsss", $fecha_input, $UsuarioFact, $efectivo_neto_final, $sede_actual, $UsuarioSesion, $fechaReg);
-        $ins->execute();
-    }
+// 2. Total Físico = Restamos transferencias si no están ya en egresos
+if ($yaExisteTransferEnEgresos) {
+    $efectivo_neto_final = $efectivo_sin_transfer; 
+} else {
+    $efectivo_neto_final = $efectivo_sin_transfer - $totalTransfer;
 }
 
-$ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarValores);
+$ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
 <!DOCTYPE html>
@@ -151,7 +147,19 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
             body * { visibility: hidden !important; }
             #modalVoucher, #modalVoucher * { visibility: visible !important; }
             #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; display: block !important; }
-            #printArea { width: 95% !important; margin: 0 !important; padding: 1mm 2mm !important; color: #000 !important; font-family: Arial, sans-serif !important; font-weight: 900 !important; line-height: 1.2 !important; }
+            #printArea { 
+                width: 95% !important; 
+                margin: 0 !important; 
+                padding: 1mm 2mm !important; 
+                color: #000 !important; 
+                font-family: Arial, sans-serif !important; 
+                font-weight: 900 !important; 
+                line-height: 1.2 !important;
+            }
+            .ticket-header h2 { font-size: 18px !important; margin: 0 !important; padding-bottom: 2px !important; font-weight: 900 !important; text-transform: uppercase; }
+            .ticket-header p { font-size: 12px !important; margin: 2px 0 !important; font-weight: 900 !important; }
+            .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; }
+            .ticket-table td { padding: 3px 0 !important; font-weight: 900 !important; color: #000 !important; }
             hr { border: none !important; border-top: 2px solid #000 !important; margin: 5px 0 !important; opacity: 1 !important; }
             .no-print { display: none !important; }
         }
@@ -160,14 +168,14 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
 <body>
 
 <div class="panel no-print">
-    <form method="GET" id="formMain" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
+    <form method="GET" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
         <div>Sede: <select name="sede" onchange="this.form.submit()" style="padding:5px;">
             <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
             <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
         </select></div>
         <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>" style="padding:4px;"></div>
         <div>Facturador: <select name="nit" style="padding:5px; min-width:200px;">
-            <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
+            <?php if($ocultarValores): ?>
                 <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
             <?php else: ?>
                 <option value="">-- Seleccione Usuario --</option>
@@ -176,7 +184,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
                 <?php endwhile; endif; ?>
             <?php endif; ?>
         </select></div>
-        <input type="hidden" name="revelar" id="revelarInput" value="<?= $revelarValores ? 'SI' : 'NO' ?>">
         <button class="button" type="submit">Consultar Caja</button>
     </form>
 </div>
@@ -191,7 +198,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
             <tr><td>(-) Transferencias (Ref):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
             <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
                 <td><b>TOTAL FÍSICO EN CAJA:</b></td>
-                <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
+                <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final*-1) ?></b></td>
             </tr>
         </table>
     </div>
@@ -204,9 +211,9 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
                 <tr>
                     <td><?= $idE ?></td>
-                    <td><?= ($permiso9999 === 'SI' || $permiso0003 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
-                    <td class="text-end"><?= ($permiso9999 === 'SI' || $permiso0003 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
-                    <td style="text-align:center;"><?= ($permiso9999 === 'SI' || $permiso0003 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
+                    <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                    <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                    <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -215,81 +222,66 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$revelarVa
 
     <div class="panel no-print" style="text-align:center;">
         <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
-        <button class="button" style="background:#d32f2f;" onclick="ejecutarCierreUnico()">🔒 Cierre Definitivo</button>
+        <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
     </div>
 
     <div id="modalVoucher" class="modal"><div class="modal-content" id="printArea"></div></div>
 <?php endif; ?>
 
 <script>
-    function ejecutarCierreUnico() {
-        const usuarioSesion = '<?= $UsuarioSesion ?>';
-        const usuarioFacturador = '<?= $UsuarioFact ?>';
-        const tienePermisoEspecial = ('<?= $permiso9999 ?>' === 'SI' || '<?= $permiso0003 ?>' === 'SI');
-        const tienePermisoCierre = ('<?= $permiso7777 ?>' === 'SI');
-
-        // AJUSTE: Si el usuario de la sesión es el mismo facturador, permitimos el cierre.
-        const esUsuarioPropio = (usuarioSesion === usuarioFacturador);
-
-        if (!esUsuarioPropio && !tienePermisoEspecial && !tienePermisoCierre) {
-            alert('ACCESO DENEGADO: No tiene permisos para cerrar la caja de otro usuario.');
-            return;
-        }
-
-        const fecha = '<?= $fecha ?>';
-        const keyLocal = 'cierre_' + usuarioFacturador + '_' + fecha;
-
-        if (!tienePermisoEspecial && localStorage.getItem(keyLocal)) {
-            alert('Usted ya ejecutó el cierre definitivo hoy. Si necesita re-imprimir, solicite a un administrador.');
-            return;
-        }
-
-        if (confirm('¿Desea realizar el CIERRE DEFINITIVO? Se guardará el registro en la base de datos.')) {
-            if (!tienePermisoEspecial) localStorage.setItem(keyLocal, 'true');
-            document.getElementById('revelarInput').value = 'SI';
-            document.getElementById('formMain').submit();
-        }
-    }
-
     function mostrarVoucher(tipo) {
+        if(tipo === 'cierre' && '<?= $permiso7777 ?>' !== 'SI' && '<?= $permiso9999 ?>' !== 'SI') {
+            alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); return;
+        }
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td style="padding:1px;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
+            egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
         <?php endforeach; ?>
 
+        const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
+        const horaImpresion = '<?= date("h:i a") ?>';
+        
         let html = `
             <div class="ticket-header" style="text-align:center;">
-                <h2 style="margin:0;"><b>${tipo.toUpperCase()}</b></h2>
-                <p style="margin:2px 0;"><b>SEDE: <?= strtoupper($nombre_sede_display) ?></b></p>
-                <p style="margin:0;">FECHA: <?= $fecha_input ?> | <?= date("h:i a") ?></p>
-                <p style="margin:0;">CAJERO: <?= strtoupper(substr($nombreCompleto, 0, 25)) ?></p><hr>
+                <h2 style="margin:0;"><b>${titulo}</b></h2>
+                <p style="margin:0;"><b>SEDE: <?= strtoupper($nombre_sede_display) ?></b></p>
+                <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
+                <p style="margin:0;">CAJERO: <?= strtoupper(substr($nombreCompleto, 0, 25)) ?></p>
+                <hr>
             </div>
-            <table style="width:100%; font-size:13px;">
+            <table class="ticket-table">
                 <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($totalVentas) ?></b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
+                <tr style="border-top:1px dashed #000;">
+                    <td>EFECT. BRUTO:</td>
+                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_sin_transfer) ?></b></td>
+                </tr>
                 <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
                 <tr><td colspan="2"><hr></td></tr>
-                <tr style="font-size:16px;"><td><b>TOTAL FÍSICO:</b></td><td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final) ?></b></td></tr>
+                <tr style="font-size:16px;">
+                    <td><b>TOTAL FÍSICO:</b></td>
+                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final) ?></b></td>
+                </tr>
             </table>
-            <div style="margin-top:10px; font-weight:900;">DETALLE EGRESOS</div>
-            <table style="width:100%; font-size:12px;">${egresosHtml}</table>
+            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
+            <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
+            <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
+            </div>
             <div class="no-print" style="margin-top:20px;">
-                <button class="button" style="background:#2ecc71; width:100%;" onclick="window.print()">🖨 IMPRIMIR</button>
-                <button class="button" style="background:#7f8c8d; width:100%; margin-top:5px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
+                <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
+                <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
             </div>
         `;
         document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
 
-    <?php if($revelarValores): ?>
-        window.onload = function() { mostrarVoucher('cierre_oficial'); };
-    <?php endif; ?>
-
     function guardarEgreso(id){
         const mot = document.getElementById('motivo_'+id).value;
         const val = document.getElementById('valor_'+id).value;
-        if(!confirm('¿Actualizar egreso?')) return;
+        if(!confirm('¿Desea actualizar este egreso?')) return;
         fetch('update_egreso.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},

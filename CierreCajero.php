@@ -109,11 +109,17 @@ if($UsuarioFact !== ''){
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-$efectivo_sin_transfer =  $totalEgresos-$totalVentas ; 
+/* ============================================================
+    LÓGICA DE CALCULO CORREGIDA
+============================================================ */
+// 1. Diferencia operativa: Ventas menos Egresos (Debe ser positivo si hay dinero)
+$efectivo_sin_transfer = $totalVentas - $totalEgresos; 
 
 if ($yaExisteTransferEnEgresos) {
+    // Si la transferencia ya se restó manualmente en Egresos, el saldo es el físico
     $efectivo_neto_final = $efectivo_sin_transfer; 
 } else {
+    // Si no se ha restado, lo restamos ahora para saber cuánto queda en físico
     $efectivo_neto_final = $efectivo_sin_transfer - $totalTransfer;
 }
 
@@ -137,31 +143,26 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: white; margin: 2% auto; padding: 15px; width: 98%; max-width: 420px; border-radius: 12px; }
 
-        /* AJUSTES DE IMPRESIÓN REFORZADOS */
         @media print {
             @page { margin: 0; }
             body * { visibility: hidden !important; }
             #modalVoucher, #modalVoucher * { visibility: visible !important; }
             #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; display: block !important; }
-            
             #printArea { 
                 width: 95% !important; 
                 margin: 0 !important; 
                 padding: 1mm 2mm !important; 
                 color: #000 !important; 
                 font-family: Arial, sans-serif !important; 
-                font-weight: 900 !important; /* Negrita máxima */
+                font-weight: 900 !important; 
                 line-height: 1.2 !important;
             }
             .ticket-header h2 { font-size: 18px !important; margin: 0 !important; padding-bottom: 2px !important; font-weight: 900 !important; text-transform: uppercase; }
             .ticket-header p { font-size: 12px !important; margin: 2px 0 !important; font-weight: 900 !important; }
-            
             .ticket-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; }
             .ticket-table td { padding: 3px 0 !important; font-weight: 900 !important; color: #000 !important; }
-            
             hr { border: none !important; border-top: 2px solid #000 !important; margin: 5px 0 !important; opacity: 1 !important; }
             .no-print { display: none !important; }
-            b { font-weight: 900 !important; }
         }
     </style>
 </head>
@@ -200,16 +201,13 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <td><b>TOTAL FÍSICO EN CAJA:</b></td>
                 <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
             </tr>
-            <?php if($yaExisteTransferEnEgresos): ?>
-                <tr><td colspan="2" style="font-size:10px; color:green;">* Transferencias ya incluidas en Egresos.</td></tr>
-            <?php endif; ?>
         </table>
     </div>
 
     <div class="panel no-print">
         <h3>💸 Egresos de Caja</h3>
         <table class="table">
-            <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
+            <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Action</th></tr></thead>
             <tbody>
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
                 <tr>
@@ -268,12 +266,10 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
             </table>
             <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
             <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
-            
             <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
             </div>
-
             <div class="no-print" style="margin-top:20px;">
                 <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
                 <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
