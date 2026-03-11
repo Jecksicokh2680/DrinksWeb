@@ -46,21 +46,39 @@ function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
-    $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
-    $stmtP->bind_param("s", $NroDoc);
+    $NroDoc = trim($NroDoc);
+
+    // 1. VERIFICAR EN PEDIDOS
+    // Según tu estructura: estado 1 es activo, estado 0 es anulado.
+    // También validamos si existe fecha de anulación.
+    $stmtP = $db->prepare("SELECT estado, fechaanul FROM pedidos WHERE numero = ?");
+    $stmtP->bind_param("i", $NroDoc); // 'i' porque numero es INTEGER en tu tabla
     $stmtP->execute();
     $resP = $stmtP->get_result();
+    
     if ($rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != '0') return 1; 
+        // Si el estado es 0 O si el campo fechaanul no está vacío, está ANULADO
+        if ($rowP['estado'] == 0 || !empty($rowP['fechaanul'])) {
+            return 1; // Retorna 1 para decir "Sí, está anulado"
+        }
     }
     
-    $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
-    $stmtF->bind_param("s", $NroDoc);
+    // 2. VERIFICAR EN FACTURAS (Caso de facturas anuladas con devolución)
+    $sqlF = "SELECT F.numero 
+             FROM facturas F 
+             INNER JOIN devventas D ON F.idfactura = D.idfactura 
+             WHERE F.numero = ?";
+    $stmtF = $db->prepare($sqlF);
+    $stmtF->bind_param("i", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
-    return ($resF && $resF->num_rows > 0) ? 1 : 0;
-}
+    
+    if ($resF && $resF->num_rows > 0) {
+        return 1;
+    }
 
+    return 0; // Sigue activo
+}
 /* ============================================================
     PROCESAR ACCIONES (POST Y GET)
 ============================================================ */
