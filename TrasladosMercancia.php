@@ -93,7 +93,8 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
         }
     }
 
-    if(isset($_POST['aprobar']) && $aut_9999=="SI"){
+    // AJUSTE: Ahora permite reversión si es 9999 O 0003
+    if(isset($_POST['aprobar']) && ($aut_9999=="SI" || $aut_0003=="SI")){
         $id = (int)$_POST['idMov'];
         $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id AND Aprobado=1")->fetch_assoc();
         if($res){
@@ -245,10 +246,12 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                     <td><?= $destName ?></td>
                     <td style="font-size:11px;"><?= $r['Observacion'] ?></td>
                     <td>
-                        <?php if($aut_9999=="SI" && $r['Aprobado']==1): ?>
-                            <form method="POST">
+                        <?php 
+                        // AJUSTE: Ahora se muestra el botón si es 9999 O 0003
+                        if(($aut_9999=="SI" || $aut_0003=="SI") && $r['Aprobado']==1): ?>
+                            <form method="POST" onsubmit="return confirm('¿Realmente desea reversar este movimiento?')">
                                 <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
-                                <button type="submit" name="aprobar" style="background:none; border:none; cursor:pointer; font-size:16px;">🔄</button>
+                                <button type="submit" name="aprobar" style="background:none; border:none; cursor:pointer; font-size:16px;" title="Reversar">🔄</button>
                             </form>
                         <?php else: echo $r['Aprobado']==1 ? '✅' : '❌'; endif; ?>
                     </td>
@@ -273,12 +276,10 @@ function printMovimientos(){
     };
 
     rows.forEach(row => {
-        // 1. Hora limpia (Negrita)
         const fullDateTime = row.cells[0].innerText;
         const timeOnly = fullDateTime.split(' ')[1] ? fullDateTime.split(' ')[1].substring(0, 5) : fullDateTime;
         row.cells[0].innerText = timeOnly;
 
-        // 2. Formato de Producto (Multilínea para que no corte)
         const celdaBarcode = row.cells[2];
         const nombreProd = celdaBarcode.getAttribute('data-nombre');
         celdaBarcode.innerHTML = `
@@ -286,14 +287,12 @@ function printMovimientos(){
             <div style="font-size:9px; font-family:monospace;">[${celdaBarcode.innerText}]</div>
         `;
 
-        // 3. Traducción de Sedes
         row.cells[4].innerText = nombresSedes[row.cells[4].innerText.trim()] || row.cells[4].innerText;
         row.cells[5].innerText = nombresSedes[row.cells[5].innerText.trim()] || row.cells[5].innerText;
 
-        // 4. Limpieza de columnas innecesarias para ahorrar espacio horizontal
-        row.deleteCell(7); // Estado
-        row.deleteCell(6); // Obs
-        row.deleteCell(1); // Usuario
+        row.deleteCell(7);
+        row.deleteCell(6);
+        row.deleteCell(1);
     });
 
     header.deleteCell(7);
@@ -319,29 +318,14 @@ function printMovimientos(){
                 }
                 h2 { text-align: center; font-size: 16px; margin-bottom: 2px; text-transform: uppercase; }
                 .header-info { text-align: center; font-size: 11px; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
-                
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    table-layout: fixed; /* Esto evita que la tabla se estire fuera del papel */
-                }
-                th, td { 
-                    border: 1px solid #000; 
-                    padding: 4px 2px; 
-                    font-size: 11px; 
-                    text-align: center; 
-                    word-wrap: break-word; /* Fuerza el salto de línea si el texto es largo */
-                    overflow: hidden;
-                }
+                table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+                th, td { border: 1px solid #000; padding: 4px 2px; font-size: 11px; text-align: center; word-wrap: break-word; }
                 th { background: #000 !important; color: #fff !important; font-size: 10px; }
-
-                /* Ajuste de anchos de columna (Total 100%) */
-                th:nth-child(1), td:nth-child(1) { width: 15%; } /* Hora */
-                th:nth-child(2), td:nth-child(2) { width: 45%; text-align: left; } /* Producto */
-                th:nth-child(3), td:nth-child(3) { width: 12%; font-size: 13px; } /* Cant */
-                th:nth-child(4), td:nth-child(4) { width: 14%; } /* Origen */
-                th:nth-child(5), td:nth-child(5) { width: 14%; } /* Destino */
-
+                th:nth-child(1), td:nth-child(1) { width: 15%; } 
+                th:nth-child(2), td:nth-child(2) { width: 45%; text-align: left; } 
+                th:nth-child(3), td:nth-child(3) { width: 12%; font-size: 13px; } 
+                th:nth-child(4), td:nth-child(4) { width: 14%; } 
+                th:nth-child(5), td:nth-child(5) { width: 14%; }
                 .footer-firmas { margin-top: 30px; display: flex; justify-content: space-between; }
                 .firma-box { border-top: 1px solid #000; width: 45%; text-align: center; font-size: 9px; padding-top: 5px; }
             </style>
