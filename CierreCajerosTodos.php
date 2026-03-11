@@ -69,26 +69,23 @@ foreach ($sedes as $s) {
                     $egresosAgrupados[$nit]['total'] += (float)$eg['VALOR'];
                     $egrTotalCajero += (float)$eg['VALOR'];
 
-                    // Si el motivo contiene "TRANSF", marcamos que ya se restó manualmente
                     if (stripos($eg['MOTIVO'], 'TRANSF') !== false) {
                         $tieneTransferenciaEnEgresos = true;
                     }
                 }
             }
 
-            // 3. TRANSFERENCIAS AUTOMÁTICAS (Solo se restan si NO están en Egresos)
+            // 3. TRANSFERENCIAS AUTOMÁTICAS
             $qT = "SELECT SUM(Monto) AS TOTAL FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$nit'";
             $trf_auto = (float)($mysqli->query($qT)->fetch_assoc()['TOTAL'] ?? 0);
             
-            // Lógica de validación:
             $trf_a_restar = ($tieneTransferenciaEnEgresos) ? 0 : $trf_auto;
-
             $fisico = $vts - $egrTotalCajero - $trf_a_restar;
 
             $dataConsolidada[] = [
                 'sede' => $nombreSede, 'nombre' => $nombreCajero,
                 'ventas' => $vts, 'egr' => $egrTotalCajero, 'trf' => $trf_auto, 'fisico' => $fisico,
-                'audit' => $tieneTransferenciaEnEgresos // Para saber si se ignoró la resta auto
+                'audit' => $tieneTransferenciaEnEgresos 
             ];
 
             $globalVentas += $vts; $globalEgresos += $egrTotalCajero; $globalTransf += $trf_auto; $globalFisico += $fisico;
@@ -114,7 +111,7 @@ foreach ($sedes as $s) {
         .card-egreso { background: white; border-radius: 12px; border-left: 6px solid var(--danger); padding: 15px; box-shadow: 0 3px 5px rgba(0,0,0,0.05); }
         .egreso-item { font-size: 13px; color: #555; display: flex; justify-content: space-between; margin-bottom: 4px; padding-left: 8px; border-left: 2px solid #eee; }
         .footer-summary { background: var(--secondary); color: white; padding: 20px; border-radius: 15px; margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; text-align: center; }
-        #timer { background: var(--accent); color: white; padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 13px; }
+        #timer { background: var(--accent); color: white; padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 13px; min-width: 50px; text-align: center; }
         .badge-info { font-size: 10px; background: #d1ecf1; color: #0c5460; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 5px; }
     </style>
 </head>
@@ -124,7 +121,7 @@ foreach ($sedes as $s) {
     <h2 style="margin:0; font-size: 1.3rem;">🚀 Auditoría General de Sedes</h2>
     <div style="display:flex; align-items:center; gap:10px;">
         <input type="date" value="<?= $fecha_input ?>" onchange="location.href='?fecha='+this.value" style="padding:7px; border-radius:6px; border:1px solid #ddd;">
-        <span id="timer">05:00</span>
+        <span id="timer">03:00</span>
     </div>
 </div>
 
@@ -150,7 +147,7 @@ foreach ($sedes as $s) {
     <?php endforeach; ?>
 </div>
 
-<h3 style="margin: 30px 0 15px 5px; color: var(--danger); border-left: 4px solid var(--danger); padding-left: 10px;">🚫 Detalle de Salidas Agrupadas</h3>
+<h3 style="margin: 30px 0 15px 5px; color: var(--danger); border-left: 4px solid var(--danger); padding-left: 10px;">🚫 Detalle de Egresos por Facturador</h3>
 
 <div class="universal-grid">
     <?php if(count($egresosAgrupados) > 0): foreach($egresosAgrupados as $egAg): ?>
@@ -182,12 +179,19 @@ foreach ($sedes as $s) {
 </div>
 
 <script>
-    let timeLeft = 300;
+    // Configurado a 180 segundos (3 minutos)
+    let timeLeft = 180; 
+    const timerElement = document.getElementById('timer');
+
     setInterval(() => {
-        if(timeLeft <= 0) location.reload();
-        timeLeft--;
-        let m = Math.floor(timeLeft/60), s = timeLeft%60;
-        document.getElementById('timer').innerText = `${m}:${s<10?'0':''}${s}`;
+        if(timeLeft <= 0) {
+            location.reload();
+        } else {
+            timeLeft--;
+            let m = Math.floor(timeLeft / 60);
+            let s = timeLeft % 60;
+            timerElement.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
     }, 1000);
 </script>
 
