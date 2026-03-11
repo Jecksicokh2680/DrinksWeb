@@ -164,6 +164,7 @@ body{
 <div class="accordion-body">
 <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
 <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en  Efectivo dia </a>
+<a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres </a>
 <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
 <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
 <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
