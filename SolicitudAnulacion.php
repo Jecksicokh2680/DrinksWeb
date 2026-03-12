@@ -31,40 +31,49 @@ function conectarPOS($sede) {
         return (!empty($mysqliCentral)) ? $mysqliCentral : $mysqliPos;
     }
 }
+
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
     
-    $NroDoc = trim($NroDoc);
+    // Forzamos a que sea un entero para evitar líos de espacios
+    $NroDocInt = (int)trim($NroDoc);
     
-    // 1. BUSCAR EN FACTURAS
-    // Revisamos estado y campos de anulación según tu CREATE TABLE
-    $sqlF = "SELECT estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1";
+    // Consulta ampliada para ver qué está pasando realmente
+    $sqlF = "SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1";
     $stmtF = $db->prepare($sqlF);
-    $stmtF->bind_param("s", $NroDoc);
+    $stmtF->bind_param("i", $NroDocInt); // Cambiado a "i" de Integer
     $stmtF->execute();
     $res = $stmtF->get_result()->fetch_assoc();
     
-    // 2. SI NO ESTÁ, BUSCAR EN PEDIDOS
     if (!$res) {
         $sqlP = "SELECT estado, fechaanul FROM pedidos WHERE numero = ? LIMIT 1";
         $stmtP = $db->prepare($sqlP);
-        $stmtP->bind_param("s", $NroDoc);
+        $stmtP->bind_param("i", $NroDocInt);
         $stmtP->execute();
         $res = $stmtP->get_result()->fetch_assoc();
     }
 
     if ($res) {
         $estado = (int)$res['estado'];
-        // Si fechaanul NO está vacío, o el estado es diferente de 1 o 0
-        // (En muchos sistemas de este tipo, 1 es Activo, 2 es Procesado, y 0 o >3 es Anulado)
-        if (!empty($res['fechaanul']) || ($estado !== 1 && $estado !== 0)) {
-            return 1; // ANULADO (Verde)
+        $fecha = trim($res['fechaanul'] ?? '');
+        $motivoLocal = trim($res['motivoanulacion'] ?? '');
+
+        // LOGICA DE DETECCIÓN:
+        // En muchos POS, el estado 13 o 9 es anulado. 
+        // Si el estado es 0, a veces es "borrador" o "anulado" dependiendo de la config.
+        if ($estado == 0 || $estado > 1 || !empty($fecha) || !empty($motivoLocal)) {
+            return 1; // ANULADO
         }
     }
     
-    return 0; // ACTIVO (Amarillo)
+    return 0; // Sigue saliendo ACTIVO
 }
+
+
+
+
+
 /* ============================================================
     LÓGICA DE PROCESAMIENTO
 ============================================================ */
