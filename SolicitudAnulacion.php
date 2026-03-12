@@ -31,21 +31,40 @@ function conectarPOS($sede) {
         return (!empty($mysqliCentral)) ? $mysqliCentral : $mysqliPos;
     }
 }
-
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;
+    
     $NroDoc = trim($NroDoc);
     
-    $stmtF = $db->prepare("SELECT estado FROM facturas WHERE numero = ?");
+    // 1. BUSCAR EN FACTURAS
+    // Revisamos estado y campos de anulación según tu CREATE TABLE
+    $sqlF = "SELECT estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1";
+    $stmtF = $db->prepare($sqlF);
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
-    if ($rowF = $stmtF->get_result()->fetch_assoc()) {
-        if ($rowF['estado'] != '1' && $rowF['estado'] != '0') return 1;
+    $res = $stmtF->get_result()->fetch_assoc();
+    
+    // 2. SI NO ESTÁ, BUSCAR EN PEDIDOS
+    if (!$res) {
+        $sqlP = "SELECT estado, fechaanul FROM pedidos WHERE numero = ? LIMIT 1";
+        $stmtP = $db->prepare($sqlP);
+        $stmtP->bind_param("s", $NroDoc);
+        $stmtP->execute();
+        $res = $stmtP->get_result()->fetch_assoc();
     }
-    return 0; 
-}
 
+    if ($res) {
+        $estado = (int)$res['estado'];
+        // Si fechaanul NO está vacío, o el estado es diferente de 1 o 0
+        // (En muchos sistemas de este tipo, 1 es Activo, 2 es Procesado, y 0 o >3 es Anulado)
+        if (!empty($res['fechaanul']) || ($estado !== 1 && $estado !== 0)) {
+            return 1; // ANULADO (Verde)
+        }
+    }
+    
+    return 0; // ACTIVO (Amarillo)
+}
 /* ============================================================
     LÓGICA DE PROCESAMIENTO
 ============================================================ */
