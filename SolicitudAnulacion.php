@@ -2,12 +2,13 @@
 session_start();
 date_default_timezone_set('America/Bogota');
 
+// 1. CARGA DE CONEXIONES
 require_once 'Conexion.php';    
 require_once 'ConnCentral.php'; 
 require_once 'ConnDrinks.php';  
 
 /* ============================================================
-    ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
+    ASIGNACIÓN DE VARIABLES DE SESIÓN
 ============================================================ */
 $Usuario     = $_SESSION['Usuario']     ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
@@ -18,15 +19,16 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
 }
 
 /* ============================================================
-    FUNCIONES AUXILIARES
+    FUNCIONES DE CONEXIÓN CORREGIDAS
 ============================================================ */
 function conectarPOS($sede) {
     if ($sede == '002') {
         global $mysqliDrinks;
         return $mysqliDrinks;
     } else {
-        global $mysqliPos; 
-        return $mysqliPos;
+        // Probamos con ambos nombres posibles según tus archivos
+        global $mysqliPos, $mysqliCentral;
+        return (!empty($mysqliCentral)) ? $mysqliCentral : $mysqliPos;
     }
 }
 
@@ -40,13 +42,6 @@ function VerificarAnulacion($NroDoc, $sede) {
     $stmtF->execute();
     if ($rowF = $stmtF->get_result()->fetch_assoc()) {
         if ($rowF['estado'] != '1' && $rowF['estado'] != '0') return 1;
-    }
-    
-    $stmtP = $db->prepare("SELECT estado FROM pedidos WHERE numero = ?");
-    $stmtP->bind_param("s", $NroDoc); 
-    $stmtP->execute();
-    if ($rowP = $stmtP->get_result()->fetch_assoc()) {
-        if ($rowP['estado'] != '1' && $rowP['estado'] != '0') return 1; 
     }
     return 0; 
 }
@@ -68,45 +63,44 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar') {
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-// PROCESAR FORMULARIO
 if (isset($_POST['grabar'])) {
     $factura   = trim($_POST['FactAnular']);
     $reemplazo = trim($_POST['NroFactReemplaza']); 
     $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
-    // Aseguramos Mayúsculas desde el Servidor también
     $motivo = mb_strtoupper(trim($_POST['motivo']), 'UTF-8');
     
-    // VALIDACIÓN LADO SERVIDOR
-    if (empty($factura)) {
-        $error_msg = "Error: Debe seleccionar una factura para anular.";
-    } elseif ($factura === $reemplazo) {
-        $error_msg = "Error: La factura de reemplazo NO puede ser la misma que la anulada.";
-    } elseif (empty($motivo)) {
-        $error_msg = "Error: Debe escribir el motivo de la anulación.";
-    } else {
-        $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
-        $ft = date('Y-m-d H:i:s');
-        $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivo, $reemplazo);
-        $stmt->execute();
-        header("Location: ?fConsulta=" . $fechaConsulta); exit;
-    }
+    $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
+    $ft = date('Y-m-d H:i:s');
+    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivo, $reemplazo);
+    $stmt->execute();
+    header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
 /* ============================================================
-    OBTENCIÓN DE DATOS PARA SELECTORES
+    OBTENCIÓN DE DATOS - CON DEPURACIÓN
 ============================================================ */
 $dbSede = conectarPOS($NroSucursal);
 $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 $docsArray = [];
+$error_db = "";
 
-if ($dbSede && !$dbSede->connect_error) {
+if (!$dbSede) {
+    $error_db = "Error: La variable de conexión para $nombreSedeActual está vacía o no existe.";
+} elseif ($dbSede->connect_error) {
+    $error_db = "Error de conexión a $nombreSedeActual: " . $dbSede->connect_error;
+} else {
     $fQuery = str_replace('-', '', $fechaConsulta);
     $sqlDocs = "SELECT HORA, TRIM(numero) AS NUMERO, valortotal AS VALORTOTAL FROM facturas WHERE fecha = '$fQuery' AND estado IN ('0','1')
                 UNION ALL 
                 SELECT HORA, TRIM(numero) AS NUMERO, valortotal AS VALORTOTAL FROM pedidos WHERE fecha = '$fQuery' AND estado IN ('0','1')
                 ORDER BY HORA DESC";
+    
     $resDocs = $dbSede->query($sqlDocs);
-    if($resDocs) { while($r = $resDocs->fetch_assoc()) { $docsArray[] = $r; } }
+    if($resDocs) { 
+        while($r = $resDocs->fetch_assoc()) { $docsArray[] = $r; } 
+    } else {
+        $error_db = "Error en la consulta SQL: " . $dbSede->error;
+    }
 }
 ?>
 
@@ -138,8 +132,11 @@ if ($dbSede && !$dbSede->connect_error) {
         </div>
     </div>
 
-    <?php if(isset($error_msg)): ?>
-        <div class="alert alert-danger py-2 shadow-sm border-start border-4 border-danger">⚠️ <?= $error_msg ?></div>
+    <?php if(!empty($error_db)): ?>
+        <div class="alert alert-warning py-2 shadow-sm border-start border-4 border-warning">
+            <strong>Atención:</strong> <?= $error_db ?><br>
+            <small>Verifica que <code>ConnCentral.php</code> defina la variable <code>$mysqliCentral</code> o <code>$mysqliPos</code>.</small>
+        </div>
     <?php endif; ?>
 
     <div class="card p-4 mb-4">
@@ -149,7 +146,7 @@ if ($dbSede && !$dbSede->connect_error) {
             
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label class="form-label fw-bold">1. Documento a Anular</label>
+                    <label class="form-label fw-bold">1. Documento a Anular (<?= count($docsArray) ?> encontrados)</label>
                     <select class="form-select border-primary" id="selAnular" required>
                         <option value="">-- HORA | FACTURA | VALOR --</option>
                         <?php foreach($docsArray as $d): ?>
@@ -173,9 +170,9 @@ if ($dbSede && !$dbSede->connect_error) {
                 </div>
 
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">3. Motivo (MÍN. 5 LETRAS)</label>
+                    <label class="form-label fw-bold">3. Motivo (MAYÚSCULAS)</label>
                     <input type="text" name="motivo" id="motivo" class="form-control mayus" 
-                           placeholder="ESCRIBA EL MOTIVO AQUÍ..." required 
+                           placeholder="MOTIVO..." required 
                            oninput="this.value = this.value.toUpperCase()">
                 </div>
 
@@ -196,7 +193,7 @@ if ($dbSede && !$dbSede->connect_error) {
                     <th>REEMPLAZO</th>
                     <th class="text-start">MOTIVO</th>
                     <th>ESTADO POS</th>
-                    <th>BORRAR</th>
+                    <th>ELIMINAR</th>
                 </tr>
             </thead>
             <tbody class="bg-white">
@@ -206,6 +203,7 @@ if ($dbSede && !$dbSede->connect_error) {
                 $stmtH->bind_param("ss", $fechaConsulta, $NroSucursal);
                 $stmtH->execute();
                 $resH = $stmtH->get_result();
+                if($resH->num_rows == 0) echo "<tr><td colspan='7' class='py-3 text-muted'>No hay solicitudes para esta fecha.</td></tr>";
                 while ($r = $resH->fetch_assoc()): 
                     $anulada = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                 ?>
@@ -216,7 +214,7 @@ if ($dbSede && !$dbSede->connect_error) {
                     <td><?= $r['NroFactReemplaza'] ?></td>
                     <td class="text-start"><?= $r['MotivoAnulacion'] ?></td>
                     <td><span class="badge <?= $anulada?'bg-success':'bg-warning text-dark' ?>"><?= $anulada?'ANULADO':'ACTIVO' ?></span></td>
-                    <td><a href="?accion=borrar&factura=<?= $r['NroFactAnular'] ?>&fConsulta=<?= $fechaConsulta ?>" onclick="return confirm('¿Eliminar?')" class="btn btn-sm btn-outline-danger py-0 px-2">×</a></td>
+                    <td><a href="?accion=borrar&factura=<?= $r['NroFactAnular'] ?>&fConsulta=<?= $fechaConsulta ?>" onclick="return confirm('¿Eliminar?')" class="text-danger fw-bold" style="text-decoration:none">×</a></td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>
@@ -230,29 +228,13 @@ function validarTodo() {
     const reemplaza = document.getElementById('selReemplaza').value;
     const motivo = document.getElementById('motivo').value.trim();
     
-    // 1. Validar que el select de anular no esté vacío
-    if (anular.value === "") {
-        alert("❌ Por favor, seleccione la factura que desea ANULAR.");
-        return false;
-    }
+    if (anular.value === "") { alert("Seleccione factura a anular."); return false; }
+    if (anular.value === reemplaza) { alert("La factura de reemplazo no puede ser la misma."); return false; }
+    if (motivo.length < 5) { alert("Escriba un motivo válido."); return false; }
 
-    // 2. Validar que no sean la misma
-    if (anular.value === reemplaza) {
-        alert("❌ ERROR: La factura a anular (#" + anular.value + ") no puede ser la misma de reemplazo.");
-        return false;
-    }
-
-    // 3. Validar motivo mínimo
-    if (motivo.length < 5) {
-        alert("❌ Por favor, escriba un motivo más detallado (mínimo 5 letras).");
-        return false;
-    }
-
-    // Si todo está bien, pasamos los datos ocultos
     const opt = anular.options[anular.selectedIndex];
     document.getElementById('FactAnular').value = opt.value;
     document.getElementById('ValorAnular').value = opt.dataset.valor;
-    
     return true;
 }
 </script>
