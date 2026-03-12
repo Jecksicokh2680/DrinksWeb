@@ -159,7 +159,7 @@ foreach ($sedes as $s) {
         <?php endif; ?>
 
         <div class="total-box">
-            <span>FÍSICO</span>
+            <span>Dinero en Caja</span>
             <span>$<?= money($item['fisico']) ?></span>
         </div>
     </div>
