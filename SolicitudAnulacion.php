@@ -54,11 +54,10 @@ function VerificarAnulacion($NroDoc, $sede) {
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        // Si estado no es 0 o tiene fecha de anulación
         if ($rowP['estado'] != '0' || !empty(trim($rowP['fechaanul'] ?? ''))) return 1; 
     }    
 
-    // 2. Verificar en FACTURAS (Detección robusta para Drinks)
+    // 2. Verificar en FACTURAS
     $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
@@ -67,12 +66,10 @@ function VerificarAnulacion($NroDoc, $sede) {
         $estado = (int)$rowF['estado'];
         $fecha  = trim($rowF['fechaanul'] ?? '');
         $motivo = trim($rowF['motivoanulacion'] ?? '');
-        
-        // Si ya no es estado 0/1, o tiene fecha de anulación, o tiene motivo registrado
         if (($estado !== 1 && $estado !== 0) || !empty($fecha) || !empty($motivo)) return 1;
     }
 
-    // 3. Verificar en DEVOLUCIONES (Tu lógica anterior de INNER JOIN)
+    // 3. Verificar en DEVOLUCIONES
     $stmtD = $db->prepare("SELECT F.numero FROM facturas F INNER JOIN devventas D ON F.idfactura = D.idfactura WHERE F.numero = ?");
     $stmtD->bind_param("s", $NroDoc);
     $stmtD->execute();
@@ -81,7 +78,7 @@ function VerificarAnulacion($NroDoc, $sede) {
 }
 
 /* ============================================================
-    PROCESAR ACCIONES (POST Y GET)
+    PROCESAR ACCIONES
 ============================================================ */
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
@@ -156,6 +153,7 @@ if ($dbSede) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="180">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -170,6 +168,8 @@ if ($dbSede) {
         .uppercase-input { text-transform: uppercase; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.65rem; color: #6c757d; }
+        /* Estilo para el contador */
+        #timer-box { background: rgba(255,255,255,0.1); padding: 5px 10px; border-radius: 5px; border: 1px solid #0d6efd; display: inline-block; margin-right: 15px; }
     </style>
 </head>
 <body class="bg-light">
@@ -196,12 +196,20 @@ if ($dbSede) {
             <div><small class="text-secondary d-block">FECHA CONSULTA</small><span class="fw-bold"><?= $fechaConsulta ?></span></div>
             <?php endif; ?>
         </div>
-        <div class="text-end">
-            <small class="text-secondary d-block">CAMBIAR SEDE</small>
-            <select class="form-select form-select-sm bg-dark text-white" onchange="location.href='?setSede='+this.value+'&fConsulta=<?= $fechaConsulta ?>'">
-                <option value="001" <?= ($NroSucursal=='001')?'selected':'' ?>>CENTRAL</option>
-                <option value="002" <?= ($NroSucursal=='002')?'selected':'' ?>>DRINKS</option>
-            </select>
+
+        <div class="d-flex align-items-center">
+            <div id="timer-box" class="text-center">
+                <small class="text-secondary d-block" style="font-size: 10px;">REFRESCO EN</small>
+                <span id="countdown" class="fw-bold text-warning">03:00</span>
+            </div>
+
+            <div class="text-end">
+                <small class="text-secondary d-block">CAMBIAR SEDE</small>
+                <select class="form-select form-select-sm bg-dark text-white" onchange="location.href='?setSede='+this.value+'&fConsulta=<?= $fechaConsulta ?>'">
+                    <option value="001" <?= ($NroSucursal=='001')?'selected':'' ?>>CENTRAL</option>
+                    <option value="002" <?= ($NroSucursal=='002')?'selected':'' ?>>DRINKS</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -267,12 +275,10 @@ if ($dbSede) {
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
                             WHERE s.F_Creacion = ? AND s.Estado = '1' 
                             ORDER BY s.FH_CajeroCheck DESC";
-                            
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
-
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
@@ -290,9 +296,7 @@ if ($dbSede) {
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                         <td>
-                            <input class="form-check-input" type="checkbox" 
-                                <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : 
-                                    (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['NroSucursal']}')\"" : 'disabled') ?>>
+                            <input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['NroSucursal']}')\"" : 'disabled') ?>>
                         </td>
                         <td>
                             <?php if ($r['GerenteCheck'] == '1'): ?>
@@ -323,7 +327,22 @@ if ($dbSede) {
 </div>
 
 <script>
-    // Filtro de búsqueda en tiempo real
+    // Lógica del contador regresivo
+    let timeLeft = 180; // 3 minutos en segundos
+    const countdownEl = document.getElementById('countdown');
+
+    setInterval(() => {
+        if (timeLeft <= 0) {
+            countdownEl.innerHTML = "Refrescando...";
+        } else {
+            timeLeft--;
+            let minutes = Math.floor(timeLeft / 60);
+            let seconds = timeLeft % 60;
+            countdownEl.innerHTML = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+    }, 1000);
+
+    // Filtro de búsqueda
     document.getElementById('inputFiltro').addEventListener('keyup', function() {
         let texto = this.value.toLowerCase();
         document.querySelectorAll('#tablaPrincipal tbody tr').forEach(fila => {
@@ -331,7 +350,7 @@ if ($dbSede) {
         });
     });
 
-    // Cargar valores ocultos al enviar formulario
+    // Cargar valores al enviar
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
         const opt = sel.options[sel.selectedIndex];
