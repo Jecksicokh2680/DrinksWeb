@@ -121,17 +121,8 @@ if($UsuarioFact !== ''){
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-/* ============================================================
-    LÓGICA DE CALCULO AJUSTADA (SIEMPRE POSITIVO)
-============================================================ */
-$efectivo_sin_transfer = abs($totalVentas - $totalEgresos); 
-
-if ($yaExisteTransferEnEgresos) {
-    $efectivo_neto_final = $efectivo_sin_transfer; 
-} else {
-    $efectivo_neto_final = abs($efectivo_sin_transfer - $totalTransfer);
-}
-
+$efectivo_sin_transfer = $totalVentas - $totalEgresos; 
+$efectivo_neto_final = $yaExisteTransferEnEgresos ? $efectivo_sin_transfer : ($efectivo_sin_transfer - $totalTransfer);
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
@@ -139,7 +130,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Corte de Caja - <?= $nombre_sede_display ?></title>
+    <title>Corte de Caja</title>
     <style>
         body{font-family:"Segoe UI",sans-serif; margin:20px; background:#eef3f7; color:#333;}
         .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
@@ -179,12 +170,12 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
 <div class="panel no-print">
     <form method="GET" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
-        <div>Sede: <select name="sede" onchange="this.form.submit()" style="padding:5px;">
+        <div>Sede: <select name="sede" onchange="this.form.submit()">
             <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
             <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
         </select></div>
-        <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>" style="padding:4px;"></div>
-        <div>Facturador: <select name="nit" style="padding:5px; min-width:200px;">
+        <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>"></div>
+        <div>Facturador: <select name="nit">
             <?php if($ocultarValores): ?>
                 <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
             <?php else: ?>
@@ -194,22 +185,21 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <?php endwhile; endif; ?>
             <?php endif; ?>
         </select></div>
-        <button class="button" type="submit">Consultar Caja</button>
+        <button class="button" type="submit">Consultar</button>
     </form>
 </div>
 
 <?php if($UsuarioFact !== ''): ?>
     <div class="panel no-print" style="display: flex; justify-content: space-between; align-items: stretch; gap: 20px;">
-        
         <div style="flex: 1; max-width: 500px;">
             <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
             <table class="table">
                 <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
                 <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                <tr style="background:#f9f9f9;"><td><b>(=) EFECTIVO SIN TRANSF:</b></td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_sin_transfer) ?></b></td></tr>
-                <tr><td>(-) Transferencias (Ref):</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                <tr><td><b>(=) EFECTIVO SIN TRANSF:</b></td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_sin_transfer) ?></b></td></tr>
+                <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
                 <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
-                    <td><b>TOTAL FÍSICO EN CAJA:</b></td>
+                    <td><b>TOTAL FÍSICO:</b></td>
                     <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
                 </tr>
             </table>
@@ -217,18 +207,14 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
         <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
             <?php if($cierreRealizado): ?>
-                <div style="width: 100%; background: #fff; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                    <div style="font-size: 3em; margin-bottom: 10px;">🔒</div>
-                    <h3 style="color: #d32f2f; margin: 0 0 10px 0; font-weight: 800;">SESIÓN CERRADA</h3>
-                    <p style="margin: 0; color: #555; font-weight: 500;">Se ha detectado un arqueo previo para este usuario.</p>
-                    <p style="font-size: 0.85em; color: #888; margin-top: 10px;">La edición de egresos ha sido deshabilitada.</p>
+                <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center;">
+                    <div style="font-size: 3em;">🔒</div>
+                    <h3 style="color: #d32f2f; margin: 0;">SESIÓN CERRADA</h3>
                 </div>
             <?php else: ?>
-                <div style="width: 100%; background: #fff; border: 2px solid #2e7d32; border-radius: 8px; padding: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                    <div style="font-size: 3em; margin-bottom: 10px;">🔓</div>
-                    <h3 style="color: #2e7d32; margin: 0 0 10px 0; font-weight: 800;">SESIÓN ABIERTA</h3>
-                    <p style="margin: 0; color: #555; font-weight: 500;">El cajero aún no ha realizado el arqueo definitivo.</p>
-                    <p style="font-size: 0.85em; color: #2e7d32; margin-top: 10px; font-weight: bold;">✓ Los egresos pueden ser editados.</p>
+                <div style="width: 100%; border: 2px solid #2e7d32; border-radius: 8px; padding: 20px; text-align: center;">
+                    <div style="font-size: 3em;">🔓</div>
+                    <h3 style="color: #2e7d32; margin: 0;">SESIÓN ABIERTA</h3>
                 </div>
             <?php endif; ?>
         </div>
@@ -242,9 +228,9 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
                 <tr>
                     <td><?= $idE ?></td>
-                    <td><?= ($permiso9999 === 'SI' && !$cierreRealizado) ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
-                    <td class="text-end"><?= ($permiso9999 === 'SI' && !$cierreRealizado) ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
-                    <td style="text-align:center;"><?= ($permiso9999 === 'SI' && !$cierreRealizado) ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
+                    <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                    <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                    <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -264,10 +250,9 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         const p9999 = '<?= $permiso9999 ?>';
         const p7777 = '<?= $permiso7777 ?>';
         const p0003 = '<?= $permiso0003 ?>';
-        const cierreBool = <?= $cierreRealizado ? 'true' : 'false' ?>;
 
         if(tipo === 'cierre' && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
-            alert('ACCESO DENEGADO PARA CIERRE DEFINITIVO'); 
+            alert('ACCESO DENEGADO'); 
             return;
         }
 
@@ -279,9 +264,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
         
-        // Texto dinámico para el estado de la sesión
-        const textoEstado = cierreBool ? "SESION: CERRADA" : "SESION: ABIERTA (PENDIENTE)";
-
         let html = `
             <div class="ticket-header" style="text-align:center;">
                 <h2 style="margin:0;"><b>${titulo}</b></h2>
@@ -306,11 +288,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
             </table>
             <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
             <table class="ticket-table" style="font-size:11px;">${egresosHtml}</table>
-            
-            <div style="margin-top:15px; text-align:center; border:1px solid #000; padding:2px;">
-                <b style="font-size:13px;">${textoEstado}</b>
-            </div>
-
             <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
