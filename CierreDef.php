@@ -246,6 +246,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 <?php endif; ?>
 
 <script>
+  
     function mostrarVoucher(tipo) {
         const p9999 = '<?= $permiso9999 ?>';
         const p7777 = '<?= $permiso7777 ?>';
@@ -263,6 +264,8 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
+        // Variable para el estado de la sesión
+        const estadoSesion = '<?= $cierreRealizado ? "SESIÓN CERRADA" : "SESIÓN ABIERTA" ?>';
         
         let html = `
             <div class="ticket-header" style="text-align:center;">
@@ -270,6 +273,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <p style="margin:0;"><b>SEDE: <?= strtoupper($nombre_sede_display) ?></b></p>
                 <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
                 <p style="margin:0;">CAJERO: <?= strtoupper(substr($nombreCompleto, 0, 25)) ?></p>
+                <p style="margin:0;"><b>ESTADO: ${estadoSesion}</b></p>
                 <hr>
             </div>
             <table class="ticket-table">
@@ -300,6 +304,18 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
+
+    function guardarEgreso(id){
+        const mot = document.getElementById('motivo_'+id).value;
+        const val = document.getElementById('valor_'+id).value;
+        if(!confirm('¿Desea actualizar este egreso?')) return;
+        fetch('update_egreso.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?= $sede_actual ?>`
+        }).then(r => r.text()).then(t => { alert(t); location.reload(); });
+    }
+
 
     function guardarEgreso(id){
         const mot = document.getElementById('motivo_'+id).value;
