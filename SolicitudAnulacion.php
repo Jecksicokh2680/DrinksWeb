@@ -44,37 +44,29 @@ function conectarPOS($sede) {
 
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
-    if (!$db) return 0;    
+    if (!$db) return 0;
     
-    $NroDoc = trim($NroDoc);
-
-    // 1. Verificar en PEDIDOS
-    $stmtP = $db->prepare("SELECT estado, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
+    // 1. Revisar en PEDIDOS
+    $stmtP = $db->prepare("SELECT estado FROM PEDIDOS WHERE numero = ?");
     $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != '0' || !empty(trim($rowP['fechaanul'] ?? ''))) return 1; 
-    }    
-
-    // 2. Verificar en FACTURAS
-    $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
+        // Según tu imagen, el estado 1 es Anulado. 
+        // Agregamos comprobación explícita para estado 1 y estado 9.
+        if ($rowP['estado'] == '0' || $rowP['estado'] == '9' || $rowP['estado'] != '0') {
+            return 1; 
+        }
+    }
+    
+    // 2. Revisar en FACTURAS (por si ya se cruzó a devolución)
+    $stmtF = $db->prepare("SELECT F.numero FROM FACTURAS F INNER JOIN DEVVENTAS D ON F.IDFACTURA = D.IDFACTURA WHERE F.numero = ?");
     $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
-    if ($rowF = $resF->fetch_assoc()) {
-        $estado = (int)$rowF['estado'];
-        $fecha  = trim($rowF['fechaanul'] ?? '');
-        $motivo = trim($rowF['motivoanulacion'] ?? '');
-        if (($estado !== 1 && $estado !== 0) || !empty($fecha) || !empty($motivo)) return 1;
-    }
-
-    // 3. Verificar en DEVOLUCIONES
-    $stmtD = $db->prepare("SELECT F.numero FROM facturas F INNER JOIN devventas D ON F.idfactura = D.idfactura WHERE F.numero = ?");
-    $stmtD->bind_param("s", $NroDoc);
-    $stmtD->execute();
-    $resD = $stmtD->get_result();
-    return ($resD && $resD->num_rows > 0) ? 1 : 0;
+    if ($resF && $resF->num_rows > 0) return 1;
+    
+    return 0;
 }
 
 /* ============================================================
