@@ -20,7 +20,15 @@ function Autorizacion($User, $Solicitud) {
     $result = $stmt->get_result();
     return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
+
+// Validamos ambos permisos
 $permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
+$permiso0003 = Autorizacion($UsuarioSesion, '0003');
+
+// Bloqueo total si no tiene ninguno de los dos permisos requeridos para esta vista
+if ($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
+    die("No tiene autorización para ver este módulo.");
+}
 
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
 $fecha_esc   = str_replace('-', '', $fecha_input);
@@ -143,17 +151,14 @@ foreach ($sedes as $s) {
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
         
-        /* HEADER RESPONSIVE */
         .header-box { background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 25px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; }
         .header-box h2 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.8rem); }
 
-        /* GRID UNIVERSAL RESPONSIVE */
         .universal-grid { display: grid; gap: 20px; margin-bottom: 30px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
-        /* ESTILO ÚNICO DE TARJETA */
         .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 5px solid var(--primary); display: flex; flex-direction: column; height: 100%; transition: transform 0.2s; }
         .card:hover { transform: translateY(-3px); }
-        .card-egreso { border-top: 5px solid var(--danger); } /* Mismo tamaño, diferente color de tope */
+        .card-egreso { border-top: 5px solid var(--danger); }
 
         .sede-label { font-size: 10px; font-weight: bold; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
         .cajero-name { margin: 5px 0 15px 0; color: var(--primary); font-size: 1.1rem; }
@@ -161,23 +166,19 @@ foreach ($sedes as $s) {
         .row-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
         .row-item:last-child { border-bottom: none; }
 
-        /* CAJAS DE RESULTADO */
         .total-box { margin-top: auto; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; }
         .bg-sobra { background: #d4edda; color: #155724; } 
         .bg-falta { background: #f8d7da; color: #721c24; } 
         .bg-ok { background: #e3f2fd; color: #0d47a1; }
 
-        /* BADGES */
         .status-badge { margin-top: 15px; padding: 8px; border-radius: 6px; text-align: center; font-size: 12px; font-weight: bold; text-transform: uppercase; }
         .status-open { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
         .status-closed { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
 
-        /* INPUTS Y BOTONES */
         .input-edit { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 13px; margin-bottom: 5px; background: #fafafa; }
         .btn-save { background: var(--success); color: white; border: none; border-radius: 6px; cursor: pointer; padding: 8px 15px; font-size: 14px; width: 100%; transition: 0.3s; }
         .btn-save:hover { background: #219150; }
 
-        /* FOOTER RESPONSIVE */
         .footer-summary { background: var(--secondary); color: white; padding: 25px; border-radius: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; text-align: center; margin-top: 40px; }
         .footer-item b { display: block; font-size: 1.2rem; margin-top: 5px; }
         .neto-destaque { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); }
