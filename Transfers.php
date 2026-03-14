@@ -119,20 +119,30 @@ if (isset($_POST['ajax']) && $_POST['ajax'] === 'actualizar_check') {
 $msg = "";
 
 /* ============================================================
-    ELIMINAR TRANSFERENCIA
+    ELIMINAR TRANSFERENCIA (AJUSTADO)
 ============================================================ */
 if (isset($_GET['borrar'])) {
     $idBorrar = intval($_GET['borrar']);
-    $pAdmin = Autorizacion($UsuarioSesion, "0003") === "SI";
-    if ($pAdmin) {
+    
+    // Validar autorizaciones especiales
+    $pAdmin9999 = Autorizacion($UsuarioSesion, "9999") === "SI";
+    $pAdmin0003 = Autorizacion($UsuarioSesion, "0003") === "SI";
+
+    if ($pAdmin9999 || $pAdmin0003) {
+        // Puede borrar cualquier registro sin restricciones
         $mysqli->query("DELETE FROM Relaciontransferencias WHERE IdTransfer=$idBorrar");
+        $msg = "✓ Registro eliminado.";
     } else {
+        // Solo puede borrar si el registro pertenece al usuario activo
         $stmtCheck = $mysqli->prepare("SELECT IdTransfer FROM Relaciontransferencias WHERE IdTransfer=? AND CedulaNit=?");
-        $stmtCheck->bind_param("is",$idBorrar,$UsuarioSesion);
+        $stmtCheck->bind_param("is", $idBorrar, $UsuarioSesion);
         $stmtCheck->execute();
         if ($stmtCheck->get_result()->num_rows > 0) {
             $mysqli->query("DELETE FROM Relaciontransferencias WHERE IdTransfer=$idBorrar");
-        } else { $msg = "❌ No autorizado."; }
+            $msg = "✓ Registro eliminado.";
+        } else { 
+            $msg = "❌ No autorizado para eliminar este registro."; 
+        }
     }
 }
 
@@ -183,7 +193,7 @@ $consultaSQL = "
     $where ORDER BY t.Hora DESC";
 $transferencias = $mysqli->query($consultaSQL);
 
-// RESUMEN POR CAJERO Y SEDE (CORREGIDO)
+// RESUMEN POR CAJERO Y SEDE
 $resumenSQL = "
     SELECT s.Direccion AS Sede, tr.Nombre AS Cajero, SUM(t.Monto) AS TotalCajero, COUNT(*) AS Cantidad
     FROM Relaciontransferencias t
@@ -307,9 +317,7 @@ $resCajerosFiltro = $mysqli->query("SELECT DISTINCT tr.CedulaNit, tr.Nombre FROM
                                     <input type="checkbox" class="form-check-input" <?= $row['RevisadoGerencia']?'checked':'' ?> <?= $pGer?'':'disabled' ?> onchange="actualizarCheck(<?= $row['IdTransfer'] ?>,'RevisadoGerencia',this)">
                                 </td>
                                 <td class="text-center">
-                                    <?php if(Autorizacion($UsuarioSesion, "0003") === "SI"): ?>
-                                        <a href="?borrar=<?= $row['IdTransfer'] ?>&fechaConsulta=<?= $fechaConsulta ?>&fCajero=<?= $filtroCajero ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar?')">Borrar</a>
-                                    <?php endif; ?>
+                                    <a href="?borrar=<?= $row['IdTransfer'] ?>&fechaConsulta=<?= $fechaConsulta ?>&fCajero=<?= $filtroCajero ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar?')">Borrar</a>
                                 </td>
                             </tr>
                         <?php endwhile; 
