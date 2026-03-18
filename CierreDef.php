@@ -16,13 +16,17 @@ require("Conexion.php");
 require("ConnDrinks.php");  
 
 $sede_actual = $_GET['sede'] ?? 'central';
+
+// Configuración de NITs por sede para la tabla de transferencias
 if ($sede_actual === 'drinks') {
     if ($mysqliDrinks->connect_error) die("Error Sede Drinks: " . $mysqliDrinks->connect_error);
     $mysqliActiva = $mysqliDrinks;
     $nombre_sede_display = "DRINKS (AWS)";
+    $nit_empresa_filtro = "901724534-7"; // NIT de Drinks
 } else {
     $mysqliActiva = $mysqliCentral;
     $nombre_sede_display = "CENTRAL";
+    $nit_empresa_filtro = "86057267-8";  // NIT de Central
 }
 
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
@@ -50,8 +54,8 @@ $permiso9999 = Autorizacion($UsuarioSesion, '9999');
 $permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
 $permiso0003 = Autorizacion($UsuarioSesion, '0003'); 
 
-$fecha_input = $_GET['fecha'] ?? date('Y-m-d');
-$fecha       = str_replace('-', '', $fecha_input); 
+$fecha_input = $_GET['fecha'] ?? date('Y-m-d'); // Formato 2026-03-18
+$fecha       = str_replace('-', '', $fecha_input); // Formato 20260318
 $UsuarioFact = trim($_GET['nit'] ?? '');
 
 if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
@@ -66,10 +70,10 @@ $UsuarioFact_esc = $mysqliActiva->real_escape_string($UsuarioFact);
 ============================================================ */
 $cierreRealizado = false;
 $qryCheckCierre = "SELECT T2.NIT FROM ARQUEO AS A1
-                   INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
-                   INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
-                   WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
-                   AND T2.NIT = '$UsuarioFact_esc' LIMIT 1";
+                    INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
+                    INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
+                    WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
+                    AND T2.NIT = '$UsuarioFact_esc' LIMIT 1";
 $resCheck = $mysqliActiva->query($qryCheckCierre);
 if ($resCheck && $resCheck->num_rows > 0) { $cierreRealizado = true; }
 
@@ -90,6 +94,7 @@ $listaEgresos = [];
 $yaExisteTransferEnEgresos = false;
 
 if($UsuarioFact !== ''){
+    // VENTAS
     $qryV = "SELECT SUM(T) AS TOTAL, NOM FROM (
         SELECT (DF.CANTIDAD*DF.VALORPROD) AS T, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOM FROM FACTURAS F 
         INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
@@ -102,6 +107,7 @@ if($UsuarioFact !== ''){
     $resV = $mysqliActiva->query($qryV);
     if($vRow = $resV->fetch_assoc()){ $totalVentas = (float)$vRow['TOTAL']; $nombreCompleto = $vRow['NOM']; }
 
+    // EGRESOS
     $resE = $mysqliActiva->query("SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
         INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
         WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$UsuarioFact_esc'");
@@ -115,13 +121,19 @@ if($UsuarioFact !== ''){
         } 
     }
 
-    $resT = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$UsuarioFact_esc'");
+    // TRANSFERENCIAS (Corregido: Usa fecha con guiones y NitEmpresa)
+    $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
+                               WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
+    $stmtT->bind_param("sss", $fecha_input, $UsuarioFact, $nit_empresa_filtro);
+    $stmtT->execute();
+    $resT = $stmtT->get_result();
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-$efectivo_sin_transfer =   $totalEgresos-$totalVentas; 
+// LOGICA DE RESTAS: IGUAL AL ORIGINAL
+$efectivo_sin_transfer = $totalEgresos - $totalVentas; 
 $efectivo_neto_final = $yaExisteTransferEnEgresos ? $efectivo_sin_transfer : ($efectivo_sin_transfer - $totalTransfer);
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
@@ -246,7 +258,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 <?php endif; ?>
 
 <script>
-  
     function mostrarVoucher(tipo) {
         const p9999 = '<?= $permiso9999 ?>';
         const p7777 = '<?= $permiso7777 ?>';
@@ -264,7 +275,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
-        // Variable para el estado de la sesión
         const estadoSesion = '<?= $cierreRealizado ? "SESIÓN CERRADA" : "SESIÓN ABIERTA" ?>';
         
         let html = `
@@ -304,18 +314,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         document.getElementById('printArea').innerHTML = html;
         document.getElementById('modalVoucher').style.display = 'block';
     }
-
-    function guardarEgreso(id){
-        const mot = document.getElementById('motivo_'+id).value;
-        const val = document.getElementById('valor_'+id).value;
-        if(!confirm('¿Desea actualizar este egreso?')) return;
-        fetch('update_egreso.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?= $sede_actual ?>`
-        }).then(r => r.text()).then(t => { alert(t); location.reload(); });
-    }
-
 
     function guardarEgreso(id){
         const mot = document.getElementById('motivo_'+id).value;
