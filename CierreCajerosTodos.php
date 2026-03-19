@@ -147,12 +147,23 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
         .bg-ok { background: #e3f2fd; color: #0d47a1; }
         .input-edit { width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 5px; font-size: 12px; margin-bottom: 4px; }
         .footer-summary { background: #1f2d3d; color: white; padding: 20px; border-radius: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; text-align: center; }
+        
+        /* Estilos Cronómetro */
+        #timer-container { background: var(--primary); color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+        .dot { height: 8px; width: 8px; background-color: #2ecc71; border-radius: 50%; display: inline-block; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:white; padding:12px; border-radius:10px;">
-    <h3 style="margin:0;">📊 Auditoría Consolidada</h3>
+    <div style="display:flex; align-items:center; gap:15px;">
+        <h3 style="margin:0;">📊 Auditoría Consolidada</h3>
+        <div id="timer-container">
+            <span class="dot"></span> 
+            Refresco en: <span id="timer">180</span>s
+        </div>
+    </div>
     <input type="date" value="<?= $fecha_input ?>" onchange="location.href='?fecha='+this.value">
 </div>
 
@@ -239,6 +250,20 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
 </div>
 
 <script>
+    // Configuración del Refresh (180 segundos)
+    let secondsLeft = 180;
+    const timerDisplay = document.getElementById('timer');
+
+    const countdown = setInterval(() => {
+        secondsLeft--;
+        timerDisplay.textContent = secondsLeft;
+        
+        if (secondsLeft <= 0) {
+            clearInterval(countdown);
+            location.reload();
+        }
+    }, 1000);
+
     function guardarEgreso(id, sede){
         const mot = document.getElementById('motivo_'+id).value;
         const val = document.getElementById('valor_'+id).value;
