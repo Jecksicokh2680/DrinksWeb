@@ -64,7 +64,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
     $sql = "
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
         FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD
     FROM FACTURAS
@@ -74,7 +74,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura
     UNION ALL
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
         PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD
     FROM PEDIDOS
@@ -155,12 +155,14 @@ if ($skus && isset($mysqliWeb)) {
         .gran-total{ background: #263238; color: #fff; font-weight: 900; }
         .badge{ padding: 4px 8px; border-radius: 4px; font-size: 11px; color: white; font-weight: bold; }
         .central{ background: #1565c0; } .drinks{ background: #2e7d32; }
+        .fecha-actual{ color: #78909c; font-size: 12px; font-weight: bold; margin-bottom: 5px; display: block;}
     </style>
     <script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
 </head>
 <body>
 
 <div class="card">
+    <span class="fecha-actual">📅 Generado: <?= date('d/m/Y h:i A') ?></span>
     <h2>📊 Ejecución de Ventas</h2>
 
     <form method="GET" class="filter-box">
@@ -199,7 +201,7 @@ if ($skus && isset($mysqliWeb)) {
         <table id="tablaVentas">
             <thead>
                 <tr>
-                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
+                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Fecha</th><th>Hora</th>
                     <th>Sku</th><th>Producto</th><th>Precio</th>
                     <th style="text-align:center">Cajas</th>
                     <th style="text-align:center">Und</th>
@@ -213,7 +215,7 @@ if ($skus && isset($mysqliWeb)) {
 
                 foreach($rows as $r){
                     if($docAnt && $docAnt != $r['DOCUMENTO']){
-                        echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                        echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                         $subDoc = 0;
                     }
 
@@ -231,6 +233,7 @@ if ($skus && isset($mysqliWeb)) {
                         <td><span class='badge $badge_class'>{$r['SUCURSAL']}</span></td>
                         <td>{$r['FACTURADOR']}</td>
                         <td>{$r['DOCUMENTO']}</td>
+                        <td>{$r['FECHA']}</td>
                         <td>{$r['HORA']}</td>
                         <td><code>{$r['Barcode']}</code></td>
                         <td>{$r['PRODUCTO']}</td>
@@ -244,12 +247,12 @@ if ($skus && isset($mysqliWeb)) {
                     $subDoc    += $total_item;
                     $docAnt     = $r['DOCUMENTO'];
                 }
-                if($docAnt) echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                if($docAnt) echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                 ?>
             </tbody>
             <tfoot>
                 <tr class="gran-total">
-                    <td colspan="7" style="text-align:right">GRAN TOTAL:</td>
+                    <td colspan="8" style="text-align:right">GRAN TOTAL:</td>
                     <td align="center"><?=number_format($totalCajasGlobal,0)?></td>
                     <td align="center"><?=number_format($totalUndsGlobal,0)?></td>
                     <td>$ <?=number_format($granTotal,0,'.','.')?></td>
@@ -278,12 +281,10 @@ function imprimirReporte() {
     let win = window.open('', '', 'width=400,height=600');
     win.document.write('<html><head><title>POS Print</title>');
     win.document.write('<style>');
-    // Reducimos el line-height a 1.0 y eliminamos paddings innecesarios
     win.document.write('body{ font-family: "Courier New", Courier, monospace; width: 100%; margin: 0; padding: 0; font-size: 11px; line-height: 1.0; color: #000; font-weight: 700; }');
     win.document.write('.text-center{ text-align: center; } .text-right{ text-align: right; }');
     win.document.write('.border-dashed{ border-top: 1px dashed #000; margin: 2px 0; }');
     win.document.write('.doc-header{ font-weight: 900; margin-top: 4px; font-size: 11px; }');
-    // Flex para poner nombre a la izquierda y precio a la derecha en una sola línea
     win.document.write('.item-row{ display: flex; justify-content: space-between; margin-bottom: 1px; }');
     win.document.write('.item-qty{ font-size: 10px; margin-bottom: 3px; border-bottom: 0.5px solid #eee; }');
     win.document.write('.total-destacado{ font-size: 13px; font-weight: 900; margin-top: 5px; }');
@@ -310,7 +311,7 @@ function imprimirReporte() {
         }
 
         if (docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.HORA}</div>`);
+            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.FECHA} ${r.HORA}</div>`);
         }
 
         let uni = unicaja[r.Barcode] || 1;
@@ -323,13 +324,11 @@ function imprimirReporte() {
         gTotal += itemTotal;
         docAnt = r.DOCUMENTO;
 
-        // Fila de producto: Nombre a la izquierda, total item a la derecha
         win.document.write('<div class="item-row">');
         win.document.write(`<span>${r.PRODUCTO.substring(0, 20)}</span>`);
         win.document.write(`<span>$${formatoCop.format(itemTotal)}</span>`);
         win.document.write('</div>');
         
-        // Fila de detalle (Cajas/Unds y precio unitario) en letra más pequeña
         win.document.write(`<div class="item-qty">  ${cajas}Cj ${unds}Un x $${formatoCop.format(r.VALORPROD)}</div>`);
 
         if (index === rows.length - 1) {
