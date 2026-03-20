@@ -99,6 +99,44 @@ function obtenerVentasMensuales($db) {
     return $ventas;
 }
 
+// NUEVA FUNCIÓN: COMPARATIVO LUNES A DOMINGO
+function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
+    $nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    $comparativo = [];
+    
+    // Obtener la fecha del Lunes de esta semana
+    $lunesEstaSemana = date('Y-m-d', strtotime('monday this week'));
+    
+    for ($i = 0; $i < 7; $i++) {
+        $fActual = date('Ymd', strtotime("$lunesEstaSemana +$i days"));
+        $fPasada = date('Ymd', strtotime("$lunesEstaSemana +$i days -7 days"));
+        $nombreDia = $nombresDias[date('w', strtotime($fActual))];
+
+        $qBase = "SELECT SUM(total) as total FROM (
+                SELECT D.CANTIDAD * D.VALORPROD as total FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA=F.IDFACTURA WHERE F.ESTADO='0' AND F.FECHA = '?'
+                UNION ALL
+                SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA = '?'
+              ) X";
+
+        $valActual = 0; $valPasado = 0;
+        foreach([$dbCentral, $dbDrinks] as $db) {
+            if(!$db) continue;
+            $resA = $db->query(str_replace('?', $fActual, $qBase))->fetch_assoc();
+            $resP = $db->query(str_replace('?', $fPasada, $qBase))->fetch_assoc();
+            $valActual += (float)$resA['total'];
+            $valPasado += (float)$resP['total'];
+        }
+
+        $comparativo[] = [
+            'dia' => $nombreDia,
+            'actual' => $valActual,
+            'anterior' => $valPasado,
+            'diff' => $valActual - $valPasado
+        ];
+    }
+    return $comparativo;
+}
+
 $comprasCentral = obtenerComprasDia($mysqliCentral, 'CENTRAL');
 $comprasDrinks  = obtenerComprasDia($mysqliDrinks, 'DRINKS');
 $todasLasCompras = array_merge($comprasCentral, $comprasDrinks);
@@ -142,6 +180,7 @@ $central = analizarSucursal($mysqliCentral, 'CENTRAL');
 $drinks  = analizarSucursal($mysqliDrinks, 'DRINKS');
 $ventasGraficaCentral = obtenerVentasMensuales($mysqliCentral);
 $ventasGraficaDrinks  = obtenerVentasMensuales($mysqliDrinks);
+$datosComparativos = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
 
 $totalVentaD = $central['venta_dia'] + $drinks['venta_dia'];
 $totalTransD = $central['trans_dia'] + $drinks['trans_dia'];
@@ -291,6 +330,41 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         <div class="wrap-box full-width">
             <h3 style="margin-top:0">📈 Evolución de Ventas Diarias</h3>
             <div style="height: 380px;"><canvas id="graficoTendencia"></canvas></div>
+            
+            <div style="margin-top: 35px; border-top: 2px solid #eee; padding-top: 20px;">
+                <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa Semanal (Inicia Lunes)</h4>
+                <table style="width:100%; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                    <thead>
+                        <tr style="background:#374151; color:white;">
+                            <th>Día</th>
+                            <th style="text-align:right">Semana Anterior</th>
+                            <th style="text-align:right">Semana Actual</th>
+                            <th style="text-align:right">Diferencia</th>
+                            <th style="text-align:center">Tendencia</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($datosComparativos as $d): 
+                            $pct = ($d['anterior'] > 0) ? ($d['diff'] / $d['anterior']) * 100 : 0;
+                            $color = ($d['diff'] >= 0) ? '#10b981' : '#ef4444';
+                            $flecha = ($d['diff'] >= 0) ? '▲' : '▼';
+                        ?>
+                        <tr>
+                            <td style="font-weight:bold; background:#f9fafb;"><?= $d['dia'] ?></td>
+                            <td style="text-align:right; color:#6b7280;"><?= moneda($d['anterior']) ?></td>
+                            <td style="text-align:right; font-weight:bold;"><?= moneda($d['actual']) ?></td>
+                            <td style="text-align:right; color:<?= $color ?>; font-weight:500;">
+                                <?= ($d['diff'] > 0 ? '+': '') . moneda($d['diff']) ?>
+                                <br><small>(<?= round($pct, 1) ?>%)</small>
+                            </td>
+                            <td style="text-align:center; font-size:1.2rem; color:<?= $color ?>;">
+                                <?= $flecha ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

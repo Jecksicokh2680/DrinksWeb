@@ -1,6 +1,6 @@
 <?php
 /* ============================================================
-    CONFIGURACIÓN Y CONEXIONES (FULL AUDITORÍA)
+    CONFIGURACIÓN Y CONEXIONES (FULL AUDITORÍA CON CIERRE)
 ============================================================ */
 date_default_timezone_set('America/Bogota'); 
 require("ConnCentral.php"); 
@@ -57,6 +57,16 @@ foreach ($sedes as $s) {
             $nit = $c['NIT'];
             $nombreCajero = $c['NOMBRE'];
 
+            /* --- VALIDACIÓN DE CIERRE (LOGICA EXTRAÍDA) --- */
+            $cierreRealizado = false;
+            $qryCheckCierre = "SELECT T2.NIT FROM ARQUEO AS A1
+                                INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
+                                INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
+                                WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
+                                AND T2.NIT = '$nit' LIMIT 1";
+            $resCheck = $mysqliActiva->query($qryCheckCierre);
+            if ($resCheck && $resCheck->num_rows > 0) { $cierreRealizado = true; }
+
             // VENTAS NETAS
             $qV = "SELECT SUM(T) AS TOTAL FROM (
                 SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
@@ -95,14 +105,14 @@ foreach ($sedes as $s) {
             $stmtT->execute();
             $trf_auto = (float)($stmtT->get_result()->fetch_assoc()['total'] ?? 0);
             
-            // DIFERENCIA: Ventas - Egresos. Si no hay item de TRF en egresos, se resta la TRF del reporte.
             $diferencia = $vts - $egrTotalCajero; 
             if (!$tieneTransferenciaEnEgresos) { $diferencia -= $trf_auto; }
 
             $dataConsolidada[] = [
                 'sede' => $nombreSede, 'nombre' => $nombreCajero, 'ventas' => $vts, 
                 'egr' => $egrTotalCajero, 'trf' => $trf_auto, 'efectivo' => $efectivoCajero,
-                'diferencia' => $diferencia, 'status_trf' => $tieneTransferenciaEnEgresos
+                'diferencia' => $diferencia, 'status_trf' => $tieneTransferenciaEnEgresos,
+                'cerrado' => $cierreRealizado // Guardamos el estado
             ];
 
             $globalVentas += $vts; $globalEgresos += $egrTotalCajero; $globalTransf += $trf_auto; 
@@ -117,14 +127,10 @@ foreach ($sedes as $s) {
     }
 }
 
-// CÁLCULO PANEL CONSOLIDADO
 $sumaVentas = 0; $sumaEgresos = 0; $sumaTransf = 0; $sumaEfectivo = 0; $sumaNeto = 0;
 foreach($resumenSedes as $r) {
-    $sumaVentas   += $r['ventas'];
-    $sumaEgresos  += $r['egresos'];
-    $sumaTransf   += $r['transf'];
-    $sumaEfectivo += $r['efectivo'];
-    $sumaNeto     += $r['neto'];
+    $sumaVentas += $r['ventas']; $sumaEgresos += $r['egresos']; $sumaTransf += $r['transf'];
+    $sumaEfectivo += $r['efectivo']; $sumaNeto += $r['neto'];
 }
 $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg-falta" : "bg-ok");
 ?>
@@ -139,7 +145,7 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
         :root { --primary: #2c3e50; --danger: #e74c3c; --success: #27ae60; --info: #3498db; --warning: #f39c12; --bg: #f4f7f6; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 10px; }
         .grid { display: grid; gap: 15px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); margin-bottom: 25px; }
-        .card { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-top: 5px solid var(--primary); }
+        .card { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-top: 5px solid var(--primary); position: relative; }
         .row-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
         .total-box { margin-top: 10px; padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; font-weight: bold; }
         .bg-sobra { background: #d4edda; color: #155724; }
@@ -148,10 +154,15 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
         .input-edit { width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 5px; font-size: 12px; margin-bottom: 4px; }
         .footer-summary { background: #1f2d3d; color: white; padding: 20px; border-radius: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; text-align: center; }
         
-        /* Estilos Cronómetro */
-        #timer-container { background: var(--primary); color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
-        .dot { height: 8px; width: 8px; background-color: #2ecc71; border-radius: 50%; display: inline-block; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        /* Cronómetro */
+        #timer-box { background: var(--primary); color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; display: flex; align-items: center; gap: 8px; font-weight: bold; }
+        .dot-timer { height: 8px; width: 8px; background: #2ecc71; border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+
+        /* Estilos Sesión */
+        .status-badge { font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; border: 1px solid; }
+        .status-abierta { color: #2e7d32; background: #e8f5e9; border-color: #2e7d32; }
+        .status-cerrada { color: #d32f2f; background: #ffebee; border-color: #d32f2f; }
     </style>
 </head>
 <body>
@@ -159,10 +170,7 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; background:white; padding:12px; border-radius:10px;">
     <div style="display:flex; align-items:center; gap:15px;">
         <h3 style="margin:0;">📊 Auditoría Consolidada</h3>
-        <div id="timer-container">
-            <span class="dot"></span> 
-            Refresco en: <span id="timer">180</span>s
-        </div>
+        <div id="timer-box"><span class="dot-timer"></span> Refresco en: <span id="countdown">180</span>s</div>
     </div>
     <input type="date" value="<?= $fecha_input ?>" onchange="location.href='?fecha='+this.value">
 </div>
@@ -198,7 +206,12 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
         $clase = (round($item['diferencia']) < 0) ? "bg-sobra" : ((round($item['diferencia']) > 0) ? "bg-falta" : "bg-ok");
     ?>
     <div class="card">
-        <small><?= $item['sede'] ?></small>
+        <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:5px;">
+            <small><?= $item['sede'] ?></small>
+            <span class="status-badge <?= $item['cerrado'] ? 'status-cerrada' : 'status-abierta' ?>">
+                <?= $item['cerrado'] ? '🔒 CERRADA' : '🔓 ABIERTA' ?>
+            </span>
+        </div>
         <h5 style="margin:5px 0;"><?= htmlspecialchars($item['nombre']) ?></h5>
         <div class="row-item"><span>Ventas:</span> <b>$<?= money($item['ventas']) ?></b></div>
         <div class="row-item"><span>Egresos Totales:</span> <b>$<?= money($item['egr']) ?></b></div>
@@ -250,18 +263,12 @@ $claseSuma = (round($sumaNeto) < 0) ? "bg-sobra" : ((round($sumaNeto) > 0) ? "bg
 </div>
 
 <script>
-    // Configuración del Refresh (180 segundos)
-    let secondsLeft = 180;
-    const timerDisplay = document.getElementById('timer');
-
-    const countdown = setInterval(() => {
-        secondsLeft--;
-        timerDisplay.textContent = secondsLeft;
-        
-        if (secondsLeft <= 0) {
-            clearInterval(countdown);
-            location.reload();
-        }
+    let timeLeft = 180;
+    const countdownEl = document.getElementById('countdown');
+    setInterval(() => {
+        timeLeft--;
+        countdownEl.innerText = timeLeft;
+        if(timeLeft <= 0) location.reload();
     }, 1000);
 
     function guardarEgreso(id, sede){
