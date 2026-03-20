@@ -17,16 +17,15 @@ require("ConnDrinks.php");
 
 $sede_actual = $_GET['sede'] ?? 'central';
 
-// Configuración de NITs por sede para la tabla de transferencias
 if ($sede_actual === 'drinks') {
     if ($mysqliDrinks->connect_error) die("Error Sede Drinks: " . $mysqliDrinks->connect_error);
     $mysqliActiva = $mysqliDrinks;
     $nombre_sede_display = "DRINKS (AWS)";
-    $nit_empresa_filtro = "901724534-7"; // NIT de Drinks
+    $nit_empresa_filtro = "901724534-7"; 
 } else {
     $mysqliActiva = $mysqliCentral;
     $nombre_sede_display = "CENTRAL";
-    $nit_empresa_filtro = "86057267-8";  // NIT de Central
+    $nit_empresa_filtro = "86057267-8";  
 }
 
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
@@ -54,8 +53,8 @@ $permiso9999 = Autorizacion($UsuarioSesion, '9999');
 $permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
 $permiso0003 = Autorizacion($UsuarioSesion, '0003'); 
 
-$fecha_input = $_GET['fecha'] ?? date('Y-m-d'); // Formato 2026-03-18
-$fecha       = str_replace('-', '', $fecha_input); // Formato 20260318
+$fecha_input = $_GET['fecha'] ?? date('Y-m-d');
+$fecha       = str_replace('-', '', $fecha_input); 
 $UsuarioFact = trim($_GET['nit'] ?? '');
 
 if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
@@ -115,13 +114,13 @@ if($UsuarioFact !== ''){
         while($eg=$resE->fetch_assoc()){ 
             $totalEgresos += (float)$eg['VALOR']; 
             $listaEgresos[] = $eg; 
-            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false) {
+            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false || stripos($eg['MOTIVO'], 'TRANSFER') !== false) {
                 $yaExisteTransferEnEgresos = true;
             }
         } 
     }
 
-    // TRANSFERENCIAS (Corregido: Usa fecha con guiones y NitEmpresa)
+    // TRANSFERENCIAS AUTOMÁTICAS
     $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
                                WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
     $stmtT->bind_param("sss", $fecha_input, $UsuarioFact, $nit_empresa_filtro);
@@ -132,9 +131,17 @@ if($UsuarioFact !== ''){
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-// LOGICA DE RESTAS: IGUAL AL ORIGINAL
-$efectivo_sin_transfer = $totalEgresos - $totalVentas; 
-$efectivo_neto_final = $yaExisteTransferEnEgresos ? $efectivo_sin_transfer : ($efectivo_sin_transfer - $totalTransfer);
+/* ============================================================
+    LÓGICA DE CÁLCULO AJUSTADA
+============================================================ */
+if ($yaExisteTransferEnEgresos) {
+    // Si ya existe el egreso manual: Total = Egresos - Ventas
+    $efectivo_neto_final = $totalEgresos - $totalVentas;
+} else {
+    // Si no existe: Total = (Egresos + Transferencia) - Ventas
+    $efectivo_neto_final = ($totalEgresos + $totalTransfer) - $totalVentas;
+}
+
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 ?>
 
@@ -208,7 +215,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
             <table class="table">
                 <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
                 <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                <tr><td><b>(=) EFECTIVO SIN TRANSF:</b></td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_sin_transfer) ?></b></td></tr>
                 <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
                 <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
                     <td><b>TOTAL FÍSICO:</b></td>
@@ -289,10 +295,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
             <table class="ticket-table">
                 <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($totalVentas) ?></b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
-                <tr style="border-top:1px dashed #000;">
-                    <td>EFECT. BRUTO:</td>
-                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_sin_transfer) ?></b></td>
-                </tr>
                 <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
                 <tr><td colspan="2"><hr></td></tr>
                 <tr style="font-size:16px;">
