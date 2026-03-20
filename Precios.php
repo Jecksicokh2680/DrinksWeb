@@ -86,7 +86,7 @@ if ($is_ajax_filter) {
         if (ctype_digit($filtro)) { $sql .= " AND barcode LIKE ?"; $types .= 's'; $params[] = $filtro . '%'; }
         else { $sql .= " AND descripcion LIKE ?"; $types .= 's'; $params[] = '%' . $filtro . '%'; }
     }
-    $sql .= " ORDER BY descripcion ASC LIMIT ?"; $types .= 'i'; $params[] = $limit;
+    $sql .= " ORDER BY barcode ASC LIMIT ?"; $types .= 'i'; $params[] = $limit;
 
     $productosCentral = []; $barcodes = [];
     if ($stmt = $connCentral->prepare($sql)) {
