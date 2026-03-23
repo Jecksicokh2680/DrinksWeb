@@ -45,32 +45,44 @@ function conectarPOS($sede) {
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;    
-    $NroDoc = trim($NroDoc);
+    
+    $NroDoc = (int)trim($NroDoc); // Aseguramos que sea entero
 
-    $stmtP = $db->prepare("SELECT estado, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
-    $stmtP->bind_param("s", $NroDoc);
+    // 1. Verificar en Pedidos
+    $stmtP = $db->prepare("SELECT estado FROM pedidos WHERE numero = ? LIMIT 1");
+    $stmtP->bind_param("i", $NroDoc); // Cambiado a "i" de integer
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != '0' || !empty(trim($rowP['fechaanul'] ?? ''))) return 1; 
+        // Si el estado es 0, está anulado.
+        if ((int)$rowP['estado'] === 0) return 1; 
     }    
 
+    // 2. Verificar en Facturas (Estados, fecha de anulación o motivo)
     $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
-    $stmtF->bind_param("s", $NroDoc);
+    $stmtF->bind_param("i", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
     if ($rowF = $resF->fetch_assoc()) {
         $estado = (int)$rowF['estado'];
         $fecha  = trim($rowF['fechaanul'] ?? '');
         $motivo = trim($rowF['motivoanulacion'] ?? '');
-        if (($estado !== 1 && $estado !== 0) || !empty($fecha) || !empty($motivo)) return 1;
+        
+        // Si el estado es 0, o tiene fecha/motivo de anulación, retornamos 1 (Anulado)
+        if ($estado === 0 || !empty($fecha) || !empty($motivo)) return 1;
     }
 
-    $stmtD = $db->prepare("SELECT F.numero FROM facturas F INNER JOIN devventas D ON F.idfactura = D.idfactura WHERE F.numero = ?");
-    $stmtD->bind_param("s", $NroDoc);
+    // 3. Verificar si tiene Devoluciones (Devventas)
+    // Nota: Si hay una devolución vinculada, técnicamente el proceso de venta se reversó
+    $stmtD = $db->prepare("SELECT D.iddevventa FROM devventas D INNER JOIN facturas F ON F.idfactura = D.idfactura WHERE F.numero = ? LIMIT 1");
+    $stmtD->bind_param("i", $NroDoc);
     $stmtD->execute();
     $resD = $stmtD->get_result();
-    return ($resD && $resD->num_rows > 0) ? 1 : 0;
+    
+    if ($resD && $resD->num_rows > 0) return 1;
+
+    // Si pasó todos los filtros y no se detectó anulación:
+    return 0; 
 }
 
 /* ============================================================
