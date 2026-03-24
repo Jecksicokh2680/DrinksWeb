@@ -42,34 +42,26 @@ function conectarPOS($sede) {
     }
 }
 
-
-
-
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
     if (!$db) return 0;    
     $NroDoc = trim($NroDoc);
 
-    // --- REVISIÓN DE PEDIDOS (Basado en tu CREATE TABLE) ---
-    // Usamos los campos reales: idusuarioanul y fechaanul
+    // Revisión en Pedidos (Usando los campos de tu estructura SQL)
     $stmtP = $db->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
     if ($stmtP) {
         $stmtP->bind_param("s", $NroDoc);
         $stmtP->execute();
         $resP = $stmtP->get_result();
         if ($rowP = $resP->fetch_assoc()) {
-            // Un pedido está anulado si:
-            // 1. Tiene un ID de usuario anulador (!= NULL)
-            // 2. O tiene una fecha de anulación registrada
-            // 3. O el estado cambió (comúnmente a 0 o algo distinto al estado activo 1)
             if (!empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul']) || $rowP['estado'] == 0) {
                 return 1;
             }
         }
     }    
 
-    // --- REVISIÓN DE FACTURAS ---
-    $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
+    // Revisión en Facturas
+    $stmtF = $db->prepare("SELECT estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1");
     if ($stmtF) {
         $stmtF->bind_param("s", $NroDoc);
         $stmtF->execute();
@@ -77,12 +69,11 @@ function VerificarAnulacion($NroDoc, $sede) {
         if ($rowF = $resF->fetch_assoc()) {
             $estado = (int)$rowF['estado'];
             $fecha  = trim($rowF['fechaanul'] ?? '');
-            // Si la factura tiene fecha de anulación o estado diferente a 1 (Activo)
             if (!empty($fecha) || ($estado !== 1 && $estado !== 0)) return 1;
         }
     }
 
-    // --- REVISIÓN DE DEVOLUCIONES ---
+    // Revisión en Devoluciones
     $stmtD = $db->prepare("SELECT D.idfactura FROM devventas D INNER JOIN facturas F ON D.idfactura = F.idfactura WHERE F.numero = ? LIMIT 1");
     if ($stmtD) {
         $stmtD->bind_param("s", $NroDoc);
@@ -93,14 +84,6 @@ function VerificarAnulacion($NroDoc, $sede) {
 
     return 0;
 }
-
-
-
-
-
-
-
-
 
 /* ============================================================
     PROCESAR ACCIONES
@@ -168,7 +151,7 @@ $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
-    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' ORDER BY NUMERO DESC";
+    $queryDocs = "SELECT NUMERO, VALORTOTAL, 'F' as TIPO FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL, 'P' as TIPO FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' ORDER BY NUMERO DESC";
     $listaDocs = $dbSede->query($queryDocs);
     if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 }
@@ -178,7 +161,8 @@ if ($dbSede) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="180"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -192,6 +176,9 @@ if ($dbSede) {
         .uppercase-input { text-transform: uppercase; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.65rem; color: #6c757d; }
+        /* Maquillaje de íconos de tipo */
+        .tipo-p { color: #000; font-weight: 900; margin-right: 4px; }
+        .tipo-f { color: #198754; font-weight: 900; margin-right: 4px; }
     </style>
 </head>
 <body class="bg-light">
@@ -236,7 +223,7 @@ if ($dbSede) {
                     <select class="form-select form-select-sm" id="selAnular" required>
                         <option value="">-- Seleccione a Anular --</option>
                         <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
+                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= ($d['TIPO']=='P'?'[P] ':'[F] ') . $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -245,7 +232,7 @@ if ($dbSede) {
                         <option value="">-- Doc. Reemplazo --</option>
                         <option value="N/A">-- NO LLEVA NADA --</option>
                         <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
+                            <option value="<?= $d['NUMERO'] ?>"><?= ($d['TIPO']=='P'?'[P] ':'[F] ') . $d['NUMERO'] ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -278,18 +265,32 @@ if ($dbSede) {
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
+                    
                     while ($r = $resH->fetch_assoc()): 
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
+                        
+                        // --- LÓGICA DE MAQUILLAJE ---
+                        // 1. Color por Sede (Central Azul, Drinks Rojo)
+                        $badgeSedeClass = ($r['NroSucursal'] == '002') ? 'bg-danger' : 'bg-primary';
                         $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
+
+                        // 2. Color por Tipo (Pedidos Negro, Facturas Verde)
+                        // Identificamos por el rango de número según tus capturas
+                        $esPedido = (intval($r['NroFactAnular']) < 20000); 
+                        $classTipo = $esPedido ? 'tipo-p' : 'tipo-f';
+                        $labelTipo = $esPedido ? 'P' : 'F';
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
-                        <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
+                        <td><span class="badge <?= $badgeSedeClass ?> shadow-sm"><?= $txtSede ?></span></td>
                         <td class="text-start">
                             <span class="nombre-cajero text-uppercase"><?= $r['NombreCajero'] ?: $r['NitCajero'] ?></span>
                             <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
                         </td>
-                        <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
+                        <td class="fw-bold">
+                            <span class="<?= $classTipo ?>"><?= $labelTipo ?></span>
+                            <span class="<?= $esPedido ? 'text-dark' : 'text-success' ?>"><?= $r['NroFactAnular'] ?></span>
+                        </td>
                         <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
@@ -336,7 +337,7 @@ if ($dbSede) {
     });
 
     function confirmar(tipo, fact, sede) {
-        if (confirm(`¿Autorizar ${tipo.toUpperCase()} para la factura ${fact}?`)) {
+        if (confirm(`¿Autorizar ${tipo.toUpperCase()} para el documento ${fact}?`)) {
             window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}&f=<?= $fechaConsulta ?>`;
         } else { event.target.checked = false; }
     }
