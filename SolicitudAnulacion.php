@@ -42,53 +42,63 @@ function conectarPOS($sede) {
     }
 }
 
+
+
+
 function VerificarAnulacion($NroDoc, $sede) {
-    // 1. Limpieza de seguridad del número
-    $NroDoc = preg_replace('/[^0-9]/', '', $NroDoc);
-    if (empty($NroDoc)) return 0;
+    $db = conectarPOS($sede);
+    if (!$db) return 0;    
+    $NroDoc = trim($NroDoc);
 
-    // 2. Conexión dinámica según sede
-    if ($sede == 'DRINKS' || $sede == '002') {
-        include 'ConnDrinks.php'; 
-        $db = $mysqliDrinks;
-    } else {
-        include 'ConnCentral.php'; 
-        $db = $mysqliPos;
-    }
+    // --- REVISIÓN DE PEDIDOS (Basado en tu CREATE TABLE) ---
+    // Usamos los campos reales: idusuarioanul y fechaanul
+    $stmtP = $db->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
+    if ($stmtP) {
+        $stmtP->bind_param("s", $NroDoc);
+        $stmtP->execute();
+        $resP = $stmtP->get_result();
+        if ($rowP = $resP->fetch_assoc()) {
+            // Un pedido está anulado si:
+            // 1. Tiene un ID de usuario anulador (!= NULL)
+            // 2. O tiene una fecha de anulación registrada
+            // 3. O el estado cambió (comúnmente a 0 o algo distinto al estado activo 1)
+            if (!empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul']) || $rowP['estado'] == 0) {
+                return 1;
+            }
+        }
+    }    
 
-    if (!$db) return 0;
-
-    // 3. LÓGICA PARA PEDIDOS (Ya confirmada que funciona)
-    $sqlP = "SELECT estado, idusuarioanul, fechaanul, estado_alerta FROM pedidos WHERE numero = '$NroDoc' LIMIT 1";
-    $resP = $db->query($sqlP);
-    if ($resP && $rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != 0 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul']) || $rowP['estado_alerta'] == 2) {
-            return 1;
+    // --- REVISIÓN DE FACTURAS ---
+    $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
+    if ($stmtF) {
+        $stmtF->bind_param("s", $NroDoc);
+        $stmtF->execute();
+        $resF = $stmtF->get_result();
+        if ($rowF = $resF->fetch_assoc()) {
+            $estado = (int)$rowF['estado'];
+            $fecha  = trim($rowF['fechaanul'] ?? '');
+            // Si la factura tiene fecha de anulación o estado diferente a 1 (Activo)
+            if (!empty($fecha) || ($estado !== 1 && $estado !== 0)) return 1;
         }
     }
 
-    // 4. LÓGICA PARA FACTURAS (Ajustada para detectar anulación)
-    $sqlF = "SELECT estado, idusuarioanul, fechaanul, motivoanulacion, cufe_anulacion FROM facturas WHERE numero = '$NroDoc' LIMIT 1";
-    $resF = $db->query($sqlF);
-    if ($resF && $rowF = $resF->fetch_assoc()) {
-        $estF = (int)$rowF['estado'];
-        $uAnu = $rowF['idusuarioanul'];
-        $fAnu = trim($rowF['fechaanul'] ?? '');
-        $mot  = trim($rowF['motivoanulacion'] ?? '');
-        $cufe = trim($rowF['cufe_anulacion'] ?? '');
-
-        /**
-         * CRITERIO DE ANULACIÓN PARA FACTURAS:
-         * - En facturas, el estado '1' suele ser ACTIVA/APROBADA.
-         * - Si el estado NO es 1, o tiene usuario de anulación, o fecha, o motivo, o CUFE de anulación.
-         */
-        if ($estF != 1 || ($uAnu != 0 && !empty($uAnu)) || !empty($fAnu) || !empty($mot) || !empty($cufe)) {
-            return 1;
-        }
+    // --- REVISIÓN DE DEVOLUCIONES ---
+    $stmtD = $db->prepare("SELECT D.idfactura FROM devventas D INNER JOIN facturas F ON D.idfactura = F.idfactura WHERE F.numero = ? LIMIT 1");
+    if ($stmtD) {
+        $stmtD->bind_param("s", $NroDoc);
+        $stmtD->execute();
+        $resD = $stmtD->get_result();
+        return ($resD && $resD->num_rows > 0) ? 1 : 0;
     }
 
     return 0;
 }
+
+
+
+
+
+
 
 
 
