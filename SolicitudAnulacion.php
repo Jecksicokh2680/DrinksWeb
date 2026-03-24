@@ -44,23 +44,23 @@ function conectarPOS($sede) {
 
 function VerificarAnulacion($NroDoc, $sede) {
     $db = conectarPOS($sede);
-    if (!$db) return 0;    
+    if (!$db) return 0; // Si no hay conexión, asumimos 0 (o manejar error)
     
-    $NroDoc = (int)trim($NroDoc); // Aseguramos que sea entero
+    $NroDoc = trim($NroDoc);
 
-    // 1. Verificar en Pedidos
+    // 1. REVISIÓN EN PEDIDOS
     $stmtP = $db->prepare("SELECT estado FROM pedidos WHERE numero = ? LIMIT 1");
-    $stmtP->bind_param("i", $NroDoc); // Cambiado a "i" de integer
+    $stmtP->bind_param("s", $NroDoc);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        // Si el estado es 0, está anulado.
-        if ((int)$rowP['estado'] === 0) return 1; 
+        // SI EL ESTADO ES '0', RETORNAMOS 1 (ESTÁ ANULADO)
+        if ($rowP['estado'] == '0') return 1; 
     }    
 
-    // 2. Verificar en Facturas (Estados, fecha de anulación o motivo)
+    // 2. REVISIÓN EN FACTURAS
     $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
-    $stmtF->bind_param("i", $NroDoc);
+    $stmtF->bind_param("s", $NroDoc);
     $stmtF->execute();
     $resF = $stmtF->get_result();
     if ($rowF = $resF->fetch_assoc()) {
@@ -68,23 +68,21 @@ function VerificarAnulacion($NroDoc, $sede) {
         $fecha  = trim($rowF['fechaanul'] ?? '');
         $motivo = trim($rowF['motivoanulacion'] ?? '');
         
-        // Si el estado es 0, o tiene fecha/motivo de anulación, retornamos 1 (Anulado)
+        // Si el estado es 0, o tiene datos de anulación, retornamos 1
         if ($estado === 0 || !empty($fecha) || !empty($motivo)) return 1;
     }
 
-    // 3. Verificar si tiene Devoluciones (Devventas)
-    // Nota: Si hay una devolución vinculada, técnicamente el proceso de venta se reversó
-    $stmtD = $db->prepare("SELECT D.iddevventa FROM devventas D INNER JOIN facturas F ON F.idfactura = D.idfactura WHERE F.numero = ? LIMIT 1");
-    $stmtD->bind_param("i", $NroDoc);
+    // 3. REVISIÓN EN DEVOLUCIONES
+    $stmtD = $db->prepare("SELECT F.numero FROM facturas F 
+                           INNER JOIN devventas D ON F.idfactura = D.idfactura 
+                           WHERE F.numero = ? LIMIT 1");
+    $stmtD->bind_param("s", $NroDoc);
     $stmtD->execute();
     $resD = $stmtD->get_result();
     
-    if ($resD && $resD->num_rows > 0) return 1;
-
-    // Si pasó todos los filtros y no se detectó anulación:
-    return 0; 
+    // Si hay devolución, lo tratamos como anulado (retorna 1)
+    return ($resD && $resD->num_rows > 0) ? 1 : 0;
 }
-
 /* ============================================================
     PROCESAR ACCIONES
 ============================================================ */
