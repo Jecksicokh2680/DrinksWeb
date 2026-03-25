@@ -255,6 +255,10 @@ Lo más Vendido
 <a class="nav-link" href="Estadistica_Vtas_Cajero.php" target="contentFrame">
 Lo más Vendido por Cajero
 </a>
+<a class="nav-link" href="Estadistica_Vtas_mas_tamaño.php" target="contentFrame">
+Lo más Vendido por tamaño
+</a>
+
 </div>
 </div>
 </div>
