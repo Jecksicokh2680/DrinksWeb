@@ -258,6 +258,9 @@ Lo más Vendido por Cajero
 <a class="nav-link" href="Estadistica_Vtas_mas_tamaño.php" target="contentFrame">
 Lo más Vendido por tamaño
 </a>
+<a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">
+Lo más Vendido por Empresa
+</a>
 
 </div>
 </div>
