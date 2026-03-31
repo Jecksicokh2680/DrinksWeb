@@ -27,12 +27,13 @@ function Autorizacion($User, $Solicitud) {
     $res = $stmt->get_result();
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
+
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
-$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
+$fPosFormat     = date('Ymd', strtotime($fechaConsulta));
 
 function conectarPOS($sede) {
-    if ($sede == '002') {
+    if ($sede == '002' || $sede == 'DRINKS') {
         include_once 'ConnDrinks.php'; 
         return $GLOBALS['mysqliDrinks'] ?? null; 
     } else {
@@ -41,61 +42,53 @@ function conectarPOS($sede) {
     }
 }
 
-
-
+/**
+ * FUNCIÓN DE VERIFICACIÓN DEFINITIVA
+ * Ajustada para detectar estados en Drinks y Central (incluyendo estado_alerta)
+ */
 function VerificarAnulacion($NroDoc, $sede) {
-    $NroDoc = preg_replace('/[^0-9]/', '', $NroDoc);
     if (empty($NroDoc)) return 0;
 
-    // Conexión dinámica
-    if ($sede == 'DRINKS' || $sede == '002') {
-        include_once 'ConnDrinks.php'; 
-        $db = $mysqliDrinks;
-    } else {
-        include_once 'ConnCentral.php'; 
-        $db = $mysqliPos;
-    }
+    // IMPORTANTE: En Central el número puede venir con coma (18,753). 
+    // Usamos trim para mantener el formato original de la DB.
+    $NroClean = trim($NroDoc); 
 
+    $db = conectarPOS($sede);
     if (!$db) return 0;
 
-    // 1. REVISAR EN PEDIDOS (1 es ANULADO)
+    // 1. REVISAR EN TABLA PEDIDOS (Prioridad para Drinks y Central)
     $stmtP = $db->prepare("SELECT estado FROM pedidos WHERE numero = ? LIMIT 1");
-    $stmtP->bind_param("s", $NroDoc);
+    $stmtP->bind_param("s", $NroClean);
     $stmtP->execute();
     $resP = $stmtP->get_result();
     if ($rowP = $resP->fetch_assoc()) {
-        if ((int)$rowP['estado'] === 1) { // Confirmado: 1 es anulado
+        if ((int)$rowP['estado'] === 1) { // Estado 1 en pedidos suele ser anulado
             $stmtP->close();
             return 1; 
         }
     }
     $stmtP->close();
 
-    // 2. REVISAR EN FACTURAS (1 es ACTIVO, diferente de 1 es ANULADO)
-    $stmtF = $db->prepare("SELECT estado, idusuarioanul, cufe_anulacion FROM facturas WHERE numero = ? LIMIT 1");
-    $stmtF->bind_param("s", $NroDoc);
+    // 2. REVISAR EN TABLA FACTURAS (Validación de estado_alerta para Central)
+    $stmtF = $db->prepare("SELECT estado, idusuarioanul, estado_alerta FROM facturas WHERE numero = ? LIMIT 1");
+    $stmtF->bind_param("s", $NroClean);
     $stmtF->execute();
     $resF = $stmtF->get_result();
     if ($rowF = $resF->fetch_assoc()) {
         $estF = (int)$rowF['estado'];
-        $uAnu = $rowF['idusuarioanul'];
-        $cufe = trim($rowF['cufe_anulacion'] ?? '');
+        $uAnu = (int)($rowF['idusuarioanul'] ?? 0);
+        $alerta = (int)($rowF['estado_alerta'] ?? 0);
 
-        // Si el estado no es 1, o ya tiene usuario de anulación o CUFE de nota crédito
-        if ($estF !== 1 || (!empty($uAnu) && $uAnu != 0) || $cufe !== '') {
+        // Si hay usuario de anulación, el estado no es 1, o alerta es 2 (Central)
+        if ($uAnu > 0 || $estF !== 1 || $alerta === 2) {
             $stmtF->close();
             return 1;
         }
     }
     $stmtF->close();
 
-    return 0; // Si no encontró rastro de anulación en ninguna tabla
+    return 0;
 }
-
-
-
-
-
 
 /* ============================================================
     PROCESAR ACCIONES
@@ -163,7 +156,10 @@ $nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
-    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' ORDER BY NUMERO DESC";
+    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') 
+                  UNION ALL 
+                  SELECT NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' 
+                  ORDER BY NUMERO DESC";
     $listaDocs = $dbSede->query($queryDocs);
     if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
 }
@@ -173,7 +169,8 @@ if ($dbSede) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="180"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
