@@ -50,50 +50,52 @@ function VerificarAnulacion($NroDoc, $sede) {
     if (!$db) return 0;    
     $NroDoc = trim($NroDoc);
 
-    // --- REVISIÓN DE PEDIDOS (Basado en tu CREATE TABLE) ---
-    // Usamos los campos reales: idusuarioanul y fechaanul
+    // --- 1. REVISIÓN DE PEDIDOS ---
+    // Según tu indicación: si estado es 1, el pedido está ANULADO.
     $stmtP = $db->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
     if ($stmtP) {
         $stmtP->bind_param("s", $NroDoc);
         $stmtP->execute();
         $resP = $stmtP->get_result();
         if ($rowP = $resP->fetch_assoc()) {
-            // Un pedido está anulado si:
-            // 1. Tiene un ID de usuario anulador (!= NULL)
-            // 2. O tiene una fecha de anulación registrada
-            // 3. O el estado cambió (comúnmente a 0 o algo distinto al estado activo 1)
-            if (!empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul']) || $rowP['estado'] == 0) {
+            // Criterio: estado 1 o campos de anulación llenos
+            if ($rowP['estado'] == 1 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul'])) {
                 return 1;
             }
         }
     }    
 
-    // --- REVISIÓN DE FACTURAS ---
-    $stmtF = $db->prepare("SELECT estado, fechaanul, motivoanulacion FROM facturas WHERE numero = ? LIMIT 1");
+    // --- 2. REVISIÓN DE FACTURAS ---
+    // Según tu indicación: si estado es 1, la factura está ANULADA.
+    $stmtF = $db->prepare("SELECT idfactura, estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1");
     if ($stmtF) {
         $stmtF->bind_param("s", $NroDoc);
         $stmtF->execute();
         $resF = $stmtF->get_result();
         if ($rowF = $resF->fetch_assoc()) {
-            $estado = (int)$rowF['estado'];
-            $fecha  = trim($rowF['fechaanul'] ?? '');
-            // Si la factura tiene fecha de anulación o estado diferente a 1 (Activo)
-            if (!empty($fecha) || ($estado !== 1 && $estado !== 0)) return 1;
-        }
-    }
+            $idFactura = $rowF['idfactura'];
+            
+            // Criterio 1: Estado de anulación o fecha de anulación presente
+            if ($rowF['estado'] == 1 || !empty($rowF['fechaanul'])) {
+                return 1;
+            }
 
-    // --- REVISIÓN DE DEVOLUCIONES ---
-    $stmtD = $db->prepare("SELECT D.idfactura FROM devventas D INNER JOIN facturas F ON D.idfactura = F.idfactura WHERE F.numero = ? LIMIT 1");
-    if ($stmtD) {
-        $stmtD->bind_param("s", $NroDoc);
-        $stmtD->execute();
-        $resD = $stmtD->get_result();
-        return ($resD && $resD->num_rows > 0) ? 1 : 0;
+            // --- 3. REVISIÓN DE DEVOLUCIONES ---
+            // Si no está anulada por estado, revisamos si existe en devoluciones (parcial o total)
+            $stmtD = $db->prepare("SELECT idfactura FROM devventas WHERE idfactura = ? LIMIT 1");
+            if ($stmtD) {
+                $stmtD->bind_param("i", $idFactura);
+                $stmtD->execute();
+                $resD = $stmtD->get_result();
+                if ($resD->num_rows > 0) {
+                    return 1; // Se considera "Anulado/Devuelto" para el proceso de gerencia
+                }
+            }
+        }
     }
 
     return 0;
 }
-
 
 
 
