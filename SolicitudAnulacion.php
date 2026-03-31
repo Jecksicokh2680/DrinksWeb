@@ -27,7 +27,6 @@ function Autorizacion($User, $Solicitud) {
     $res = $stmt->get_result();
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
-
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
 $fPosFormat    = date('Ymd', strtotime($fechaConsulta));
@@ -42,53 +41,59 @@ function conectarPOS($sede) {
     }
 }
 
+
+
 function VerificarAnulacion($NroDoc, $sede) {
-    // 1. Limpieza de seguridad del número
     $NroDoc = preg_replace('/[^0-9]/', '', $NroDoc);
     if (empty($NroDoc)) return 0;
 
-    // 2. Conexión dinámica según sede
+    // Conexión dinámica
     if ($sede == 'DRINKS' || $sede == '002') {
-        include 'ConnDrinks.php'; 
+        include_once 'ConnDrinks.php'; 
         $db = $mysqliDrinks;
     } else {
-        include 'ConnCentral.php'; 
+        include_once 'ConnCentral.php'; 
         $db = $mysqliPos;
     }
 
     if (!$db) return 0;
 
-    // 3. LÓGICA PARA PEDIDOS (Ya confirmada que funciona)
-    $sqlP = "SELECT estado, idusuarioanul, fechaanul, estado_alerta FROM pedidos WHERE numero = '$NroDoc' LIMIT 1";
-    $resP = $db->query($sqlP);
-    if ($resP && $rowP = $resP->fetch_assoc()) {
-        if ($rowP['estado'] != 0 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul']) || $rowP['estado_alerta'] == 2) {
-            return 1;
+    // 1. REVISAR EN PEDIDOS (1 es ANULADO)
+    $stmtP = $db->prepare("SELECT estado FROM pedidos WHERE numero = ? LIMIT 1");
+    $stmtP->bind_param("s", $NroDoc);
+    $stmtP->execute();
+    $resP = $stmtP->get_result();
+    if ($rowP = $resP->fetch_assoc()) {
+        if ((int)$rowP['estado'] === 1) { // Confirmado: 1 es anulado
+            $stmtP->close();
+            return 1; 
         }
     }
+    $stmtP->close();
 
-    // 4. LÓGICA PARA FACTURAS (Ajustada para detectar anulación)
-    $sqlF = "SELECT estado, idusuarioanul, fechaanul, motivoanulacion, cufe_anulacion FROM facturas WHERE numero = '$NroDoc' LIMIT 1";
-    $resF = $db->query($sqlF);
-    if ($resF && $rowF = $resF->fetch_assoc()) {
+    // 2. REVISAR EN FACTURAS (1 es ACTIVO, diferente de 1 es ANULADO)
+    $stmtF = $db->prepare("SELECT estado, idusuarioanul, cufe_anulacion FROM facturas WHERE numero = ? LIMIT 1");
+    $stmtF->bind_param("s", $NroDoc);
+    $stmtF->execute();
+    $resF = $stmtF->get_result();
+    if ($rowF = $resF->fetch_assoc()) {
         $estF = (int)$rowF['estado'];
         $uAnu = $rowF['idusuarioanul'];
-        $fAnu = trim($rowF['fechaanul'] ?? '');
-        $mot  = trim($rowF['motivoanulacion'] ?? '');
         $cufe = trim($rowF['cufe_anulacion'] ?? '');
 
-        /**
-         * CRITERIO DE ANULACIÓN PARA FACTURAS:
-         * - En facturas, el estado '1' suele ser ACTIVA/APROBADA.
-         * - Si el estado NO es 1, o tiene usuario de anulación, o fecha, o motivo, o CUFE de anulación.
-         */
-        if ($estF != 1 || ($uAnu != 0 && !empty($uAnu)) || !empty($fAnu) || !empty($mot) || !empty($cufe)) {
+        // Si el estado no es 1, o ya tiene usuario de anulación o CUFE de nota crédito
+        if ($estF !== 1 || (!empty($uAnu) && $uAnu != 0) || $cufe !== '') {
+            $stmtF->close();
             return 1;
         }
     }
+    $stmtF->close();
 
-    return 0;
+    return 0; // Si no encontró rastro de anulación en ninguna tabla
 }
+
+
+
 
 
 
