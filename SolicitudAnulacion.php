@@ -1,20 +1,26 @@
 <?php
 session_start();
-date_default_timezone_set('America/Bogota');
+date_default_timezone_set('America/Bogota'); 
 require_once 'Conexion.php'; 
+
+/* ============================================================
+    CONFIGURACIÓN DE SEDES POR NIT
+============================================================ */
+define('NIT_CENTRAL', '86057267-8'); 
+define('NIT_DRINKS', '901724534-7');  
 
 /* ============================================================
     ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
 ============================================================ */
 $Usuario     = $_SESSION['Usuario']     ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
-$NroSucursal = $_SESSION['NroSucursal'] ?? '001';
+$NroSucursal = $_SESSION['NroSucursal'] ?? NIT_CENTRAL; 
 
 if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
-$puedeBorrar = ($Usuario == '9999' || $Usuario == '0003');
+$puedeBorrar = ($Usuario == '9999' || $Usuario == '0003'); 
 
 /* ============================================================
     FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
@@ -28,12 +34,8 @@ function Autorizacion($User, $Solicitud) {
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
-$puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
-$fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
-$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
-
-function conectarPOS($sede) {
-    if ($sede == '002') {
+function conectarPOS($nitSede) {
+    if ($nitSede == NIT_DRINKS) {
         include_once 'ConnDrinks.php'; 
         return $GLOBALS['mysqliDrinks'] ?? null; 
     } else {
@@ -42,71 +44,58 @@ function conectarPOS($sede) {
     }
 }
 
-
-
-
-function VerificarAnulacion($NroDoc, $sede) {
-    $db = conectarPOS($sede);
-    if (!$db) return 0;    
+function VerificarAnulacion($NroDoc, $nitSede) {
     $NroDoc = trim($NroDoc);
+    if (empty($NroDoc)) return 0;
 
-    // --- 1. REVISIÓN DE PEDIDOS ---
-    // Según tu indicación: si estado es 1, el pedido está ANULADO.
+    $db = conectarPOS($nitSede);
+    if (!$db) return 0;
+
     $stmtP = $db->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
     if ($stmtP) {
         $stmtP->bind_param("s", $NroDoc);
         $stmtP->execute();
         $resP = $stmtP->get_result();
         if ($rowP = $resP->fetch_assoc()) {
-            // Criterio: estado 1 o campos de anulación llenos
             if ($rowP['estado'] == 1 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul'])) {
-                return 1;
+                return 1; 
             }
         }
-    }    
+    }
 
-    // --- 2. REVISIÓN DE FACTURAS ---
-    // Según tu indicación: si estado es 1, la factura está ANULADA.
     $stmtF = $db->prepare("SELECT idfactura, estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1");
     if ($stmtF) {
         $stmtF->bind_param("s", $NroDoc);
         $stmtF->execute();
         $resF = $stmtF->get_result();
         if ($rowF = $resF->fetch_assoc()) {
-            $idFactura = $rowF['idfactura'];
-            
-            // Criterio 1: Estado de anulación o fecha de anulación presente
-            if ($rowF['estado'] == 1 || !empty($rowF['fechaanul'])) {
-                return 1;
-            }
+            if ($rowF['estado'] == 1 || !empty($rowF['fechaanul'])) return 1;
 
-            // --- 3. REVISIÓN DE DEVOLUCIONES ---
-            // Si no está anulada por estado, revisamos si existe en devoluciones (parcial o total)
             $stmtD = $db->prepare("SELECT idfactura FROM devventas WHERE idfactura = ? LIMIT 1");
             if ($stmtD) {
-                $stmtD->bind_param("i", $idFactura);
+                $stmtD->bind_param("i", $rowF['idfactura']);
                 $stmtD->execute();
-                $resD = $stmtD->get_result();
-                if ($resD->num_rows > 0) {
-                    return 1; // Se considera "Anulado/Devuelto" para el proceso de gerencia
-                }
+                if ($stmtD->get_result()->num_rows > 0) return 1;
             }
         }
     }
-
     return 0;
 }
 
 /* ============================================================
     PROCESAR ACCIONES
 ============================================================ */
+$puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
+$fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
+$fPosFormat    = date('Ymd', strtotime($fechaConsulta));
+
 if (isset($_GET['setSede'])) {
     $_SESSION['NroSucursal'] = $_GET['setSede'];
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
 if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
-    $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
+    $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
     $stmt->bind_param("sss", $_GET['factura'], $_GET['f'], $_GET['s']);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
@@ -133,18 +122,18 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
     $factTarget = $_GET['factura'];
     $fechaRef   = $_GET['f'] ?? $fechaConsulta;
     $ahora      = date('Y-m-d H:i:s');
-    $sedeAccion = $_GET['s'] ?? $NroSucursal;
+    $nitSedeAccion = $_GET['s'] ?? $NitEmpresa;
     
     if ($_GET['accion'] == 'bodega' && Autorizacion($Usuario, '0004') === 'SI') {
-        $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET JefeBodCheck='1', NitJefeBod=?, FH_JefeBodCheck=? WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-        $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $sedeAccion);
+        $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET JefeBodCheck='1', NitJefeBod=?, FH_JefeBodCheck=? WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
+        $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
         $stmt->execute();
     }
     
     if ($_GET['accion'] == 'gerencia' && Autorizacion($Usuario, '2010') === 'SI') {
-        if (VerificarAnulacion($factTarget, $sedeAccion) == 1) {
-            $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=? WHERE NroFactAnular=? AND F_Creacion=? AND NroSucursal=?");
-            $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $sedeAccion);
+        if (VerificarAnulacion($factTarget, $nitSedeAccion) == 1) {
+            $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=?, Estado='0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
+            $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
             $stmt->execute();
         } else {
             header("Location: ?error=no_anulado&factura=".$factTarget."&fConsulta=".$fechaConsulta); exit;
@@ -159,7 +148,7 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
 $dbSede = conectarPOS($NroSucursal);
 $esGerente = (Autorizacion($Usuario, '2010') === 'SI');
 $esBodega  = (Autorizacion($Usuario, '0004') === 'SI');
-$nombreSedeActual = ($NroSucursal == '002') ? 'DRINKS' : 'CENTRAL';
+$nombreSedeActual = ($NroSucursal == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
@@ -173,7 +162,8 @@ if ($dbSede) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="180"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="180">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -216,8 +206,8 @@ if ($dbSede) {
         <div class="text-end">
             <small class="text-secondary d-block">CAMBIAR SEDE</small>
             <select class="form-select form-select-sm bg-dark text-white" onchange="location.href='?setSede='+this.value+'&fConsulta=<?= $fechaConsulta ?>'">
-                <option value="001" <?= ($NroSucursal=='001')?'selected':'' ?>>CENTRAL</option>
-                <option value="002" <?= ($NroSucursal=='002')?'selected':'' ?>>DRINKS</option>
+                <option value="<?= NIT_CENTRAL ?>" <?= ($NroSucursal==NIT_CENTRAL)?'selected':'' ?>>CENTRAL</option>
+                <option value="<?= NIT_DRINKS ?>" <?= ($NroSucursal==NIT_DRINKS)?'selected':'' ?>>DRINKS</option>
             </select>
         </div>
     </div>
@@ -266,16 +256,22 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
+                    // HE QUITADO EL FILTRO s.GerenteCheck = '0' para que veas todas las de hoy
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-                            WHERE s.F_Creacion = ? AND s.Estado = '1' ORDER BY s.FH_CajeroCheck DESC";
+                            WHERE s.F_Creacion = ? 
+                            ORDER BY s.FH_CajeroCheck DESC";
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
                     while ($r = $resH->fetch_assoc()): 
-                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['NroSucursal']);
-                        $txtSede = ($r['NroSucursal'] == '002') ? 'DRINKS' : 'CENTRAL';
+                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
+                        $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
+                        
+                        // FORZADO: Si ya tiene el check de gerencia puesto en BD, el badge SIEMPRE dirá "ANULADO OK"
+                        $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
+                        $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
@@ -288,20 +284,20 @@ if ($dbSede) {
                         <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
-                        <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['NroSucursal']}')\"" : 'disabled') ?>></td>
+                        <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['Nit_Empresa']}')\"" : 'disabled') ?>></td>
                         <td>
                             <?php if ($r['GerenteCheck'] == '1'): ?>
                                 <input class="form-check-input" type="checkbox" checked disabled>
                             <?php elseif ($esGerente && $anuladoPOS == 1): ?>
-                                <input class="form-check-input border-primary shadow-sm" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>')">
+                                <input class="form-check-input border-primary shadow-sm" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>')">
                             <?php else: ?>
                                 <input class="form-check-input" type="checkbox" disabled>
                                 <?php if($esGerente && $anuladoPOS == 0): ?><span class="badge-wait">ESPERANDO POS</span><?php endif; ?>
                             <?php endif; ?>
                         </td>
-                        <td><span class="badge <?= ($anuladoPOS) ? 'bg-success' : 'bg-warning text-dark' ?> rounded-pill"><?= ($anuladoPOS) ? 'ANULADO OK' : 'ACTIVO' ?></span></td>
+                        <td><span class="badge <?= $badgeEstado ?> rounded-pill"><?= $textoEstado ?></span></td>
                         <?php if($puedeBorrar): ?>
-                        <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['NroSucursal'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>
+                        <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>
                         <?php endif; ?>
                     </tr>
                     <?php endwhile; ?>
@@ -330,15 +326,15 @@ if ($dbSede) {
         }
     });
 
-    function confirmar(tipo, fact, sede) {
+    function confirmar(tipo, fact, nitSede) {
         if (confirm(`¿Autorizar ${tipo.toUpperCase()} para la factura ${fact}?`)) {
-            window.location.href = `?accion=${tipo}&factura=${fact}&s=${sede}&f=<?= $fechaConsulta ?>`;
+            window.location.href = `?accion=${tipo}&factura=${fact}&s=${nitSede}&f=<?= $fechaConsulta ?>`;
         } else { event.target.checked = false; }
     }
 
-    function borrarSolicitud(fact, sede, fecha) {
+    function borrarSolicitud(fact, nitSede, fecha) {
         if (confirm(`¿Eliminar permanentemente la solicitud?`)) {
-            window.location.href = `?accion=borrar&factura=${fact}&s=${sede}&f=${fecha}`;
+            window.location.href = `?accion=borrar&factura=${fact}&s=${nitSede}&f=${fecha}`;
         }
     }
 </script>
