@@ -131,13 +131,10 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
     }
     
     if ($_GET['accion'] == 'gerencia' && Autorizacion($Usuario, '2010') === 'SI') {
-        if (VerificarAnulacion($factTarget, $nitSedeAccion) == 1) {
-            $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=?, Estado='0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
-            $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
-            $stmt->execute();
-        } else {
-            header("Location: ?error=no_anulado&factura=".$factTarget."&fConsulta=".$fechaConsulta); exit;
-        }
+        // Se quitó la validación estricta de VerificarAnulacion para permitir el grabado directo
+        $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=?, Estado='0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
+        $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
+        $stmt->execute();
     }
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -171,7 +168,7 @@ if ($dbSede) {
         .header-bar { background: #1a1d20; color: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; border-bottom: 3px solid #0d6efd; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
         #timer-box { font-family: monospace; font-size: 0.9rem; background: #212529; padding: 2px 8px; border-radius: 4px; border: 1px solid #0d6efd; }
-        .badge-wait { font-size: 0.6rem; display: block; color: #dc3545; font-weight: bold; }
+        .badge-wait { font-size: 0.6rem; display: block; color: #0d6efd; font-weight: bold; }
         .bg-input-dark { background: #2b3035; color: white; border: 1px solid #495057; }
         .btn-delete { color: #dc3545; cursor: pointer; border: none; background: none; font-size: 1.1rem; }
         .uppercase-input { text-transform: uppercase; }
@@ -181,13 +178,6 @@ if ($dbSede) {
 </head>
 <body class="bg-light">
 <div class="container-fluid px-4 py-4">
-
-    <?php if(isset($_GET['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show">
-            <?= ($_GET['error'] == 'mismo_documento') ? "⚠️ No puedes usar el mismo documento como reemplazo." : "⚠️ El documento #".$_GET['factura']." sigue ACTIVO en el POS." ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
 
     <div class="header-bar d-flex justify-content-between align-items-center shadow-sm">
         <div class="d-flex align-items-center">
@@ -256,7 +246,6 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // HE QUITADO EL FILTRO s.GerenteCheck = '0' para que veas todas las de hoy
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
                             WHERE s.F_Creacion = ? 
@@ -269,7 +258,6 @@ if ($dbSede) {
                         $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
                         $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
                         
-                        // FORZADO: Si ya tiene el check de gerencia puesto en BD, el badge SIEMPRE dirá "ANULADO OK"
                         $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
                         $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
                     ?>
@@ -284,17 +272,20 @@ if ($dbSede) {
                         <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
+                        
                         <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['Nit_Empresa']}')\"" : 'disabled') ?>></td>
+                        
                         <td>
                             <?php if ($r['GerenteCheck'] == '1'): ?>
                                 <input class="form-check-input" type="checkbox" checked disabled>
-                            <?php elseif ($esGerente && $anuladoPOS == 1): ?>
+                            <?php elseif ($esGerente): ?>
                                 <input class="form-check-input border-primary shadow-sm" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>')">
+                                <?php if($anuladoPOS == 0): ?><span class="badge-wait">PENDIENTE POS</span><?php endif; ?>
                             <?php else: ?>
                                 <input class="form-check-input" type="checkbox" disabled>
-                                <?php if($esGerente && $anuladoPOS == 0): ?><span class="badge-wait">ESPERANDO POS</span><?php endif; ?>
                             <?php endif; ?>
                         </td>
+
                         <td><span class="badge <?= $badgeEstado ?> rounded-pill"><?= $textoEstado ?></span></td>
                         <?php if($puedeBorrar): ?>
                         <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>

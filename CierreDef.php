@@ -135,14 +135,13 @@ function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
     LÓGICA DE CÁLCULO AJUSTADA
 ============================================================ */
 if ($yaExisteTransferEnEgresos) {
-    // Si ya existe el egreso manual: Total = Egresos - Ventas
     $efectivo_neto_final = $totalEgresos - $totalVentas;
 } else {
-    // Si no existe: Total = (Egresos + Transferencia) - Ventas
     $efectivo_neto_final = ($totalEgresos + $totalTransfer) - $totalVentas;
 }
 
-$ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
+// MODIFICACIÓN: Si el cierre ya se hizo, permitimos ver los valores aunque no tenga permiso 9999 o 0003
+$ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRealizado);
 ?>
 
 <!DOCTYPE html>
@@ -195,7 +194,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         </select></div>
         <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>"></div>
         <div>Facturador: <select name="nit">
-            <?php if($ocultarValores): ?>
+            <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
                 <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
             <?php else: ?>
                 <option value="">-- Seleccione Usuario --</option>
@@ -257,7 +256,11 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
     <div class="panel no-print" style="text-align:center;">
         <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
-        <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
+        <?php if($cierreRealizado): ?>
+            <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
+        <?php else: ?>
+            <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
+        <?php endif; ?>
     </div>
 
     <div id="modalVoucher" class="modal"><div class="modal-content" id="printArea"></div></div>
@@ -268,9 +271,11 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
         const p9999 = '<?= $permiso9999 ?>';
         const p7777 = '<?= $permiso7777 ?>';
         const p0003 = '<?= $permiso0003 ?>';
+        const cierreYaHecho = <?= $cierreRealizado ? 'true' : 'false' ?>;
 
-        if(tipo === 'cierre' && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
-            alert('ACCESO DENEGADO'); 
+        // MODIFICACIÓN: Si el cierre ya se hizo, se ignora el bloqueo de acceso denegado
+        if(tipo === 'cierre' && !cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
+            alert('ACCESO DENEGADO: Requiere permiso de supervisor para realizar el cierre.'); 
             return;
         }
 
@@ -281,8 +286,12 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
 
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
-        const estadoSesion = '<?= $cierreRealizado ? "SESIÓN CERRADA" : "SESIÓN ABIERTA" ?>';
+        const estadoSesion = cierreYaHecho ? "SESIÓN CERRADA" : "SESIÓN ABIERTA";
         
+        // Usamos una variable para manejar los asteriscos en JS también basándonos en el estado del cierre
+        const vVentas = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($totalVentas) ?>' : '***';
+        const vTotal = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($efectivo_neto_final) ?>' : '***';
+
         let html = `
             <div class="ticket-header" style="text-align:center;">
                 <h2 style="margin:0;"><b>${titulo}</b></h2>
@@ -293,13 +302,13 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI');
                 <hr>
             </div>
             <table class="ticket-table">
-                <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($totalVentas) ?></b></td></tr>
+                <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${vVentas}</b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
                 <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
                 <tr><td colspan="2"><hr></td></tr>
                 <tr style="font-size:16px;">
                     <td><b>TOTAL FÍSICO:</b></td>
-                    <td style="text-align:right;"><b>$<?= $ocultarValores ? '***' : money($efectivo_neto_final) ?></b></td>
+                    <td style="text-align:right;"><b>${vTotal}</b></td>
                 </tr>
             </table>
             <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
