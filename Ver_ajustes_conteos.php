@@ -146,7 +146,7 @@ $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre
     FROM conteoweb c 
     INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
     WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2 AND DATE(c.fecha_conteo) = '$hoy'
-    ORDER BY c.id DESC");
+    ORDER BY cat.CodCat ASC");
 
 // MODIFICACIÓN: Se cambió el filtro para mostrar todo el mes actual
 $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre 

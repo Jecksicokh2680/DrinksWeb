@@ -390,6 +390,7 @@ body{
 <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
 <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Cajero Final</a>
 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Traslados de mercancia</a>
+<a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">🧮 Traslados Jefe-Bodega</a>
 </div>
 </div>
 </div>
