@@ -20,6 +20,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $nit = $_POST['nit'];
     $dbSede = ($nit == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
     
+    // Validación de autorización para ver stock en el detalle modal
+    $esAdminStock = (Autorizacion($_SESSION['Usuario'], '9999') === 'SI');
+    
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $cat);
     $stmt->execute();
@@ -30,9 +33,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $html = "<table style='width:100%; border-collapse:collapse; font-size:13px;'>
             <thead><tr style='background:#f4f4f4;'>
                 <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
-                <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>
-                <th style='padding:8px; border:1px solid #ddd;'>Stock</th>
-            </tr></thead><tbody>";
+                <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
+    
+    // Solo mostrar encabezado de Stock si tiene permiso
+    if ($esAdminStock) {
+        $html .= "<th style='padding:8px; border:1px solid #ddd;'>Stock</th>";
+    }
+    
+    $html .= "</tr></thead><tbody>";
     
     if ($skus) {
         $ph = implode(',', array_fill(0, count($skus), '?'));
@@ -52,12 +60,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
         while($p = $resP->fetch_assoc()){
             $html .= "<tr>
                         <td style='padding:8px; border:1px solid #ddd;'>{$p['barcode']}</td>
-                        <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>
-                        <td style='padding:8px; border:1px solid #ddd;' align='right'><strong>".number_format($p['stock'],2)."</strong></td>
-                      </tr>";
+                        <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>";
+            
+            // Solo mostrar valor de Stock si tiene permiso
+            if ($esAdminStock) {
+                $html .= "<td style='padding:8px; border:1px solid #ddd;' align='right'><strong>".number_format($p['stock'],2)."</strong></td>";
+            }
+            
+            $html .= "</tr>";
         }
     } else {
-        $html .= "<tr><td colspan='3' style='padding:20px; text-align:center;'>No hay productos vinculados a esta categoría.</td></tr>";
+        $colspan = $esAdminStock ? 3 : 2;
+        $html .= "<tr><td colspan='$colspan' style='padding:20px; text-align:center;'>No hay productos vinculados a esta categoría.</td></tr>";
     }
     $html .= "</tbody></table>";
     echo $html;
@@ -302,7 +316,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                     <tbody>
                         <?php foreach($conteos as $c): 
                             $dif = (float)$c['diferencia'];
-                            // Lógica corregida: SOLO ROJO SI ES NEGATIVO (Falta mercancía)
                             $color = ($dif < 0) ? 'rojo' : 'verde';
                         ?>
                         <tr>
