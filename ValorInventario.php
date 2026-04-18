@@ -99,12 +99,15 @@ function obtenerVentasMensuales($db) {
     return $ventas;
 }
 
-// NUEVA FUNCIÓN: COMPARATIVO LUNES A DOMINGO
+// NUEVA FUNCIÓN: COMPARATIVO LUNES A DOMINGO (MODIFICADA PARA TOTALIZAR)
 function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
     $nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    $comparativo = [];
+    $comparativo = [
+        'dias' => [],
+        'total_actual' => 0,
+        'total_anterior' => 0
+    ];
     
-    // Obtener la fecha del Lunes de esta semana
     $lunesEstaSemana = date('Y-m-d', strtotime('monday this week'));
     
     for ($i = 0; $i < 7; $i++) {
@@ -127,12 +130,15 @@ function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
             $valPasado += (float)$resP['total'];
         }
 
-        $comparativo[] = [
+        $comparativo['dias'][] = [
             'dia' => $nombreDia,
             'actual' => $valActual,
             'anterior' => $valPasado,
             'diff' => $valActual - $valPasado
         ];
+
+        $comparativo['total_actual'] += $valActual;
+        $comparativo['total_anterior'] += $valPasado;
     }
     return $comparativo;
 }
@@ -180,7 +186,12 @@ $central = analizarSucursal($mysqliCentral, 'CENTRAL');
 $drinks  = analizarSucursal($mysqliDrinks, 'DRINKS');
 $ventasGraficaCentral = obtenerVentasMensuales($mysqliCentral);
 $ventasGraficaDrinks  = obtenerVentasMensuales($mysqliDrinks);
-$datosComparativos = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
+
+// OBTENER DATOS SEMANALES
+$datosSemanales = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
+$datosComparativos = $datosSemanales['dias'];
+$totalSemanaActual = $datosSemanales['total_actual'];
+$totalSemanaAnterior = $datosSemanales['total_anterior'];
 
 $totalVentaD = $central['venta_dia'] + $drinks['venta_dia'];
 $totalTransD = $central['trans_dia'] + $drinks['trans_dia'];
@@ -332,7 +343,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             <div style="height: 380px;"><canvas id="graficoTendencia"></canvas></div>
             
             <div style="margin-top: 35px; border-top: 2px solid #eee; padding-top: 20px;">
-                <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa Semanal (Inicia Lunes)</h4>
+                <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa Semanal (Lunes a Domingo)</h4>
                 <table style="width:100%; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                     <thead>
                         <tr style="background:#374151; color:white;">
@@ -363,6 +374,20 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
+                    <tfoot style="background:#e5e7eb; font-weight:bold; border-top:2px solid #374151;">
+                        <tr>
+                            <td style="padding:15px;">TOTAL SEMANA</td>
+                            <td style="text-align:right;"><?= moneda($totalSemanaAnterior) ?></td>
+                            <td style="text-align:right; color:#2563eb;"><?= moneda($totalSemanaActual) ?></td>
+                            <td style="text-align:right; color:<?= ($totalSemanaActual - $totalSemanaAnterior >= 0) ? '#10b981' : '#ef4444' ?>;">
+                                <?= (($totalSemanaActual - $totalSemanaAnterior) > 0 ? '+': '') . moneda($totalSemanaActual - $totalSemanaAnterior) ?>
+                                <br><small>(<?= ($totalSemanaAnterior > 0) ? round((($totalSemanaActual - $totalSemanaAnterior)/$totalSemanaAnterior)*100, 1) : 0 ?>%)</small>
+                            </td>
+                            <td style="text-align:center; font-size:1.5rem;">
+                                <?= ($totalSemanaActual - $totalSemanaAnterior >= 0 ? '🚀' : '📉') ?>
+                            </td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
