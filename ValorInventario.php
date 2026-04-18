@@ -44,7 +44,6 @@ $anioMes = date('Ym');
 $horaActual = date('H:i:s');
 $proximaActualizacion = date('H:i:s', strtotime('+3 minutes'));
 
-// GENERAR ETIQUETAS CON NOMBRE DE DÍA
 $labelsDias = [];
 $diasSemana = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];
 for ($i = 1; $i <= $ultimoDiaMes; $i++) {
@@ -92,20 +91,23 @@ function obtenerVentasMensuales($db) {
             SELECT P.FECHA, DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA LIKE '$anioMes%'
           ) X GROUP BY FECHA";
     $res = $db->query($q);
-    while($r = @$res->fetch_assoc()){
-        $dia = (int)substr($r['FECHA'], 6, 2);
-        if($dia >= 1 && $dia <= $ultimoDiaMes) $ventas[$dia] = (float)$r['total_dia'];
+    if($res){
+        while($r = @$res->fetch_assoc()){
+            $dia = (int)substr($r['FECHA'], 6, 2);
+            if($dia >= 1 && $dia <= $ultimoDiaMes) $ventas[$dia] = (float)$r['total_dia'];
+        }
     }
     return $ventas;
 }
 
-// NUEVA FUNCIÓN: COMPARATIVO LUNES A DOMINGO (MODIFICADA PARA TOTALIZAR)
+// FUNCIÓN MODIFICADA: COMPARATIVO 3 SEMANAS
 function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
     $nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     $comparativo = [
         'dias' => [],
         'total_actual' => 0,
-        'total_anterior' => 0
+        'total_anterior' => 0,
+        'total_antepasada' => 0
     ];
     
     $lunesEstaSemana = date('Y-m-d', strtotime('monday this week'));
@@ -113,6 +115,7 @@ function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
     for ($i = 0; $i < 7; $i++) {
         $fActual = date('Ymd', strtotime("$lunesEstaSemana +$i days"));
         $fPasada = date('Ymd', strtotime("$lunesEstaSemana +$i days -7 days"));
+        $fAntepasada = date('Ymd', strtotime("$lunesEstaSemana +$i days -14 days"));
         $nombreDia = $nombresDias[date('w', strtotime($fActual))];
 
         $qBase = "SELECT SUM(total) as total FROM (
@@ -121,24 +124,28 @@ function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
                 SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA = '?'
               ) X";
 
-        $valActual = 0; $valPasado = 0;
+        $valActual = 0; $valPasado = 0; $valAntepasado = 0;
         foreach([$dbCentral, $dbDrinks] as $db) {
             if(!$db) continue;
             $resA = $db->query(str_replace('?', $fActual, $qBase))->fetch_assoc();
             $resP = $db->query(str_replace('?', $fPasada, $qBase))->fetch_assoc();
+            $resAnt = $db->query(str_replace('?', $fAntepasada, $qBase))->fetch_assoc();
+            
             $valActual += (float)$resA['total'];
             $valPasado += (float)$resP['total'];
+            $valAntepasado += (float)$resAnt['total'];
         }
 
         $comparativo['dias'][] = [
             'dia' => $nombreDia,
             'actual' => $valActual,
             'anterior' => $valPasado,
-            'diff' => $valActual - $valPasado
+            'antepasada' => $valAntepasado
         ];
 
         $comparativo['total_actual'] += $valActual;
         $comparativo['total_anterior'] += $valPasado;
+        $comparativo['total_antepasada'] += $valAntepasado;
     }
     return $comparativo;
 }
@@ -157,7 +164,7 @@ function analizarSucursal($mysqli_conn, $nombreSede){
         SELECT SUM(total) AS venta_dia FROM (
             SELECT D.CANTIDAD * D.VALORPROD AS total FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DATE(F.FECHA)='$fechaSQL'
             UNION ALL
-            SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
+            SELECT DP.CANTIDAD * DP.VALORPROD AS total FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
             UNION ALL
             SELECT (DDV.CANTIDAD * DDV.VALORPROD) * -1 FROM DEVVENTAS DV INNER JOIN detdevventas DDV ON DV.iddevventas = DDV.iddevventas WHERE DATE(DV.fecha)='$fechaSQL'
         ) X
@@ -187,11 +194,8 @@ $drinks  = analizarSucursal($mysqliDrinks, 'DRINKS');
 $ventasGraficaCentral = obtenerVentasMensuales($mysqliCentral);
 $ventasGraficaDrinks  = obtenerVentasMensuales($mysqliDrinks);
 
-// OBTENER DATOS SEMANALES
 $datosSemanales = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
 $datosComparativos = $datosSemanales['dias'];
-$totalSemanaActual = $datosSemanales['total_actual'];
-$totalSemanaAnterior = $datosSemanales['total_anterior'];
 
 $totalVentaD = $central['venta_dia'] + $drinks['venta_dia'];
 $totalTransD = $central['trans_dia'] + $drinks['trans_dia'];
@@ -215,12 +219,10 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     <style>
         body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; }
         .container { max-width: 1400px; margin: 0 auto; }
-        
         .status-bar { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 10px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .update-info { font-size: 0.9rem; color: #4b5563; font-weight: 500; }
         .next-update { color: #2563eb; font-weight: bold; border-left: 2px solid #e5e7eb; padding-left: 15px; }
         #countdown { color: #ef4444; font-size: 1rem; }
-
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: center; border: 1px solid #eee; }
         .card-total { border: 2px solid #3b82f6; background-color: #eff6ff; }
@@ -236,7 +238,6 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         table { width: 100%; border-collapse: collapse; min-width: 400px; }
         th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-size: 0.8rem; }
         td { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
-        .total-row { background: #f9fafb; font-weight: bold; }
         .editable { color: #2563eb; font-weight: bold; border-bottom: 1px dashed; cursor: pointer; }
     </style>
 </head>
@@ -343,31 +344,28 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             <div style="height: 380px;"><canvas id="graficoTendencia"></canvas></div>
             
             <div style="margin-top: 35px; border-top: 2px solid #eee; padding-top: 20px;">
-                <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa Semanal (Lunes a Domingo)</h4>
+                <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa 3 Semanas (Lunes a Domingo)</h4>
                 <table style="width:100%; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                     <thead>
                         <tr style="background:#374151; color:white;">
                             <th>Día</th>
-                            <th style="text-align:right">Semana Anterior</th>
+                            <th style="text-align:right">Sem. Antepasada</th>
+                            <th style="text-align:right">Sem. Anterior</th>
                             <th style="text-align:right">Semana Actual</th>
-                            <th style="text-align:right">Diferencia</th>
                             <th style="text-align:center">Tendencia</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach($datosComparativos as $d): 
-                            $pct = ($d['anterior'] > 0) ? ($d['diff'] / $d['anterior']) * 100 : 0;
-                            $color = ($d['diff'] >= 0) ? '#10b981' : '#ef4444';
-                            $flecha = ($d['diff'] >= 0) ? '▲' : '▼';
+                            $difActual = $d['actual'] - $d['anterior'];
+                            $color = ($difActual >= 0) ? '#10b981' : '#ef4444';
+                            $flecha = ($difActual >= 0) ? '▲' : '▼';
                         ?>
                         <tr>
                             <td style="font-weight:bold; background:#f9fafb;"><?= $d['dia'] ?></td>
+                            <td style="text-align:right; color:#9ca3af;"><?= moneda($d['antepasada']) ?></td>
                             <td style="text-align:right; color:#6b7280;"><?= moneda($d['anterior']) ?></td>
                             <td style="text-align:right; font-weight:bold;"><?= moneda($d['actual']) ?></td>
-                            <td style="text-align:right; color:<?= $color ?>; font-weight:500;">
-                                <?= ($d['diff'] > 0 ? '+': '') . moneda($d['diff']) ?>
-                                <br><small>(<?= round($pct, 1) ?>%)</small>
-                            </td>
                             <td style="text-align:center; font-size:1.2rem; color:<?= $color ?>;">
                                 <?= $flecha ?>
                             </td>
@@ -376,15 +374,15 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
                     </tbody>
                     <tfoot style="background:#e5e7eb; font-weight:bold; border-top:2px solid #374151;">
                         <tr>
-                            <td style="padding:15px;">TOTAL SEMANA</td>
-                            <td style="text-align:right;"><?= moneda($totalSemanaAnterior) ?></td>
-                            <td style="text-align:right; color:#2563eb;"><?= moneda($totalSemanaActual) ?></td>
-                            <td style="text-align:right; color:<?= ($totalSemanaActual - $totalSemanaAnterior >= 0) ? '#10b981' : '#ef4444' ?>;">
-                                <?= (($totalSemanaActual - $totalSemanaAnterior) > 0 ? '+': '') . moneda($totalSemanaActual - $totalSemanaAnterior) ?>
-                                <br><small>(<?= ($totalSemanaAnterior > 0) ? round((($totalSemanaActual - $totalSemanaAnterior)/$totalSemanaAnterior)*100, 1) : 0 ?>%)</small>
-                            </td>
-                            <td style="text-align:center; font-size:1.5rem;">
-                                <?= ($totalSemanaActual - $totalSemanaAnterior >= 0 ? '🚀' : '📉') ?>
+                            <td style="padding:15px;">TOTALES</td>
+                            <td style="text-align:right; color:#6b7280;"><?= moneda($datosSemanales['total_antepasada']) ?></td>
+                            <td style="text-align:right; color:#6b7280;"><?= moneda($datosSemanales['total_anterior']) ?></td>
+                            <td style="text-align:right; color:#2563eb; font-size:1.1rem;"><?= moneda($datosSemanales['total_actual']) ?></td>
+                            <td style="text-align:center;">
+                                <?php 
+                                    $difSem = $datosSemanales['total_actual'] - $datosSemanales['total_anterior'];
+                                    echo ($difSem >= 0) ? '🚀' : '📉'; 
+                                ?>
                             </td>
                         </tr>
                     </tfoot>
@@ -397,17 +395,13 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 <script>
 Chart.register(ChartDataLabels);
 
-// --- CONTADOR REGRESIVO ---
 let timeLeft = 180;
 const timerElement = document.getElementById('countdown');
 setInterval(() => {
     timeLeft--;
-    if (timeLeft >= 0) {
-        timerElement.innerText = timeLeft;
-    }
+    if (timeLeft >= 0) timerElement.innerText = timeLeft;
 }, 1000);
 
-// --- GRAFICO BARRAS BODEGA ---
 new Chart(document.getElementById('graficoBarras'), {
     type: 'bar',
     data: {
@@ -428,7 +422,6 @@ new Chart(document.getElementById('graficoBarras'), {
     }
 });
 
-// --- GRAFICO TORTA VENTAS ---
 new Chart(document.getElementById('graficoTorta'), {
     type: 'pie',
     data: {
@@ -449,7 +442,6 @@ new Chart(document.getElementById('graficoTorta'), {
     }
 });
 
-// --- GRAFICO TENDENCIA (CON TOTALES EN MILES) ---
 new Chart(document.getElementById('graficoTendencia'), {
     type: 'bar',
     data: {
@@ -462,10 +454,7 @@ new Chart(document.getElementById('graficoTendencia'), {
     options: {
         responsive: true, maintainAspectRatio: false,
         layout: { padding: { top: 30 } },
-        scales: { 
-            x: { stacked: true, ticks: { font: { size: 10 } } }, 
-            y: { stacked: true } 
-        },
+        scales: { x: { stacked: true }, y: { stacked: true } },
         plugins: { 
             datalabels: {
                 anchor: 'end', align: 'top', color: '#1f2937', font: { weight: 'bold', size: 10 },
@@ -481,7 +470,6 @@ new Chart(document.getElementById('graficoTendencia'), {
     }
 });
 
-// --- LÓGICA DE EDICIÓN ---
 document.querySelectorAll('.edit-compra').forEach(el => {
     el.addEventListener('blur', function() {
         const val = this.innerText.replace(/\./g, '');
