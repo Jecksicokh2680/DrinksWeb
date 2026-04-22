@@ -136,10 +136,13 @@ if (isset($_POST['accion'])) {
     }
 }
 
+// CONSULTA CORREGIDA: Mostrará cualquier diferencia distinta de cero
 $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre 
     FROM conteoweb c 
     INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
-    WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2 AND DATE(c.fecha_conteo) = '$hoy'
+    WHERE c.estado = 'A' 
+    AND c.diferencia <> 0 
+    AND DATE(c.fecha_conteo) = '$hoy'
     ORDER BY cat.CodCat ASC");
 
 $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre 
@@ -160,6 +163,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
         body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; }
         .loading-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; justify-content:center; align-items:center; }
+        .list-group-item:hover { background-color: #f8fafc; }
     </style>
 </head>
 <body>
@@ -192,7 +196,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar..." onkeyup="filtrarTodo()">
+                            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar categoría..." onkeyup="filtrarTodo()">
                         </div>
                     </div>
                 </div>
@@ -204,7 +208,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                 <th class="text-end">SISTEMA</th>
                                 <th class="text-end">FÍSICO</th>
                                 <th class="text-center">DIF.</th>
-                                <th class="text-center">ACCIÓN</th>
+                                <th class="text-center">GESTIÓN</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -276,7 +280,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <div class="p-5 text-center text-muted small italic">No hay registros.</div>
+                            <div class="p-5 text-center text-muted small italic">No hay registros hoy.</div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -291,14 +295,15 @@ function filtrarTodo() {
     const searchHistorial = document.getElementById('histSearch').value.toUpperCase();
     const sedeSelected = document.getElementById('sedeFilter').value.toUpperCase();
 
-    // Pendientes
+    // Filtro Pendientes
     document.querySelectorAll(".item-conteo").forEach(fila => {
         const categoria = fila.querySelector(".text-categoria").textContent.toUpperCase();
         const sedeFila = fila.getAttribute('data-sede');
-        fila.style.display = ( (sedeSelected === "" || sedeFila === sedeSelected) && (categoria.indexOf(searchGlobal) > -1) ) ? "" : "none";
+        const visible = ( (sedeSelected === "" || sedeFila === sedeSelected) && (categoria.indexOf(searchGlobal) > -1) );
+        fila.style.display = visible ? "" : "none";
     });
 
-    // Historial
+    // Filtro Historial
     let count = 0;
     document.querySelectorAll(".item-historial").forEach(item => {
         const categoria = item.querySelector(".text-categoria-hist").textContent.toUpperCase();
@@ -311,7 +316,7 @@ function filtrarTodo() {
 }
 
 function procesarAccion(id, accion) {
-    const msg = accion === 'eliminar_ajax' ? "¿Eliminar este conteo pendiente?" : "¿Ajustar el inventario?";
+    const msg = accion === 'eliminar_ajax' ? "¿Eliminar este conteo pendiente?" : "¿Desea ajustar el inventario ahora?";
     if(!confirm(msg)) return;
     
     document.getElementById('loader').style.display = 'flex';
@@ -321,12 +326,15 @@ function procesarAccion(id, accion) {
     fetch(window.location.href, { method: 'POST', body: fd })
     .then(r => r.json()).then(data => {
         if(data.status === 'success') location.reload();
-        else { document.getElementById('loader').style.display = 'none'; alert("Error: " + data.message); }
+        else { 
+            document.getElementById('loader').style.display = 'none'; 
+            alert("Error: " + data.message); 
+        }
     });
 }
 
 function devolverAjuste(idHistorial) {
-    if(!confirm("¿Desea revertir este cambio?")) return;
+    if(!confirm("¿Desea revertir este cambio? El stock volverá a su estado original.")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', 'devolver_ajuste_ajax');
@@ -334,7 +342,10 @@ function devolverAjuste(idHistorial) {
     fetch(window.location.href, { method: 'POST', body: fd })
     .then(r => r.json()).then(data => {
         if(data.status === 'success') location.reload();
-        else { document.getElementById('loader').style.display = 'none'; alert("Error: " + data.message); }
+        else { 
+            document.getElementById('loader').style.display = 'none'; 
+            alert("Error: " + data.message); 
+        }
     });
 }
 </script>
