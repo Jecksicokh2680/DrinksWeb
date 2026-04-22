@@ -324,7 +324,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
-                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif < 0) ? '#dc3545' : '#28a745' ?>;">
+                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif < 0.1) ? '#dc3545' : '#28a745' ?>;">
                                     <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
                                 </td>
                             <?php endif; ?>
