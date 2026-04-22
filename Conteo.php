@@ -29,7 +29,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $skus = [];
     while($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
 
-    $html = "<table style='width:100%; border-collapse:collapse; font-size:13px;'>
+    // Ajuste responsive en el HTML de retorno
+    $html = "<div style='overflow-x:auto;'>
+            <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
             <thead><tr style='background:#f4f4f4;'>
                 <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
                 <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
@@ -69,7 +71,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
         $colspan = $esAdminStock ? 3 : 2;
         $html .= "<tr><td colspan='$colspan' style='padding:20px; text-align:center;'>No hay productos vinculados a esta categoría.</td></tr>";
     }
-    $html .= "</tbody></table>";
+    $html .= "</tbody></table></div>";
     echo $html;
     exit;
 }
@@ -204,25 +206,42 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px; color:#333;}
         .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
-        .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; }
-        .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; }
+        
+        /* Ajuste Responsive para Sede Selector */
+        .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; flex-wrap: wrap; }
+        .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
         .btn-refresh { text-decoration:none; padding:8px; border-radius:8px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:16px; margin-left: auto; }
+        
         .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
+        
+        /* Ajuste Grid para móviles */
         .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: 1fr; }
+            .card { padding: 15px; }
+            input[type="number"] { font-size: 24px !important; }
+        }
+
         label{display:block; font-weight:bold; margin-bottom:5px; font-size: 14px;}
         input[type="number"] { width:100%; padding:15px; font-size:28px; border-radius:10px; border:2px solid #eee; text-align:center; box-sizing:border-box;}
+        
         .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:20px; cursor:pointer; font-weight:bold;}
-        .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block;}
-        table{width:100%; border-collapse:collapse; margin-top:20px;}
+        .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
+        
+        /* Tablas Responsive */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table{width:100%; border-collapse:collapse; margin-top:20px; min-width: 600px;}
         th,td{padding:10px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
+        
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
         .verde{background:#28a745;} .rojo{background:#dc3545;}
-        /* Estilos para la nueva columna */
+        
         .badge-sede { padding:4px 6px; border-radius:4px; font-size:9px; font-weight:bold; color:#fff; text-transform:uppercase; }
         .bg-central { background:#34495e; }
         .bg-drinks { background:#e67e22; }
+        
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:25px; width:95%; max-width:700px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
         .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
@@ -294,7 +313,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php if($conteos): ?>
         <div style="margin-top:40px;">
             <h4 style="margin-bottom:15px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
-            <div style="overflow-x:auto;">
+            <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
