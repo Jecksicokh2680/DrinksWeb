@@ -180,14 +180,34 @@ if (isset($_POST['guardar_conteo'])) {
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
     $diferencia    = $stockFisico - $stockSistema;
 
-    $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
-    $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
-    if ($stmt->execute()) {
-        $mensaje = "✅ Conteo guardado correctamente";
-        $categoriaSel = "";
+    // --- VALIDACIÓN DE DUPLICADOS (MISMO USUARIO, MISMA CATEGORÍA, HOY) ---
+    $checkDuplicado = $mysqli->prepare("
+        SELECT id 
+        FROM conteoweb 
+        WHERE usuario = ? 
+          AND CodCat = ? 
+          AND NitEmpresa = ? 
+          AND estado = 'A' 
+          AND DATE(fecha_conteo) = CURDATE()
+        LIMIT 1
+    ");
+    $checkDuplicado->bind_param("sss", $usuario, $codCat, $nitSesion);
+    $checkDuplicado->execute();
+    $resDuplicado = $checkDuplicado->get_result();
+
+    if ($resDuplicado->num_rows > 0) {
+        $mensaje = "⚠️ Error: Ya registraste un conteo para esta categoría el día de hoy.";
+    } else {
+        // Proceder con el insert si no hay duplicado
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
+        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        
+        if ($stmt->execute()) {
+            $mensaje = "✅ Conteo guardado correctamente";
+            $categoriaSel = "";
+        }
     }
 }
-
 // Historial del día
 $conteos = [];
 $resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE c.NitEmpresa=? AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
