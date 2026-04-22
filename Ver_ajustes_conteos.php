@@ -12,7 +12,7 @@ if (!isset($_SESSION['Usuario'])) die("Sesión no válida");
 $mysqli->set_charset("utf8");
 $usuarioActual = $_SESSION['Usuario'];
 $hoy = date("Y-m-d");
-$primerDiaMes = date("Y-m-01"); // Variable para el filtro mensual
+$primerDiaMes = date("Y-m-01"); 
 $ahoraBogota = date("Y-m-d H:i:s");
 
 /* ============================================================
@@ -21,7 +21,6 @@ $ahoraBogota = date("Y-m-d H:i:s");
 if (isset($_POST['accion'])) {
     header('Content-Type: application/json');
     
-    // --- ACCIÓN: AJUSTAR ---
     if ($_POST['accion'] === 'ajustar_ajax') {
         $idConteo = (int)$_POST['id_conteo'];
         $stmt = $mysqli->prepare("SELECT CodCat, diferencia, NitEmpresa, stock_sistema, stock_fisico FROM conteoweb WHERE id=? AND estado='A'");
@@ -78,10 +77,8 @@ if (isset($_POST['accion'])) {
         }
     }
 
-    // --- ACCIÓN: DEVOLVER AJUSTE ---
     if ($_POST['accion'] === 'devolver_ajuste_ajax') {
         $idHistorial = (int)$_POST['id_historial'];
-        
         $stmt = $mysqli->prepare("SELECT id_conteo, categoria, nit_empresa, diferencia_aplicada FROM historial_ajustes WHERE id=?");
         $stmt->bind_param("i", $idHistorial);
         $stmt->execute();
@@ -117,7 +114,6 @@ if (isset($_POST['accion'])) {
                     $updStmt->bind_param($types, $reversaPorUnidad, ...$skus);
                     $updStmt->execute();
 
-                    // Regresar conteo a Abierto y borrar historial
                     $mysqli->query("UPDATE conteoweb SET estado='A' WHERE id=$idConteoOriginal");
                     $mysqli->query("DELETE FROM historial_ajustes WHERE id=$idHistorial");
 
@@ -131,7 +127,6 @@ if (isset($_POST['accion'])) {
         }
     }
 
-    // --- ACCIÓN: ELIMINAR ---
     if ($_POST['accion'] === 'eliminar_ajax') {
         $idConteo = (int)$_POST['id_conteo'];
         $upd = $mysqli->query("UPDATE conteoweb SET estado='E' WHERE id=$idConteo");
@@ -141,14 +136,12 @@ if (isset($_POST['accion'])) {
     }
 }
 
-// Consultas para la vista
 $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre 
     FROM conteoweb c 
     INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
     WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2 AND DATE(c.fecha_conteo) = '$hoy'
     ORDER BY cat.CodCat ASC");
 
-// MODIFICACIÓN: Se cambió el filtro para mostrar todo el mes actual
 $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre 
     FROM historial_ajustes h
     LEFT JOIN categorias cat ON cat.CodCat = h.categoria
@@ -166,10 +159,8 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
     <style>
         body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-        .row-fade-out { opacity: 0; transform: scale(0.95); transition: all 0.4s ease; }
         .loading-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; justify-content:center; align-items:center; }
         .hist-previo { background: #f1f5f9; border-left: 3px solid #94a3b8; font-size: 10px; padding: 4px 8px; margin-top: 4px; border-radius: 4px; }
-        .btn-undo { font-size: 10px; padding: 2px 8px; }
     </style>
 </head>
 <body>
@@ -193,9 +184,18 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
         <div class="col-lg-7">
             <div class="card">
                 <div class="card-header bg-white py-3">
-                    <div class="row align-items-center">
-                        <div class="col"><h6 class="mb-0 fw-bold">DIFERENCIAS PENDIENTES</h6></div>
-                        <div class="col text-end"><input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar categoría..."></div>
+                    <div class="row align-items-center g-2">
+                        <div class="col-md-4"><h6 class="mb-0 fw-bold">DIFERENCIAS PENDIENTES</h6></div>
+                        <div class="col-md-4">
+                            <select id="sedeFilter" class="form-select form-select-sm">
+                                <option value="">Todas las Sedes</option>
+                                <option value="DRINKS">Drinks</option>
+                                <option value="CENTRAL">Central</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar categoría...">
+                        </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -210,12 +210,14 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while($r = $resPendientes->fetch_assoc()): ?>
-                            <tr id="fila-<?= $r['id'] ?>">
+                            <?php while($r = $resPendientes->fetch_assoc()): 
+                                $nombreSede = ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : 'Central';
+                            ?>
+                            <tr id="fila-<?= $r['id'] ?>" data-sede="<?= strtoupper($nombreSede) ?>" class="item-conteo">
                                 <td class="ps-4">
-                                    <div class="fw-bold text-dark"><?= $r['Nombre'] ?></div>
+                                    <div class="fw-bold text-dark text-categoria"><?= $r['Nombre'] ?></div>
                                     <div class="text-muted" style="font-size: 11px;">
-                                        <?= ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : 'Central' ?> | <i class="bi bi-clock"></i> <?= date("H:i", strtotime($r['fecha_conteo'])) ?>
+                                        <span class="badge bg-secondary-subtle text-secondary border"><?= $nombreSede ?></span> | <i class="bi bi-clock"></i> <?= date("H:i", strtotime($r['fecha_conteo'])) ?>
                                     </div>
                                 </td>
                                 <td class="text-end text-muted small"><?= number_format($r['stock_sistema'], 2) ?></td>
@@ -241,74 +243,75 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
 
         <div class="col-lg-5">
             <div class="card">
-                <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS APLICADOS</h6>
-                </div>
+                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS APLICADOS</h6></div>
                 <div class="card-body p-0">
                     <div id="historialList" class="list-group list-group-flush" style="max-height: 750px; overflow-y: auto;">
                         <?php if($resHistorial->num_rows > 0): ?>
-                            <?php while($h = $resHistorial->fetch_assoc()): ?>
-                                <div class="list-group-item py-3 px-4">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                            <?php while($h = $resHistorial->fetch_assoc()): 
+                                $sedeHist = ($h['nit_empresa'] === '901724534-7') ? 'Drinks' : 'Central';
+                            ?>
+                                <div class="list-group-item py-3 px-4 item-historial" data-sede="<?= strtoupper($sedeHist) ?>">
+                                    <div class="d-flex justify-content-between align-items-start">
                                         <div>
-                                            <div class="fw-bold text-uppercase small text-dark"><?= $h['Nombre'] ?></div>
-                                            <div class="text-muted italic" style="font-size: 10px;">Sede: <?= ($h['nit_empresa'] === '901724534-7') ? 'Drinks' : 'Central' ?></div>
+                                            <div class="fw-bold text-uppercase small text-dark text-categoria-hist"><?= $h['Nombre'] ?></div>
+                                            <div class="text-muted" style="font-size: 10px;">
+                                                <span class="badge bg-light text-dark border"><?= $sedeHist ?></span>
+                                            </div>
                                         </div>
-                                        <div class="text-end">
-                                            <button onclick="devolverAjuste(<?= $h['id'] ?>)" class="btn btn-outline-warning btn-undo text-dark fw-bold mb-1">
-                                                <i class="bi bi-arrow-counterclockwise"></i> DEVOLVER
-                                            </button>
-                                            <div class="badge bg-light text-dark border d-block" style="font-size: 10px;"><?= date("d/m H:i", strtotime($h['fecha_ajuste'])) ?></div>
-                                        </div>
+                                        <button onclick="devolverAjuste(<?= $h['id'] ?>)" class="btn btn-outline-warning btn-sm py-0 fw-bold" style="font-size:10px">DEVOLVER</button>
                                     </div>
-                                    
-                                    <div class="small fw-bold <?= $h['diferencia_aplicada'] < 0 ? 'text-danger' : 'text-success' ?>">
-                                        DIFERENCIA APLICADA: <?= ($h['diferencia_aplicada'] > 0 ? '+' : '') . number_format($h['diferencia_aplicada'], 2) ?>
+                                    <div class="mt-1 small fw-bold <?= $h['diferencia_aplicada'] < 0 ? 'text-danger' : 'text-success' ?>">
+                                        APLICADO: <?= ($h['diferencia_aplicada'] > 0 ? '+' : '') . number_format($h['diferencia_aplicada'], 2) ?>
                                     </div>
-
-                                    <?php 
-                                        $catActual = $h['categoria'];
-                                        $idActual = $h['id'];
-                                        $stmtPrev = $mysqli->prepare("SELECT diferencia_aplicada, fecha_ajuste FROM historial_ajustes WHERE categoria = ? AND id < ? ORDER BY id DESC LIMIT 2");
-                                        $stmtPrev->bind_param("si", $catActual, $idActual);
-                                        $stmtPrev->execute();
-                                        $resPrev = $stmtPrev->get_result();
-                                        if($resPrev->num_rows > 0):
-                                            while($p = $resPrev->fetch_assoc()):
-                                    ?>
-                                                <div class="hist-previo d-flex justify-content-between text-muted">
-                                                    <span>Anterior (<?= date("d/m H:i", strtotime($p['fecha_ajuste'])) ?>):</span>
-                                                    <span class="fw-bold"><?= ($p['diferencia_aplicada'] > 0 ? '+' : '') . number_format($p['diferencia_aplicada'], 2) ?></span>
-                                                </div>
-                                    <?php 
-                                            endwhile;
-                                        endif;
-                                        $stmtPrev->close();
-                                    ?>
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <div class="p-5 text-center text-muted italic small">No hay ajustes realizados en el mes.</div>
+                            <div class="p-5 text-center text-muted italic small">No hay ajustes realizados.</div>
                         <?php endif; ?>
                     </div>
                 </div>
             </div>
         </div>
-
     </div>
 </div>
 
 <script>
+function filtrarTodo() {
+    let busqueda = document.getElementById('searchInput').value.toUpperCase();
+    let sede = document.getElementById('sedeFilter').value.toUpperCase();
+
+    // 1. Filtrar Pendientes
+    let filasPendientes = document.querySelectorAll(".item-conteo");
+    filasPendientes.forEach(fila => {
+        let texto = fila.querySelector(".text-categoria").textContent.toUpperCase();
+        let sedeFila = fila.getAttribute('data-sede');
+        let coincideBusqueda = texto.indexOf(busqueda) > -1;
+        let coincideSede = (sede === "" || sedeFila === sede);
+        fila.style.display = (coincideBusqueda && coincideSede) ? "" : "none";
+    });
+
+    // 2. Filtrar Historial
+    let itemsHistorial = document.querySelectorAll(".item-historial");
+    itemsHistorial.forEach(item => {
+        let texto = item.querySelector(".text-categoria-hist").textContent.toUpperCase();
+        let sedeItem = item.getAttribute('data-sede');
+        let coincideBusqueda = texto.indexOf(busqueda) > -1;
+        let coincideSede = (sede === "" || sedeItem === sede);
+        item.style.display = (coincideBusqueda && coincideSede) ? "" : "none";
+    });
+}
+
+document.getElementById('searchInput').addEventListener('keyup', filtrarTodo);
+document.getElementById('sedeFilter').addEventListener('change', filtrarTodo);
+
 function procesarAccion(id, accion) {
     if(!confirm("¿Desea realizar esta operación?")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', accion);
     fd.append('id_conteo', id);
-
     fetch(window.location.href, { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
+    .then(r => r.json()).then(data => {
         document.getElementById('loader').style.display = 'none';
         if(data.status === 'success') location.reload();
         else alert("Error: " + data.message);
@@ -316,35 +319,18 @@ function procesarAccion(id, accion) {
 }
 
 function devolverAjuste(idHistorial) {
-    if(!confirm("¡ATENCIÓN! Se revertirá el ajuste en el inventario real y el conteo volverá a pendientes. ¿Continuar?")) return;
-    
+    if(!confirm("¿Revertir este ajuste?")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', 'devolver_ajuste_ajax');
     fd.append('id_historial', idHistorial);
-
     fetch(window.location.href, { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(data => {
+    .then(r => r.json()).then(data => {
         document.getElementById('loader').style.display = 'none';
-        if(data.status === 'success') {
-            alert("Ajuste revertido correctamente.");
-            location.reload();
-        } else {
-            alert("Error al devolver: " + data.message);
-        }
+        if(data.status === 'success') location.reload();
+        else alert("Error: " + data.message);
     });
 }
-
-document.getElementById('searchInput').addEventListener('keyup', function() {
-    let q = this.value.toUpperCase();
-    let r = document.querySelector("#tablePendientes tbody").rows;
-    for (let i = 0; i < r.length; i++) {
-        let t = r[i].cells[0].textContent.toUpperCase();
-        r[i].style.display = (t.indexOf(q) > -1) ? "" : "none";
-    }
-});
 </script>
-
 </body>
 </html>
