@@ -219,6 +219,10 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
         .verde{background:#28a745;} .rojo{background:#dc3545;}
+        /* Estilos para la nueva columna */
+        .badge-sede { padding:4px 6px; border-radius:4px; font-size:9px; font-weight:bold; color:#fff; text-transform:uppercase; }
+        .bg-central { background:#34495e; }
+        .bg-drinks { background:#e67e22; }
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:25px; width:95%; max-width:700px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
         .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
@@ -294,6 +298,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 <table>
                     <thead>
                         <tr>
+                            <th>Sede</th>
                             <th>Hora</th>
                             <th>Categoría</th>
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
@@ -311,8 +316,11 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                         <?php foreach($conteos as $c): 
                             $dif = (float)$c['diferencia'];
                             $color = ($dif <= -0.1) ? 'rojo' : 'verde';
+                            $sedeTag = ($c['NitEmpresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
+                            $sedeClass = ($c['NitEmpresa'] == NIT_DRINKS) ? 'bg-drinks' : 'bg-central';
                         ?>
                         <tr>
+                            <td><span class="badge-sede <?= $sedeClass ?>"><?= $sedeTag ?></span></td>
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
                             <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
                             
