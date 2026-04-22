@@ -178,11 +178,20 @@ if (isset($_POST['guardar_conteo'])) {
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
     $diferencia    = $stockFisico - $stockSistema;
 
-    $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
-    $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
-    if ($stmt->execute()) {
-        $mensaje = "✅ Conteo guardado correctamente";
-        $categoriaSel = "";
+    // VALIDACIÓN ANTI-DUPLICADOS (Servidor): Intervalo de 20 segundos
+    $check = $mysqli->prepare("SELECT id FROM conteoweb WHERE CodCat=? AND NitEmpresa=? AND usuario=? AND estado='A' AND fecha_conteo > (NOW() - INTERVAL 20 SECOND) LIMIT 1");
+    $check->bind_param("sss", $codCat, $nitSesion, $usuario);
+    $check->execute();
+    
+    if ($check->get_result()->num_rows > 0) {
+        $mensaje = "⚠️ Error: Ya se guardó este conteo hace un momento.";
+    } else {
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
+        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        if ($stmt->execute()) {
+            $mensaje = "✅ Conteo guardado correctamente";
+            $categoriaSel = "";
+        }
     }
 }
 
@@ -267,7 +276,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 </div>
             <?php endif; ?>
 
-            <form method="POST">
+            <form method="POST" onsubmit="return validarEnvio(this);">
                 <input type="hidden" name="CodCat" value="<?= $categoriaSel ?>">
                 <input type="hidden" name="unicaja" value="<?= $unicajaSel ?>">
                 <input type="hidden" name="stock_sistema" value="<?= $totalCategoria ?>">
@@ -282,7 +291,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                         <input type="number" step="0.001" name="unidades" placeholder="0" required>
                     </div>
                 </div>
-                <button type="submit" name="guardar_conteo" class="btn-save">FINALIZAR CONTEO</button>
+                <button type="submit" name="guardar_conteo" id="btnFinalizar" class="btn-save">FINALIZAR CONTEO</button>
             </form>
         </div>
     <?php endif; ?>
@@ -356,6 +365,16 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 </div>
 
 <script>
+// VALIDACIÓN JS: Desactiva el botón para evitar doble clic
+function validarEnvio(form) {
+    const btn = document.getElementById('btnFinalizar');
+    btn.disabled = true;
+    btn.innerHTML = "⌛ Guardando...";
+    btn.style.opacity = "0.6";
+    btn.style.cursor = "not-allowed";
+    return true;
+}
+
 function verDetalleProductos(codCat) {
     const modal = document.getElementById('modalProductos');
     const contenedor = document.getElementById('tabla-productos');
