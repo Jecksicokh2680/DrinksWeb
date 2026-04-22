@@ -126,14 +126,6 @@ if (isset($_POST['accion'])) {
             }
         }
     }
-
-    if ($_POST['accion'] === 'eliminar_ajax') {
-        $idConteo = (int)$_POST['id_conteo'];
-        $upd = $mysqli->query("UPDATE conteoweb SET estado='E' WHERE id=$idConteo");
-        if($upd) echo json_encode(["status" => "success"]);
-        else echo json_encode(["status" => "error", "message" => "No se pudo eliminar"]);
-        exit;
-    }
 }
 
 $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre 
@@ -146,7 +138,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
     FROM historial_ajustes h
     LEFT JOIN categorias cat ON cat.CodCat = h.categoria
     WHERE h.fecha_ajuste >= '$primerDiaMes 00:00:00'
-    ORDER BY cat.CodCat ,h.fecha_ajuste DESC");
+    ORDER BY h.fecha_ajuste DESC");
 ?>
 
 <!DOCTYPE html>
@@ -158,9 +150,9 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
-        .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; }
         .loading-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; justify-content:center; align-items:center; }
-        .hist-previo { background: #f1f5f9; border-left: 3px solid #94a3b8; font-size: 10px; padding: 4px 8px; margin-top: 4px; border-radius: 4px; }
+        .list-group-item:hover { background-color: #f8fafc; }
     </style>
 </head>
 <body>
@@ -169,11 +161,10 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
 
 <nav class="navbar navbar-dark bg-dark mb-4 shadow">
     <div class="container-fluid px-4">
-        <span class="navbar-brand fw-bold text-uppercase"><i class="bi bi-shield-shaded me-2"></i>SIA Panel de Auditoría</span>
+        <span class="navbar-brand fw-bold text-uppercase small"><i class="bi bi-shield-shaded me-2"></i>SIA Panel de Auditoría</span>
         <div class="text-white d-flex align-items-center">
-            <button onclick="location.reload()" class="btn btn-outline-light btn-sm me-3"><i class="bi bi-arrow-clockwise"></i> Recargar</button>
-            <span class="small me-3 border-start ps-3"><i class="bi bi-clock"></i> <?= date("H:i") ?></span>
-            <span class="badge bg-primary"><i class="bi bi-person"></i> <?= $usuarioActual ?></span>
+            <button onclick="location.reload()" class="btn btn-outline-light btn-sm me-3"><i class="bi bi-arrow-clockwise"></i></button>
+            <span class="badge bg-primary px-3"><?= $usuarioActual ?></span>
         </div>
     </div>
 </nav>
@@ -185,39 +176,39 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
             <div class="card">
                 <div class="card-header bg-white py-3">
                     <div class="row align-items-center g-2">
-                        <div class="col-md-4"><h6 class="mb-0 fw-bold">DIFERENCIAS PENDIENTES</h6></div>
+                        <div class="col-md-4"><h6 class="mb-0 fw-bold">PENDIENTES</h6></div>
                         <div class="col-md-4">
-                            <select id="sedeFilter" class="form-select form-select-sm">
-                                <option value="">Todas las Sedes</option>
+                            <select id="sedeFilter" class="form-select form-select-sm border-primary-subtle" onchange="filtrarTodo()">
+                                <option value="">Sede: Todas</option>
                                 <option value="DRINKS">Drinks</option>
                                 <option value="CENTRAL">Central</option>
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar categoría...">
+                            <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Buscar..." onkeyup="filtrarTodo()">
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <table class="table align-middle mb-0" id="tablePendientes">
                         <thead class="table-light">
-                            <tr>
-                                <th class="ps-4">CATEGORÍA / SEDE</th>
+                            <tr style="font-size: 11px;">
+                                <th class="ps-4">CATEGORÍA</th>
                                 <th class="text-end">SISTEMA</th>
                                 <th class="text-end">FÍSICO</th>
                                 <th class="text-center">DIF.</th>
-                                <th class="text-center">GESTIÓN</th>
+                                <th class="text-center">ACCIÓN</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php while($r = $resPendientes->fetch_assoc()): 
                                 $nombreSede = ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : 'Central';
                             ?>
-                            <tr id="fila-<?= $r['id'] ?>" data-sede="<?= strtoupper($nombreSede) ?>" class="item-conteo">
+                            <tr class="item-conteo" data-sede="<?= strtoupper($nombreSede) ?>">
                                 <td class="ps-4">
-                                    <div class="fw-bold text-dark text-categoria"><?= $r['Nombre'] ?></div>
-                                    <div class="text-muted" style="font-size: 11px;">
-                                        <span class="badge bg-secondary-subtle text-secondary border"><?= $nombreSede ?></span> | <i class="bi bi-clock"></i> <?= date("H:i", strtotime($r['fecha_conteo'])) ?>
+                                    <div class="fw-bold text-dark text-categoria" style="font-size:13px;"><?= $r['Nombre'] ?></div>
+                                    <div class="text-muted" style="font-size: 10px;">
+                                        <span class="badge bg-light text-dark border"><?= $nombreSede ?></span> | <?= date("H:i", strtotime($r['fecha_conteo'])) ?>
                                     </div>
                                 </td>
                                 <td class="text-end text-muted small"><?= number_format($r['stock_sistema'], 2) ?></td>
@@ -228,10 +219,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                     </span>
                                 </td>
                                 <td class="text-center">
-                                    <div class="btn-group">
-                                        <button onclick="procesarAccion(<?= $r['id'] ?>, 'ajustar_ajax')" class="btn btn-primary btn-sm px-3">AJUSTAR</button>
-                                        <button onclick="procesarAccion(<?= $r['id'] ?>, 'eliminar_ajax')" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
-                                    </div>
+                                    <button onclick="procesarAccion(<?= $r['id'] ?>, 'ajustar_ajax')" class="btn btn-primary btn-sm shadow-sm">AJUSTAR</button>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -243,30 +231,42 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
 
         <div class="col-lg-5">
             <div class="card">
-                <div class="card-header bg-white py-3"><h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS APLICADOS</h6></div>
+                <div class="card-header bg-white py-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold text-secondary">MOVIMIENTOS APLICADOS</h6>
+                        <span class="badge bg-secondary-subtle text-secondary" id="countHist"><?= $resHistorial->num_rows ?> registros</span>
+                    </div>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-funnel"></i></span>
+                        <input type="text" id="histSearch" class="form-control border-start-0" placeholder="Filtrar historial por categoría..." onkeyup="filtrarTodo()">
+                    </div>
+                </div>
                 <div class="card-body p-0">
-                    <div id="historialList" class="list-group list-group-flush" style="max-height: 750px; overflow-y: auto;">
+                    <div id="historialList" class="list-group list-group-flush" style="max-height: 700px; overflow-y: auto;">
                         <?php if($resHistorial->num_rows > 0): ?>
                             <?php while($h = $resHistorial->fetch_assoc()): 
                                 $sedeHist = ($h['nit_empresa'] === '901724534-7') ? 'Drinks' : 'Central';
                             ?>
                                 <div class="list-group-item py-3 px-4 item-historial" data-sede="<?= strtoupper($sedeHist) ?>">
                                     <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <div class="fw-bold text-uppercase small text-dark text-categoria-hist"><?= $h['Nombre'] ?></div>
-                                            <div class="text-muted" style="font-size: 10px;">
-                                                <span class="badge bg-light text-dark border"><?= $sedeHist ?></span>
+                                        <div style="flex: 1;">
+                                            <div class="fw-bold text-uppercase text-dark text-categoria-hist" style="font-size: 12px;"><?= $h['Nombre'] ?></div>
+                                            <div class="d-flex gap-2 mt-1">
+                                                <span class="badge bg-light text-dark border" style="font-size: 9px;"><?= $sedeHist ?></span>
+                                                <span class="text-muted" style="font-size: 10px;"><i class="bi bi-clock"></i> <?= date("d/m H:i", strtotime($h['fecha_ajuste'])) ?></span>
                                             </div>
                                         </div>
-                                        <button onclick="devolverAjuste(<?= $h['id'] ?>)" class="btn btn-outline-warning btn-sm py-0 fw-bold" style="font-size:10px">DEVOLVER</button>
-                                    </div>
-                                    <div class="mt-1 small fw-bold <?= $h['diferencia_aplicada'] < 0 ? 'text-danger' : 'text-success' ?>">
-                                        APLICADO: <?= ($h['diferencia_aplicada'] > 0 ? '+' : '') . number_format($h['diferencia_aplicada'], 2) ?>
+                                        <div class="text-end">
+                                            <div class="fw-bold <?= $h['diferencia_aplicada'] < 0 ? 'text-danger' : 'text-success' ?>" style="font-size: 14px;">
+                                                <?= ($h['diferencia_aplicada'] > 0 ? '+' : '') . number_format($h['diferencia_aplicada'], 2) ?>
+                                            </div>
+                                            <button onclick="devolverAjuste(<?= $h['id'] ?>)" class="btn btn-link text-warning p-0 text-decoration-none fw-bold" style="font-size:10px">REVERTIR</button>
+                                        </div>
                                     </div>
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <div class="p-5 text-center text-muted italic small">No hay ajustes realizados.</div>
+                            <div class="p-5 text-center text-muted small italic">No hay registros este mes.</div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -277,58 +277,65 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
 
 <script>
 function filtrarTodo() {
-    let busqueda = document.getElementById('searchInput').value.toUpperCase();
-    let sede = document.getElementById('sedeFilter').value.toUpperCase();
+    const searchGlobal = document.getElementById('searchInput').value.toUpperCase();
+    const searchHistorial = document.getElementById('histSearch').value.toUpperCase();
+    const sedeSelected = document.getElementById('sedeFilter').value.toUpperCase();
 
-    // 1. Filtrar Pendientes
-    let filasPendientes = document.querySelectorAll(".item-conteo");
-    filasPendientes.forEach(fila => {
-        let texto = fila.querySelector(".text-categoria").textContent.toUpperCase();
-        let sedeFila = fila.getAttribute('data-sede');
-        let coincideBusqueda = texto.indexOf(busqueda) > -1;
-        let coincideSede = (sede === "" || sedeFila === sede);
-        fila.style.display = (coincideBusqueda && coincideSede) ? "" : "none";
+    // 1. Filtrar Tabla Pendientes (Usa Buscador Global + Sede)
+    document.querySelectorAll(".item-conteo").forEach(fila => {
+        const categoria = fila.querySelector(".text-categoria").textContent.toUpperCase();
+        const sedeFila = fila.getAttribute('data-sede');
+        
+        const coincideSede = (sedeSelected === "" || sedeFila === sedeSelected);
+        const coincideBusqueda = (categoria.indexOf(searchGlobal) > -1);
+        
+        fila.style.display = (coincideSede && coincideBusqueda) ? "" : "none";
     });
 
-    // 2. Filtrar Historial
-    let itemsHistorial = document.querySelectorAll(".item-historial");
-    itemsHistorial.forEach(item => {
-        let texto = item.querySelector(".text-categoria-hist").textContent.toUpperCase();
-        let sedeItem = item.getAttribute('data-sede');
-        let coincideBusqueda = texto.indexOf(busqueda) > -1;
-        let coincideSede = (sede === "" || sedeItem === sede);
-        item.style.display = (coincideBusqueda && coincideSede) ? "" : "none";
+    // 2. Filtrar Historial (Usa Buscador Específico + Sede + Buscador Global)
+    let visiblres = 0;
+    document.querySelectorAll(".item-historial").forEach(item => {
+        const categoria = item.querySelector(".text-categoria-hist").textContent.toUpperCase();
+        const sedeItem = item.getAttribute('data-sede');
+        
+        const coincideSede = (sedeSelected === "" || sedeItem === sedeSelected);
+        // Coincide si el texto está en el buscador global O en el buscador de historial
+        const coincideBusqueda = (categoria.indexOf(searchGlobal) > -1 && categoria.indexOf(searchHistorial) > -1);
+        
+        if (coincideSede && coincideBusqueda) {
+            item.style.display = "";
+            visiblres++;
+        } else {
+            item.style.display = "none";
+        }
     });
+    
+    document.getElementById('countHist').textContent = visiblres + " registros";
 }
 
-document.getElementById('searchInput').addEventListener('keyup', filtrarTodo);
-document.getElementById('sedeFilter').addEventListener('change', filtrarTodo);
-
 function procesarAccion(id, accion) {
-    if(!confirm("¿Desea realizar esta operación?")) return;
+    if(!confirm("¿Desea ajustar el inventario?")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', accion);
     fd.append('id_conteo', id);
     fetch(window.location.href, { method: 'POST', body: fd })
     .then(r => r.json()).then(data => {
-        document.getElementById('loader').style.display = 'none';
         if(data.status === 'success') location.reload();
-        else alert("Error: " + data.message);
+        else { document.getElementById('loader').style.display = 'none'; alert("Error: " + data.message); }
     });
 }
 
 function devolverAjuste(idHistorial) {
-    if(!confirm("¿Revertir este ajuste?")) return;
+    if(!confirm("¿Desea revertir este cambio? El stock volverá a su estado anterior.")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', 'devolver_ajuste_ajax');
     fd.append('id_historial', idHistorial);
     fetch(window.location.href, { method: 'POST', body: fd })
     .then(r => r.json()).then(data => {
-        document.getElementById('loader').style.display = 'none';
         if(data.status === 'success') location.reload();
-        else alert("Error: " + data.message);
+        else { document.getElementById('loader').style.display = 'none'; alert("Error: " + data.message); }
     });
 }
 </script>
