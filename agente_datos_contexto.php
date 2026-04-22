@@ -607,6 +607,65 @@ if (!function_exists('agente_consecutivos_hoy')) {
     }
 }
 
+if (!function_exists('agente_conteo_inventario_por_categoria')) {
+    /**
+     * Conteos de inventario por categoría desde la tabla conteoweb (base BnmaWeb / Conexion).
+     * Devuelve registros individuales con fecha, categoría, sede, stocks y diferencia.
+     *
+     * @return list<array{fecha:string,codcat:string,categoria:string,sede:string,stock_sistema:float,stock_fisico:float,diferencia:float,usuario:string,estado_label:string}>
+     */
+    function agente_conteo_inventario_por_categoria(?mysqli $web, string $fechaIni, string $fechaFin, int $limite = 200): array
+    {
+        if (!$web || $web->connect_error) {
+            return [];
+        }
+        $limite = max(1, min(500, $limite));
+        $sql = "SELECT DATE(c.fecha_conteo) AS fecha,
+                       c.CodCat,
+                       IFNULL(cat.Nombre, c.CodCat) AS NombreCat,
+                       c.NitEmpresa,
+                       ROUND(c.stock_sistema, 2) AS stock_sistema,
+                       ROUND(c.stock_fisico, 2) AS stock_fisico,
+                       ROUND(c.diferencia, 2) AS diferencia,
+                       c.usuario,
+                       c.estado
+                FROM conteoweb c
+                LEFT JOIN categorias cat ON cat.CodCat = c.CodCat
+                WHERE c.estado IN ('A','C')
+                  AND DATE(c.fecha_conteo) BETWEEN ? AND ?
+                ORDER BY DATE(c.fecha_conteo) ASC, c.CodCat ASC
+                LIMIT " . (int) $limite;
+        $stmt = $web->prepare($sql);
+        if (!$stmt) {
+            return [];
+        }
+        $stmt->bind_param('ss', $fechaIni, $fechaFin);
+        if (!$stmt->execute()) {
+            return [];
+        }
+        $res = $stmt->get_result();
+        $out = [];
+        $sedeMap = ['901724534-7' => 'Drinks', '86057267-8' => 'Central'];
+        $estadoMap = ['A' => 'Abierto', 'C' => 'Cerrado', 'E' => 'Eliminado'];
+        while ($res && $row = $res->fetch_assoc()) {
+            $nit = trim((string) ($row['NitEmpresa'] ?? ''));
+            $est = strtoupper(trim((string) ($row['estado'] ?? '')));
+            $out[] = [
+                'fecha'         => (string) $row['fecha'],
+                'codcat'        => (string) $row['CodCat'],
+                'categoria'     => (string) $row['NombreCat'],
+                'sede'          => $sedeMap[$nit] ?? ('NIT ' . $nit),
+                'stock_sistema' => (float) $row['stock_sistema'],
+                'stock_fisico'  => (float) $row['stock_fisico'],
+                'diferencia'    => (float) $row['diferencia'],
+                'usuario'       => (string) ($row['usuario'] ?? ''),
+                'estado_label'  => $estadoMap[$est] ?? $est,
+            ];
+        }
+        return $out;
+    }
+}
+
 if (!function_exists('agente_construir_bloque_datos')) {
     function agente_construir_bloque_datos(): string
     {
@@ -805,6 +864,51 @@ if (!function_exists('agente_construir_bloque_datos')) {
                     . ' | mín ' . number_format($p['stockmin'], 2, ',', '.')
                     . ' (' . $p['nota'] . ')';
             }
+        }
+
+        /* --- Conteos de inventario (conteoweb) --- */
+        $lineas[] = '';
+        $lineas[] = '### Conteos de inventario por categoría (tabla conteoweb)';
+        $lineas[] = 'Registros de conteo físico vs sistema. Estado A=Abierto, C=Cerrado, E=Eliminado.';
+        if ($web && !$web->connect_error) {
+            $conteoHoy = agente_conteo_inventario_por_categoria($web, $hoyIso, $hoyIso);
+            $conteo7d  = agente_conteo_inventario_por_categoria($web, date('Y-m-d', strtotime('-7 days')), $hoyIso);
+
+            $lineas[] = '#### Conteos de hoy (' . $hoyIso . ')';
+            if ($conteoHoy === []) {
+                $lineas[] = '- Sin conteos registrados hoy.';
+            } else {
+                foreach ($conteoHoy as $c) {
+                    $lineas[] = '- **' . $c['categoria'] . '** (' . $c['codcat'] . ') | sede ' . $c['sede']
+                        . ' | sistema ' . number_format($c['stock_sistema'], 2, ',', '.')
+                        . ' | físico ' . number_format($c['stock_fisico'], 2, ',', '.')
+                        . ' | dif ' . ($c['diferencia'] >= 0 ? '+' : '') . number_format($c['diferencia'], 2, ',', '.')
+                        . ' | estado ' . $c['estado_label'] . ' | usuario ' . $c['usuario']
+                        . ' | ' . $c['fecha'];
+                }
+            }
+
+            $lineas[] = '#### Resumen últimos 7 días (conteos por día y categoría)';
+            if ($conteo7d === []) {
+                $lineas[] = '- Sin conteos en los últimos 7 días.';
+            } else {
+                $porFecha = [];
+                foreach ($conteo7d as $c) {
+                    $porFecha[$c['fecha']][] = $c;
+                }
+                foreach ($porFecha as $fecha => $items) {
+                    $lineas[] = '**' . $fecha . '** (' . count($items) . ' conteos):';
+                    foreach ($items as $c) {
+                        $lineas[] = '  - ' . $c['categoria'] . ' (' . $c['sede'] . ') sistema '
+                            . number_format($c['stock_sistema'], 2, ',', '.')
+                            . ' / físico ' . number_format($c['stock_fisico'], 2, ',', '.')
+                            . ' / dif ' . ($c['diferencia'] >= 0 ? '+' : '') . number_format($c['diferencia'], 2, ',', '.')
+                            . ' [' . $c['estado_label'] . '] por ' . $c['usuario'];
+                    }
+                }
+            }
+        } else {
+            $lineas[] = '(Sin conexión a BnmaWeb para consultar conteos.)';
         }
 
         $lineas[] = '';
