@@ -20,7 +20,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $nit = $_POST['nit'];
     $dbSede = ($nit == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
     
-    // Validación de autorización para ver stock en el detalle modal
     $esAdminStock = (Autorizacion($_SESSION['Usuario'], '9999') === 'SI');
     
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
@@ -35,7 +34,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
                 <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
                 <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
     
-    // Solo mostrar encabezado de Stock si tiene permiso
     if ($esAdminStock) {
         $html .= "<th style='padding:8px; border:1px solid #ddd;'>Stock</th>";
     }
@@ -62,11 +60,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
                         <td style='padding:8px; border:1px solid #ddd;'>{$p['barcode']}</td>
                         <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>";
             
-            // Solo mostrar valor de Stock si tiene permiso
             if ($esAdminStock) {
                 $html .= "<td style='padding:8px; border:1px solid #ddd;' align='right'><strong>".number_format($p['stock'],2)."</strong></td>";
             }
-            
             $html .= "</tr>";
         }
     } else {
@@ -211,10 +207,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; }
         .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
-        .btn-refresh { 
-            text-decoration:none; padding:8px; border-radius:8px; background:#fff; 
-            border:1px solid #ccc; cursor:pointer; font-size:16px; margin-left: auto;
-        }
+        .btn-refresh { text-decoration:none; padding:8px; border-radius:8px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:16px; margin-left: auto; }
         .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
         .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
         label{display:block; font-weight:bold; margin-bottom:5px; font-size: 14px;}
@@ -267,7 +260,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
 
         <div style="background:#f8f9fa; padding:25px; border-radius:15px; border:1px solid #e9ecef;">
-            
             <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?>
                 <div style="display:flex; justify-content:space-between; margin-bottom:20px; background:#fff; padding:15px; border-radius:10px; border:1px solid #eee;">
                     <span>📖 Stock Teórico (Sistema):</span>
@@ -305,10 +297,12 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <th>Hora</th>
                             <th>Categoría</th>
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <th>Sis.</th>
-                                <th>Dif.</th>
+                                <th>Sistemas</th>
                             <?php endif; ?>
                             <th>Físico</th>
+                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                                <th>Dif.</th>
+                            <?php endif; ?>
                             <th>Edo.</th>
                             <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
                         </tr>
@@ -316,7 +310,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                     <tbody>
                         <?php foreach($conteos as $c): 
                             $dif = (float)$c['diferencia'];
-                            $color = ($dif < 0.1) ? 'rojo' : 'verde';
+                            $color = ($dif <= -0.1) ? 'rojo' : 'verde';
                         ?>
                         <tr>
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
@@ -324,12 +318,16 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
-                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif < 0.1) ? '#dc3545' : '#28a745' ?>;">
-                                    <?= ($dif > 0.1? '+' : '') . number_format($dif, 2) ?>
-                                </td>
                             <?php endif; ?>
 
                             <td style="font-size:15px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
+
+                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
+                                    <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
+                                </td>
+                            <?php endif; ?>
+
                             <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
                             
                             <?php if($AUT_BORRAR==='SI'): ?>
@@ -363,12 +361,10 @@ function verDetalleProductos(codCat) {
     const contenedor = document.getElementById('tabla-productos');
     modal.style.display = 'block';
     contenedor.innerHTML = '<div style="text-align:center; padding:30px;">⏳ Consultando...</div>';
-
     const formData = new FormData();
     formData.append('action', 'ver_productos');
     formData.append('cod_cat', codCat);
     formData.append('nit', '<?= $nitSesion ?>');
-
     fetch(window.location.href, { method: 'POST', body: formData })
     .then(r => r.text()).then(html => { contenedor.innerHTML = html; })
     .catch(() => { contenedor.innerHTML = 'Error de conexión'; });
@@ -376,6 +372,5 @@ function verDetalleProductos(codCat) {
 function cerrarModal() { document.getElementById('modalProductos').style.display = 'none'; }
 window.onclick = e => { if (e.target.className === 'modal') cerrarModal(); }
 </script>
-
 </body>
 </html>
