@@ -126,6 +126,14 @@ if (isset($_POST['accion'])) {
             }
         }
     }
+
+    if ($_POST['accion'] === 'eliminar_ajax') {
+        $idConteo = (int)$_POST['id_conteo'];
+        $upd = $mysqli->query("UPDATE conteoweb SET estado='E' WHERE id=$idConteo");
+        if($upd) echo json_encode(["status" => "success"]);
+        else echo json_encode(["status" => "error", "message" => "No se pudo eliminar"]);
+        exit;
+    }
 }
 
 $resPendientes = $mysqli->query("SELECT c.*, cat.Nombre 
@@ -152,7 +160,6 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
         body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; }
         .loading-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:9999; justify-content:center; align-items:center; }
-        .list-group-item:hover { background-color: #f8fafc; }
     </style>
 </head>
 <body>
@@ -178,7 +185,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                     <div class="row align-items-center g-2">
                         <div class="col-md-4"><h6 class="mb-0 fw-bold">PENDIENTES</h6></div>
                         <div class="col-md-4">
-                            <select id="sedeFilter" class="form-select form-select-sm border-primary-subtle" onchange="filtrarTodo()">
+                            <select id="sedeFilter" class="form-select form-select-sm" onchange="filtrarTodo()">
                                 <option value="">Sede: Todas</option>
                                 <option value="DRINKS">Drinks</option>
                                 <option value="CENTRAL">Central</option>
@@ -219,7 +226,10 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                     </span>
                                 </td>
                                 <td class="text-center">
-                                    <button onclick="procesarAccion(<?= $r['id'] ?>, 'ajustar_ajax')" class="btn btn-primary btn-sm shadow-sm">AJUSTAR</button>
+                                    <div class="btn-group">
+                                        <button onclick="procesarAccion(<?= $r['id'] ?>, 'ajustar_ajax')" class="btn btn-primary btn-sm px-3 shadow-sm">AJUSTAR</button>
+                                        <button onclick="procesarAccion(<?= $r['id'] ?>, 'eliminar_ajax')" class="btn btn-outline-danger btn-sm px-2 shadow-sm"><i class="bi bi-trash"></i></button>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -237,8 +247,8 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                         <span class="badge bg-secondary-subtle text-secondary" id="countHist"><?= $resHistorial->num_rows ?> registros</span>
                     </div>
                     <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-funnel"></i></span>
-                        <input type="text" id="histSearch" class="form-control border-start-0" placeholder="Filtrar historial por categoría..." onkeyup="filtrarTodo()">
+                        <span class="input-group-text bg-light"><i class="bi bi-funnel"></i></span>
+                        <input type="text" id="histSearch" class="form-control" placeholder="Buscar en historial..." onkeyup="filtrarTodo()">
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -266,7 +276,7 @@ $resHistorial = $mysqli->query("SELECT h.*, cat.Nombre
                                 </div>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <div class="p-5 text-center text-muted small italic">No hay registros este mes.</div>
+                            <div class="p-5 text-center text-muted small italic">No hay registros.</div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -281,40 +291,29 @@ function filtrarTodo() {
     const searchHistorial = document.getElementById('histSearch').value.toUpperCase();
     const sedeSelected = document.getElementById('sedeFilter').value.toUpperCase();
 
-    // 1. Filtrar Tabla Pendientes (Usa Buscador Global + Sede)
+    // Pendientes
     document.querySelectorAll(".item-conteo").forEach(fila => {
         const categoria = fila.querySelector(".text-categoria").textContent.toUpperCase();
         const sedeFila = fila.getAttribute('data-sede');
-        
-        const coincideSede = (sedeSelected === "" || sedeFila === sedeSelected);
-        const coincideBusqueda = (categoria.indexOf(searchGlobal) > -1);
-        
-        fila.style.display = (coincideSede && coincideBusqueda) ? "" : "none";
+        fila.style.display = ( (sedeSelected === "" || sedeFila === sedeSelected) && (categoria.indexOf(searchGlobal) > -1) ) ? "" : "none";
     });
 
-    // 2. Filtrar Historial (Usa Buscador Específico + Sede + Buscador Global)
-    let visiblres = 0;
+    // Historial
+    let count = 0;
     document.querySelectorAll(".item-historial").forEach(item => {
         const categoria = item.querySelector(".text-categoria-hist").textContent.toUpperCase();
         const sedeItem = item.getAttribute('data-sede');
-        
-        const coincideSede = (sedeSelected === "" || sedeItem === sedeSelected);
-        // Coincide si el texto está en el buscador global O en el buscador de historial
-        const coincideBusqueda = (categoria.indexOf(searchGlobal) > -1 && categoria.indexOf(searchHistorial) > -1);
-        
-        if (coincideSede && coincideBusqueda) {
-            item.style.display = "";
-            visiblres++;
-        } else {
-            item.style.display = "none";
-        }
+        const visible = ( (sedeSelected === "" || sedeItem === sedeSelected) && (categoria.indexOf(searchGlobal) > -1 && categoria.indexOf(searchHistorial) > -1) );
+        item.style.display = visible ? "" : "none";
+        if(visible) count++;
     });
-    
-    document.getElementById('countHist').textContent = visiblres + " registros";
+    document.getElementById('countHist').textContent = count + " registros";
 }
 
 function procesarAccion(id, accion) {
-    if(!confirm("¿Desea ajustar el inventario?")) return;
+    const msg = accion === 'eliminar_ajax' ? "¿Eliminar este conteo pendiente?" : "¿Ajustar el inventario?";
+    if(!confirm(msg)) return;
+    
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', accion);
@@ -327,7 +326,7 @@ function procesarAccion(id, accion) {
 }
 
 function devolverAjuste(idHistorial) {
-    if(!confirm("¿Desea revertir este cambio? El stock volverá a su estado anterior.")) return;
+    if(!confirm("¿Desea revertir este cambio?")) return;
     document.getElementById('loader').style.display = 'flex';
     const fd = new FormData();
     fd.append('accion', 'devolver_ajuste_ajax');
