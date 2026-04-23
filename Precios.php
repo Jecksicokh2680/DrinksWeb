@@ -14,7 +14,6 @@ $is_ajax_save = isset($_POST['action']) && $_POST['action'] === 'save';
 if ($is_ajax_save) {
     header('Content-Type: application/json');
     $barcode = $_POST['barcode'] ?? ''; 
-    $descripcion = trim($_POST['descripcion'] ?? '');
     $estado = intval($_POST['estado'] ?? 0);
     $precioventa_c = floatval($_POST['precioventa_c'] ?? 0);
     $precioespecial1_c = floatval($_POST['precioespecial1_c'] ?? 0);
@@ -26,16 +25,15 @@ if ($is_ajax_save) {
     $msgs = [];
     if (!empty($barcode)) {
         if ($connCentral) {
-            $stmtC = $connCentral->prepare("UPDATE productos SET descripcion = ?, precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
-            $typeStr = "sdddi" . (is_numeric($barcode) ? "i" : "s");
-            $stmtC->bind_param($typeStr, $descripcion, $precioventa_c, $precioespecial1_c, $precioespecial2_c, $estado, $barcode);
+            $stmtC = $connCentral->prepare("UPDATE productos SET precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
+            $typeStr = "dddis" . (is_numeric($barcode) ? "" : ""); // Simplificado bind_param
+            $stmtC->bind_param("dddis", $precioventa_c, $precioespecial1_c, $precioespecial2_c, $estado, $barcode);
             $msgs[] = $stmtC->execute() ? "Cen: OK" : "Cen: Error";
             $stmtC->close();
         }
         if ($connDrinks) {
-            $stmtD = $connDrinks->prepare("UPDATE productos SET descripcion = ?, precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
-            $typeStrD = "sdddi" . (is_numeric($barcode) ? "i" : "s");
-            $stmtD->bind_param($typeStrD, $descripcion, $precioventa_d, $precioespecial1_d, $precioespecial2_d, $estado, $barcode);
+            $stmtD = $connDrinks->prepare("UPDATE productos SET precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
+            $stmtD->bind_param("dddis", $precioventa_d, $precioespecial1_d, $precioespecial2_d, $estado, $barcode);
             $msgs[] = $stmtD->execute() ? "Dri: OK" : "Dri: Error";
             $stmtD->close();
         }
@@ -96,7 +94,7 @@ if ($is_ajax_filter) {
 
         $html .= '<tr data-barcode="'.htmlspecialchars($bc).'">
             <td class="fw-bold text-center">'.$bc.'</td>
-            <td><input type="text" class="form-control form-control-sm edit-desc" value="'.htmlspecialchars($p['descripcion']).'"></td>
+            <td class="fw-bold text-uppercase" style="font-size: 10px;">'.htmlspecialchars($p['descripcion']).'</td>
             <td class="col-money border-end">'.number_format($p['costo'],0).'</td>
             <td class="col-money bg-light fw-bold">'.($promC > 0 ? number_format($promC, 0) : '-').'</td>
             <td class="bg-primary bg-opacity-10"><input type="number" class="form-control form-control-sm ev-c fw-bold" value="'.round($p['precioventa']).'"></td>
@@ -135,15 +133,10 @@ if ($is_ajax_filter) {
         .card { border-radius: 8px; border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .table th, .table td { padding: 2px 1px !important; vertical-align: middle; }
         
-        /* Inputs y Selects ultra compactos */
         input.form-control-sm { font-size: 11px; padding: 1px 3px; height: 22px; }
-        input[type="number"] { width: 66px !important; }
-        .edit-desc { min-width: 120px; width: 100%; }
+        input[type="number"] { width: 65px !important; }
         
-        /* Columnas de Dinero (Costo/Prom) */
         .col-money { width: 55px !important; text-align: right; padding-right: 3px !important; font-size: 10px; }
-        
-        /* Columnas específicas */
         .col-mk { width: 40px !important; text-align: center; font-size: 9px; }
         .col-est { width: 36px !important; padding: 1px !important; font-size: 10px; height: 22px; }
         
@@ -176,7 +169,7 @@ if ($is_ajax_filter) {
                 <thead class="table-dark">
                     <tr>
                         <th rowspan="2">COD</th>
-                        <th rowspan="2">DESCRIPCIÓN</th>
+                        <th rowspan="2">PRODUCTO</th>
                         <th rowspan="2">COSTO</th>
                         <th rowspan="2" class="bg-secondary">PROM</th>
                         <th colspan="3" class="h-c">CENTRAL</th>
@@ -217,7 +210,6 @@ $(document).ready(function() {
         const data = {
             action: 'save',
             barcode: tr.data('barcode'),
-            descripcion: tr.find('.edit-desc').val(),
             precioventa_c: tr.find('.ev-c').val(),
             precioespecial1_c: tr.find('.e1-c').val(),
             precioespecial2_c: tr.find('.e2-c').val(),
