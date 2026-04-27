@@ -445,6 +445,7 @@ body{
 <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
 <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>
 <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
+<a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
 </div>
 </div>
 </div>
