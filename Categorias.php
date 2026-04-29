@@ -35,13 +35,23 @@ if (isset($_POST['auto_update'])) {
     $valor = $_POST['valor'];
     $campo = $_POST['campo'];
     
-    $camposPermitidos = ['SegWebF', 'SegWebT', 'Estado', 'Tipo'];
+    $camposPermitidos = ['SegWebF', 'SegWebT', 'Estado', 'Tipo', 'Unicaja', 'PrecioVtaNevera', 'IdEmpresa', 'Nombre'];
     
     if (in_array($campo, $camposPermitidos)) {
-        $stmt = $mysqli->prepare("UPDATE categorias SET $campo = ? WHERE CodCat = ?");
-        $stmt->bind_param("ss", $valor, $cod);
+        if ($campo === 'IdEmpresa' && $valor === '') {
+            $stmt = $mysqli->prepare("UPDATE categorias SET IdEmpresa = NULL WHERE CodCat = ?");
+            $stmt->bind_param("s", $cod);
+        } else {
+            $stmt = $mysqli->prepare("UPDATE categorias SET $campo = ? WHERE CodCat = ?");
+            $stmt->bind_param("ss", $valor, $cod);
+        }
+        
         if ($stmt->execute()) {
             http_response_code(200);
+            exit;
+        } else {
+            http_response_code(500);
+            echo "Error DB: " . $mysqli->error;
             exit;
         }
     }
@@ -53,7 +63,6 @@ if (isset($_POST['auto_update'])) {
    PROCESAR CREACIÓN Y ACTUALIZACIÓN MANUAL
 ============================================================ */
 $mensaje = "";
-
 if (isset($_POST['crear']) || isset($_POST['actualizar'])) {
     check_csrf($_POST['csrf_token'], $csrf_token);
     
@@ -77,15 +86,15 @@ if (isset($_POST['crear']) || isset($_POST['actualizar'])) {
         $stmt->bind_param("sississds", $d['Nombre'], $d['IdEmpresa'], $d['SegWebF'], $d['SegWebT'], $d['Unicaja'], $d['Estado'], $d['Tipo'], $d['PrecioVtaNevera'], $d['CodCat']);
     }
 
-    $mensaje = $stmt->execute() ? "✅ Registro procesado correctamente" : "❌ Error: " . $stmt->error;
+    $mensaje = $stmt->execute() ? "✅ Procesado correctamente" : "❌ Error: " . $stmt->error;
     $stmt->close();
 }
 
 /* ============================================================
-   CARGA DE DATOS PARA VISTA
+   CARGA DE DATOS
 ============================================================ */
 $empresas = $mysqli->query("SELECT IdEmpresa, Nombre FROM empresas_productoras ORDER BY Nombre")->fetch_all(MYSQLI_ASSOC);
-$categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa ORDER BY c.CodCat")->fetch_all(MYSQLI_ASSOC);
+$categorias = $mysqli->query("SELECT c.*, e.Nombre AS EmpresaNombre FROM categorias c LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa ORDER BY c.CodCat")->fetch_all(MYSQLI_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -107,9 +116,13 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
         td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
         .fila-inactiva { background: #fff1f2; opacity: 0.7; }
         .btn { background: var(--accent); color: #fff; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
-        .btn-save { padding: 5px 10px; background: #059669; }
-        #filtro { width: 300px; border-radius: 20px; padding-left: 15px; }
-        .msg { background: #f0fdf4; color: #166534; padding: 10px; border-radius: 6px; border: 1px solid #bbf7d0; margin-bottom: 15px; }
+        #filtro { width: 300px; border-radius: 20px; padding-left: 15px; border: 1px solid #cbd5e1; height: 35px; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; vertical-align: middle; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #059669; }
+        input:checked + .slider:before { transform: translateX(20px); }
     </style>
 </head>
 <body>
@@ -117,7 +130,7 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
 <div class="container">
     <div class="card">
         <div class="card-header"><h2>➕ Nueva Categoría</h2></div>
-        <?php if($mensaje) echo "<div class='msg'>$mensaje</div>"; ?>
+        <?php if($mensaje) echo "<p>$mensaje</p>"; ?>
         <form method="post" class="grid-form">
             <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
             <div><label>Código</label><input name="CodCat" maxlength="4" required></div>
@@ -133,6 +146,7 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
                     <?php foreach(TIPOS_CATEGORIA as $t): ?><option value="<?= substr($t,0,2) ?>"><?= $t ?></option><?php endforeach; ?>
                 </select>
             </div>
+            <div><label>Unicaja</label><input type="number" name="Unicaja" value="1"></div>
             <div><label>Precio Esp.</label><input type="number" step="0.01" name="PrecioVtaNevera" value="0"></div>
             <button name="crear" class="btn">Registrar</button>
         </form>
@@ -147,14 +161,14 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
             <thead>
                 <tr>
                     <th>Cod</th>
-                    <th>Nombre Categoría</th>
+                    <th>Nombre</th>
                     <th>Empresa</th>
                     <th>Tipo</th>
                     <th>Unicaja</th>
-                    <th>Precio Esp.</th>
-                    <th>Web (Seg)</th>
+                    <th>P. Nevera</th>
+                    <th>Web (F/T)</th>
                     <th>Estado</th>
-                    <th>Acción</th>
+                    <th>Ok</th>
                 </tr>
             </thead>
             <tbody>
@@ -163,16 +177,20 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
                     <form method="post">
                         <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                         <input type="hidden" name="CodCat" value="<?= $c['CodCat'] ?>">
+                        
                         <td style="font-weight:bold;"><?= $c['CodCat'] ?></td>
-                        <td><input name="Nombre" value="<?= $c['Nombre'] ?>"></td>
+                        
+                        <td><input name="Nombre" value="<?= $c['Nombre'] ?>" onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Nombre')"></td>
+                        
                         <td>
-                            <select name="IdEmpresa">
+                            <select onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'IdEmpresa')">
                                 <option value="">-- N/A --</option>
                                 <?php foreach($empresas as $e): ?>
                                     <option value="<?= $e['IdEmpresa'] ?>" <?= $e['IdEmpresa']==$c['IdEmpresa']?'selected':'' ?>><?= $e['Nombre'] ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </td>
+                        
                         <td>
                             <select onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Tipo')">
                                 <?php foreach(TIPOS_CATEGORIA as $t): ?>
@@ -180,19 +198,24 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
                                 <?php endforeach; ?>
                             </select>
                         </td>
-                        <td><input type="number" name="Unicaja" value="<?= $c['Unicaja'] ?>" style="width:50px"></td>
-                        <td><input type="number" step="0.01" name="PrecioVtaNevera" value="<?= $c['PrecioVtaNevera'] ?>" style="width:80px"></td>
+                        
+                        <td><input type="number" value="<?= $c['Unicaja'] ?>" onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Unicaja')" style="width:60px;"></td>
+                        
+                        <td><input type="number" step="0.01" value="<?= $c['PrecioVtaNevera'] ?>" onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'PrecioVtaNevera')" style="width:80px;"></td>
+                        
                         <td>
-                            <label style="font-size:10px"><input type="checkbox" <?= $c['SegWebF']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebF')"> F</label>
-                            <label style="font-size:10px"><input type="checkbox" <?= $c['SegWebT']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebT')"> T</label>
+                            F <input type="checkbox" <?= $c['SegWebF']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebF')">
+                            T <input type="checkbox" <?= $c['SegWebT']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'SegWebT')">
                         </td>
+                        
                         <td>
-                            <select onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Estado')" style="width:85px; font-weight:bold;">
-                                <option value="1" <?= $c['Estado']=='1'?'selected':'' ?>>Activo</option>
-                                <option value="0" <?= $c['Estado']=='0'?'selected':'' ?>>Inactivo</option>
-                            </select>
+                            <label class="switch">
+                                <input type="checkbox" <?= $c['Estado']=='1'?'checked':'' ?> onchange="updateRow(this, '<?= $c['CodCat'] ?>', 'Estado')">
+                                <span class="slider"></span>
+                            </label>
                         </td>
-                        <td><button name="actualizar" class="btn btn-save">OK</button></td>
+                        
+                        <td><button name="actualizar" class="btn" style="background:#059669; padding:5px 10px;">OK</button></td>
                     </form>
                 </tr>
                 <?php endforeach; ?>
@@ -205,6 +228,7 @@ $categorias = $mysqli->query("SELECT c.*, e.Nombre AS Empresa FROM categorias c 
 async function updateRow(element, codCat, campo) {
     const valor = (element.type === 'checkbox') ? (element.checked ? '1' : '0') : element.value;
     const parentTd = element.closest('td');
+    
     const formData = new FormData();
     formData.append('auto_update', '1');
     formData.append('CodCat', codCat);
@@ -215,17 +239,20 @@ async function updateRow(element, codCat, campo) {
     try {
         const response = await fetch(window.location.href, { method: 'POST', body: formData });
         if (response.ok) {
-            parentTd.style.background = "#dcfce7";
-            if(campo === 'Estado') location.reload();
-            setTimeout(() => parentTd.style.background = "transparent", 600);
+            parentTd.style.backgroundColor = "#dcfce7";
+            if(campo === 'Estado') setTimeout(() => location.reload(), 300);
+            setTimeout(() => parentTd.style.backgroundColor = "transparent", 800);
+        } else {
+            const err = await response.text();
+            alert("Error: " + err);
         }
     } catch (e) { console.error(e); }
 }
 
 function filtrar(){
-    let f=document.getElementById("filtro").value.toLowerCase();
-    document.querySelectorAll("#tabla tbody tr").forEach(tr=>{
-        tr.style.display=tr.innerText.toLowerCase().includes(f)?"":"none";
+    let f = document.getElementById("filtro").value.toLowerCase();
+    document.querySelectorAll("#tabla tbody tr").forEach(tr => {
+        tr.style.display = tr.innerText.toLowerCase().includes(f) ? "" : "none";
     });
 }
 </script>
