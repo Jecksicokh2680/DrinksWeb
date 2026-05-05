@@ -27,7 +27,7 @@ foreach ($instancias as $nombre => $con) {
             $conexiones_estado[$nombre] = ['status' => 'Conectado', 'color' => '#10b981', 'msg' => 'OK'];
         }
     } else {
-        $conexiones_estado[$nombre] = ['status' => 'No Definida', 'color' => '#6b7280', 'msg' => 'Variable ausente'];
+        $conexiones_estado[$nombre] = ['status' => 'Tunel Cerrado', 'color' => '#6b7280', 'msg' => 'Variable ausente'];
     }
 }
 
