@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 }
 
 // ===============================================
-// VARIABLES Y LOGICA ORIGINAL
+// VARIABLES Y LOGICA DE FILTRO POR MES
 // ===============================================
 function moneda($v){
     return '$' . number_format((float)$v, 0, ',', '.');
@@ -36,10 +36,16 @@ function moneda($v){
 $fechaHoy = date('Y-m-d');
 $fechaSQL = date('Y-m-d');
 $fechaSinGuion = date('Ymd');
-$mes  = date('m');
-$anio = date('Y');
-$ultimoDiaMes = date('t');
-$anioMes = date('Ym');
+
+// NUEVO: Captura de mes y año para el selector
+$mesSel = isset($_GET['mes_filtro']) ? $_GET['mes_filtro'] : date('m');
+$anioSel = isset($_GET['anio_filtro']) ? $_GET['anio_filtro'] : date('Y');
+
+// Variables para consultas de gráficas
+$mes  = $mesSel;
+$anio = $anioSel;
+$ultimoDiaMes = cal_days_in_month(CAL_GREGORIAN, $mes, $anio);
+$anioMes = $anio . $mes;
 
 $horaActual = date('H:i:s');
 $proximaActualizacion = date('H:i:s', strtotime('+3 minutes'));
@@ -100,7 +106,6 @@ function obtenerVentasMensuales($db) {
     return $ventas;
 }
 
-// FUNCIÓN MODIFICADA: COMPARATIVO 3 SEMANAS
 function obtenerComparativoSemanas($dbCentral, $dbDrinks) {
     $nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     $comparativo = [
@@ -212,7 +217,10 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Se deshabilita el refresh automático si hay un filtro aplicado para no perder la vista -->
+    <?php if(!isset($_GET['mes_filtro'])): ?>
     <meta http-equiv="refresh" content="180"> 
+    <?php endif; ?>
     <title>Consolidado Administrativo</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
@@ -239,6 +247,11 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-size: 0.8rem; }
         td { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; }
         .editable { color: #2563eb; font-weight: bold; border-bottom: 1px dashed; cursor: pointer; }
+        
+        /* Estilos selector */
+        .selector-box { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: #f9fafb; padding: 10px; border-radius: 8px; justify-content: center; }
+        .selector-box select { padding: 5px 10px; border-radius: 5px; border: 1px solid #ddd; }
+        .btn-filter { background: #2563eb; color: white; border: none; padding: 5px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -252,7 +265,9 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         </div>
     </div>
     
+    <!-- TARJETAS DE INDICADORES (Omitidas por brevedad en la muestra, permanecen igual en tu código) -->
     <div class="grid-cards">
+        <!-- ... (Contenido de las 4 cards igual al original) ... -->
         <div class="card">
             <h3>🏢 Central</h3>
             <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
@@ -262,12 +277,12 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             </div>
             <div class="separator"></div>
             <div class="details">
-                Venta Mes: <span class="val-orange"><?= moneda($central['venta_mes']) ?></span><br>
-                Utilidad: <span class="val-green"><?= moneda($central['utilidad']) ?></span><br>
+                Venta Mes (Selecc.): <span class="val-orange"><?= moneda($central['venta_mes']) ?></span><br>
+                Utilidad (Selecc.): <span class="val-green"><?= moneda($central['utilidad']) ?></span><br>
                 Bodega: <b><?= moneda($central['inventario']) ?></b>
             </div>
         </div>
-
+        <!-- Card Drinks -->
         <div class="card">
             <h3>🍹 Drinks</h3>
             <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
@@ -277,12 +292,12 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             </div>
             <div class="separator"></div>
             <div class="details">
-                Venta Mes: <span class="val-orange"><?= moneda($drinks['venta_mes']) ?></span><br>
-                Utilidad: <span class="val-green"><?= moneda($drinks['utilidad']) ?></span><br>
+                Venta Mes (Selecc.): <span class="val-orange"><?= moneda($drinks['venta_mes']) ?></span><br>
+                Utilidad (Selecc.): <span class="val-green"><?= moneda($drinks['utilidad']) ?></span><br>
                 Bodega: <b><?= moneda($drinks['inventario']) ?></b>
             </div>
         </div>
-
+        <!-- Card Total -->
         <div class="card card-total">
             <h3>📌 Total Neto</h3>
             <span class="main-value"><?= moneda($totalVentaD) ?></span>
@@ -292,12 +307,12 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             </div>
             <div class="separator"></div>
             <div class="details">
-                Venta Mes: <span class="val-orange"><?= moneda($totalVentaM) ?></span><br>
-                Utilidad: <span class="val-green"><?= moneda($totalUtilM) ?> (<?= $pctUtil ?>%)</span><br>
+                Venta Mes (Selecc.): <span class="val-orange"><?= moneda($totalVentaM) ?></span><br>
+                Utilidad (Selecc.): <span class="val-green"><?= moneda($totalUtilM) ?> (<?= $pctUtil ?>%)</span><br>
                 Total Bodega: <b><?= moneda($totalBodega) ?></b>
             </div>
         </div>
-
+        <!-- Card Proveedores -->
         <div class="card">
             <h3>💼 Proveedores</h3>
             <span class="main-value" style="color:#ef4444"><?= moneda($deudaProv) ?></span>
@@ -310,6 +325,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     </div>
 
     <div class="sections-grid">
+        <!-- GRÁFICAS DE PARTICIPACIÓN -->
         <div class="wrap-box">
             <h4 style="margin:0 0 15px 0; text-align:center;">📊 % PARTICIPACION DE INVENTARIOS</h4>
             <canvas id="graficoBarras" style="max-height: 250px;"></canvas>
@@ -319,6 +335,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             <canvas id="graficoTorta" style="max-height: 250px;"></canvas>
         </div>
         
+        <!-- COMPRAS DEL DÍA -->
         <div class="wrap-box full-width">
             <h3 style="margin-top:0">🚚 Compras del Día</h3>
             <table>
@@ -339,10 +356,39 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             </table>
         </div>
 
+        <!-- GRÁFICA TENDENCIA CON SELECTOR -->
         <div class="wrap-box full-width">
-            <h3 style="margin-top:0">📈 Evolución de Ventas Diarias</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                <h3 style="margin:0">📈 Evolución de Ventas Diarias</h3>
+                
+                <!-- SELECTOR DE MES Y AÑO -->
+                <form method="GET" class="selector-box">
+                    <select name="mes_filtro">
+                        <?php
+                        $mesesNombres = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
+                        foreach($mesesNombres as $num => $nombre):
+                            $selected = ($num == $mesSel) ? 'selected' : '';
+                            echo "<option value='$num' $selected>$nombre</option>";
+                        endforeach;
+                        ?>
+                    </select>
+                    <select name="anio_filtro">
+                        <?php
+                        $anioActual = date('Y');
+                        for($a = $anioActual; $a >= $anioActual-1; $a--):
+                            $selected = ($a == $anioSel) ? 'selected' : '';
+                            echo "<option value='$a' $selected>$a</option>";
+                        endfor;
+                        ?>
+                    </select>
+                    <button type="submit" class="btn-filter">Ver Mes</button>
+                    <a href="?" style="font-size: 0.8rem; color: #666; text-decoration: none;">Restablecer</a>
+                </form>
+            </div>
+
             <div style="height: 380px;"><canvas id="graficoTendencia"></canvas></div>
             
+            <!-- COMPARATIVA SEMANAS (IGUAL) -->
             <div style="margin-top: 35px; border-top: 2px solid #eee; padding-top: 20px;">
                 <h4 style="text-align:center; color:#1f2937; margin-bottom:15px;">📊 Comparativa 3 Semanas (Lunes a Domingo)</h4>
                 <table style="width:100%; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
@@ -393,14 +439,17 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 </div>
 
 <script>
+// (Los scripts permanecen exactamente iguales, Chart.js tomará los nuevos valores de PHP automáticamente)
 Chart.register(ChartDataLabels);
 
 let timeLeft = 180;
 const timerElement = document.getElementById('countdown');
-setInterval(() => {
-    timeLeft--;
-    if (timeLeft >= 0) timerElement.innerText = timeLeft;
-}, 1000);
+if(timerElement){
+    setInterval(() => {
+        timeLeft--;
+        if (timeLeft >= 0) timerElement.innerText = timeLeft;
+    }, 1000);
+}
 
 new Chart(document.getElementById('graficoBarras'), {
     type: 'bar',
@@ -459,9 +508,9 @@ new Chart(document.getElementById('graficoTendencia'), {
             datalabels: {
                 anchor: 'end', align: 'top', color: '#1f2937', font: { weight: 'bold', size: 10 },
                 formatter: (value, ctx) => {
-                    if (ctx.datasetIndex === 1) {
-                        let totalDia = ctx.chart.data.datasets[0].data[ctx.dataIndex] + ctx.chart.data.datasets[1].data[ctx.dataIndex];
-                        if (totalDia > 0) return (totalDia / 1000).toLocaleString('es-CO', {maximumFractionDigits: 0});
+                    let totalDia = ctx.chart.data.datasets[0].data[ctx.dataIndex] + ctx.chart.data.datasets[1].data[ctx.dataIndex];
+                    if (ctx.datasetIndex === 1 && totalDia > 0) {
+                        return (totalDia / 1000).toLocaleString('es-CO', {maximumFractionDigits: 0});
                     }
                     return null;
                 }
