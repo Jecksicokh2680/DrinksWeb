@@ -72,7 +72,7 @@ $egresos_ejemplo = [
 
     <header>
         <h1>Panel de Control Administrativo</h1>
-        <p>Monitoreo de conexiones y gestión de egresos operativos.</p>
+        <p>Monitoreo de conexiones  Tuneles.</p>
     </header>
 
     <!-- Sección de Conexiones -->
