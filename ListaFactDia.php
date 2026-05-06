@@ -1,12 +1,12 @@
 <?php
+session_start();
+
 require('ConnCentral.php'); // $mysqliCentral
 require('ConnDrinks.php');  // $mysqliDrinks
 require('Conexion.php');    // $mysqliWeb + $mysqli
 
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
-
-session_start();
 
 mysqli_report(MYSQLI_REPORT_OFF);
 
@@ -48,33 +48,38 @@ date_default_timezone_set('America/Bogota');
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
 
-    $extraCond = "";
-    if ($busqProd != "") {
-        $busqProdEsc = $cnx->real_escape_string($busqProd);
-        $extraCond .= " AND (PRODUCTOS.Descripcion LIKE '%$busqProdEsc%' OR PRODUCTOS.Barcode LIKE '%$busqProdEsc%') ";
+    $params = [];
+    $types  = '';
+
+    // Condiciones dinámicas para FACTURAS y PEDIDOS
+    $condProdFactura = '';
+    $condProdPedido  = '';
+    $condFacFactura  = '';
+    $condFacPedido   = '';
+
+    if ($busqProd !== '') {
+        $likeProd = '%' . $busqProd . '%';
+        $condProdFactura = " AND (PRODUCTOS.Descripcion LIKE ? OR PRODUCTOS.Barcode LIKE ?) ";
+        $condProdPedido  = " AND (PRODUCTOS.Descripcion LIKE ? OR PRODUCTOS.Barcode LIKE ?) ";
     }
-    
-    $condFactura = $extraCond;
-    $condPedido = $extraCond;
-    if ($f_fac != "") {
-        $f_fac_esc = $cnx->real_escape_string($f_fac);
-        $condFactura .= " AND T1.NOMBRES = '$f_fac_esc' ";
-        $condPedido  .= " AND T2.NOMBRES = '$f_fac_esc' ";
+    if ($f_fac !== '') {
+        $condFacFactura = " AND T1.NOMBRES = ? ";
+        $condFacPedido  = " AND T2.NOMBRES = ? ";
     }
 
     $sql = "
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
+        ? AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
         FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD
     FROM FACTURAS
     INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA
     INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO
     INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR
-    WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura
+    WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condProdFactura $condFacFactura
     UNION ALL
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
+        ? AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
         PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD
     FROM PEDIDOS
@@ -82,13 +87,43 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO
     INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO
     INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO
-    WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido
+    WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condProdPedido $condFacPedido
     ORDER BY DOCUMENTO ASC
     ";
 
+    // Parámetros para la primera parte (FACTURAS)
+    $types .= 'sss'; // sucursal, f_ini, f_fin
+    $params[] = $nombreSucursal;
+    $params[] = $f_ini;
+    $params[] = $f_fin;
+    if ($busqProd !== '') {
+        $types .= 'ss';
+        $params[] = $likeProd;
+        $params[] = $likeProd;
+    }
+    if ($f_fac !== '') {
+        $types .= 's';
+        $params[] = $f_fac;
+    }
+
+    // Parámetros para la segunda parte (PEDIDOS)
+    $types .= 'sss'; // sucursal, f_ini, f_fin
+    $params[] = $nombreSucursal;
+    $params[] = $f_ini;
+    $params[] = $f_fin;
+    if ($busqProd !== '') {
+        $types .= 'ss';
+        $params[] = $likeProd;
+        $params[] = $likeProd;
+    }
+    if ($f_fac !== '') {
+        $types .= 's';
+        $params[] = $f_fac;
+    }
+
     $stmt = $cnx->prepare($sql);
     if (!$stmt) return [];
-    $stmt->bind_param("ssss", $f_ini, $f_fin, $f_ini, $f_fin);
+    $stmt->bind_param($types, ...$params);
     $stmt->execute();
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
@@ -136,6 +171,7 @@ if ($skus && isset($mysqliWeb)) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte Ejecutivo - Sistema Drinks</title>
     <style>
         body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; margin: 20px;}
@@ -221,22 +257,30 @@ if ($skus && isset($mysqliWeb)) {
 
                     $uni = $unicaja[$r['Barcode']] ?? 1;
                     $cant_total = $r['CANTIDAD'];
-                    $cajas = floor($cant_total);
-                    $unds  = round(($cant_total - $cajas) * $uni);
+                    $cajas = ($uni > 0) ? floor($cant_total / $uni) : 0;
+                    $unds  = ($uni > 0) ? $cant_total % $uni : $cant_total;
                     $total_item = $cant_total * $r['VALORPROD'];
 
                     $totalCajasGlobal += $cajas;
                     $totalUndsGlobal  += $unds;
                     $badge_class = ($r['SUCURSAL'] == 'CENTRAL') ? 'central' : 'drinks';
 
+                    $eSuc  = htmlspecialchars($r['SUCURSAL']);
+                    $eFact = htmlspecialchars($r['FACTURADOR']);
+                    $eDoc  = htmlspecialchars($r['DOCUMENTO']);
+                    $eFec  = htmlspecialchars($r['FECHA']);
+                    $eHor  = htmlspecialchars($r['HORA']);
+                    $eBar  = htmlspecialchars($r['Barcode']);
+                    $eProd = htmlspecialchars($r['PRODUCTO']);
+
                     echo "<tr>
-                        <td><span class='badge $badge_class'>{$r['SUCURSAL']}</span></td>
-                        <td>{$r['FACTURADOR']}</td>
-                        <td>{$r['DOCUMENTO']}</td>
-                        <td>{$r['FECHA']}</td>
-                        <td>{$r['HORA']}</td>
-                        <td><code>{$r['Barcode']}</code></td>
-                        <td>{$r['PRODUCTO']}</td>
+                        <td><span class='badge $badge_class'>$eSuc</span></td>
+                        <td>$eFact</td>
+                        <td>$eDoc</td>
+                        <td>$eFec</td>
+                        <td>$eHor</td>
+                        <td><code>$eBar</code></td>
+                        <td>$eProd</td>
                         <td>".number_format($r['VALORPROD'],0,'.','.')."</td>
                         <td align='center'>$cajas</td>
                         <td align='center'>$unds</td>
@@ -272,77 +316,93 @@ function exportarExcel() {
         sheet: { name: "Ventas" }
     });
 }
-
 function imprimirReporte() {
-    const rows = <?= json_encode($rows) ?>;
-    const unicaja = <?= json_encode($unicaja) ?>;
-    if (rows.length === 0) return;
+    // 1. Conversión segura de datos PHP a JavaScript
+    const rows = <?php echo json_encode($rows, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '[]'; ?>;
+    const unicaja = <?php echo json_encode($unicaja, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}'; ?>;
 
-    let win = window.open('', '', 'width=400,height=600');
-    win.document.write('<html><head><title>POS Print</title>');
+    // Validación de datos antes de intentar abrir la ventana
+    if (!rows || rows.length === 0) {
+        alert("No hay datos en la tabla para imprimir. Por favor, filtre primero.");
+        return;
+    }
+
+    // 2. Abrir la ventana emergente
+    let win = window.open('', '_blank', 'width=450,height=600');
+
+    if (!win || win.closed || typeof win.closed == 'undefined') { 
+        alert("⚠️ El navegador bloqueó la ventana de impresión. Por favor, permite los 'Pop-ups' en este sitio.");
+        return;
+    }
+
+    // 3. Escribir el contenido del Ticket
+    win.document.write('<html><head><title>POS Print - Drinks</title>');
     win.document.write('<style>');
-    win.document.write('body{ font-family: "Courier New", Courier, monospace; width: 100%; margin: 0; padding: 0; font-size: 11px; line-height: 1.0; color: #000; font-weight: 700; }');
-    win.document.write('.text-center{ text-align: center; } .text-right{ text-align: right; }');
-    win.document.write('.border-dashed{ border-top: 1px dashed #000; margin: 2px 0; }');
-    win.document.write('.doc-header{ font-weight: 900; margin-top: 4px; font-size: 11px; }');
-    win.document.write('.item-row{ display: flex; justify-content: space-between; margin-bottom: 1px; }');
-    win.document.write('.item-qty{ font-size: 10px; margin-bottom: 3px; border-bottom: 0.5px solid #eee; }');
-    win.document.write('.total-destacado{ font-size: 13px; font-weight: 900; margin-top: 5px; }');
+    win.document.write('body { font-family: "Courier New", monospace; width: 95%; margin: 0; padding: 10px; font-size: 11px; font-weight: bold; }');
+    win.document.write('.text-center { text-align: center; } .text-right { text-align: right; }');
+    win.document.write('.border-dashed { border-top: 1px dashed #000; margin: 5px 0; }');
+    win.document.write('.doc-header { font-weight: 900; margin-top: 10px; border-bottom: 1px solid #eee; }');
+    win.document.write('.item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }');
     win.document.write('</style></head><body>');
     
     win.document.write('<div class="text-center"><strong>SISTEMA DRINKS</strong><br>');
-    win.document.write('Rep: <?= $f_ini_raw ?> al <?= $f_fin_raw ?></div>');
+    win.document.write('Reporte: <?= htmlspecialchars($f_ini_raw) ?> / <?= htmlspecialchars($f_fin_raw) ?></div>');
     win.document.write('<div class="border-dashed"></div>');
 
     let gTotal = 0;
     let subDoc = 0;
     let docAnt = '';
-
-    const formatoCop = new Intl.NumberFormat('de-DE', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    });
+    const formatoCop = new Intl.NumberFormat('de-DE');
 
     rows.forEach((r, index) => {
+        // Al cambiar de documento, imprimimos el subtotal del anterior
         if (docAnt !== '' && docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="text-right">TOTAL DOC: $ ${formatoCop.format(subDoc)}</div>`);
-            win.document.write('<div class="border-dashed"></div>');
+            win.document.write(`<div class="text-right">SUBTOTAL DOC ${docAnt}: $ ${formatoCop.format(subDoc)}</div><div class="border-dashed"></div>`);
             subDoc = 0;
         }
 
+        // Encabezado del documento
         if (docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.FECHA} ${r.HORA}</div>`);
+            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO || ''} | HORA: ${r.HORA || ''}</div>`);
         }
 
-        let uni = unicaja[r.Barcode] || 1;
-        let cTotal = parseFloat(r.CANTIDAD);
-        let cajas = Math.floor(cTotal);
-        let unds = Math.round((cTotal - cajas) * uni);
-        let itemTotal = cTotal * parseFloat(r.VALORPROD);
-
+        let itemTotal = parseFloat(r.CANTIDAD || 0) * parseFloat(r.VALORPROD || 0);
         subDoc += itemTotal;
         gTotal += itemTotal;
         docAnt = r.DOCUMENTO;
 
-        win.document.write('<div class="item-row">');
-        win.document.write(`<span>${r.PRODUCTO.substring(0, 20)}</span>`);
-        win.document.write(`<span>$${formatoCop.format(itemTotal)}</span>`);
-        win.document.write('</div>');
+        // Fila del producto
+        let nombreProd = (r.PRODUCTO || '').substring(0, 22);
+        win.document.write(`
+            <div class="item-row">
+                <span>${nombreProd}</span>
+                <span>$${formatoCop.format(itemTotal)}</span>
+            </div>`);
         
-        win.document.write(`<div class="item-qty">  ${cajas}Cj ${unds}Un x $${formatoCop.format(r.VALORPROD)}</div>`);
-
+        // Si es el último registro de todos, cerramos el último subtotal
         if (index === rows.length - 1) {
-            win.document.write(`<div class="text-right">TOTAL DOC: $ ${formatoCop.format(subDoc)}</div>`);
+            win.document.write(`<div class="text-right">SUBTOTAL DOC ${r.DOCUMENTO}: $ ${formatoCop.format(subDoc)}</div>`);
         }
     });
 
     win.document.write('<div class="border-dashed"></div>');
-    win.document.write(`<div class="text-center total-destacado">TOTAL GENERAL: $ ${formatoCop.format(gTotal)}</div>`);
-    win.document.write('<div class="text-center" style="font-size:9px;"><br>*** FIN REPORTE ***</div><br><br>');
-
-    win.document.write('<script>window.onload = function() { window.print(); window.close(); };<\/script>');
+    win.document.write(`<div class="text-center" style="font-size:14px; margin-top:10px;">TOTAL GENERAL: $ ${formatoCop.format(gTotal)}</div>`);
     win.document.write('</body></html>');
-    win.document.close();
-}</script>
+
+    // 4. Cerramos el flujo y esperamos a que cargue
+    win.document.close(); 
+
+    // Esperamos a que el navegador renderice los datos antes de imprimir
+    setTimeout(function() {
+        win.focus();
+        win.print();
+        win.close(); 
+    }, 500); 
+}
+
+
+
+
+</script>
 </body>
 </html>
