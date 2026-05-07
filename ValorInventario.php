@@ -6,7 +6,7 @@ require_once("Conexion.php");
 
 date_default_timezone_set('America/Bogota');
 
-// Lógica de guardado rápido para egresos
+// Lógica de guardado rápido para egresos (Se mantiene igual)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] == 'update_compra') {
     $data = json_decode(file_get_contents('php://input'), true);
     if ($data) {
@@ -81,22 +81,21 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     <style>
         body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 10px; color: #374151; }
         
-        /* Layout de Cards Principales */
+        /* Estilo del Contador */
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 0 5px; }
+        .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .timer-box span { color: #60a5fa; min-width: 45px; }
+
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; }
         .card:hover { transform: translateY(-2px); }
-        
         .card h3 { font-size: 1.1rem; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #111827; }
         .main-value { font-size: 1.75rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; }
         .details { font-size: 0.9rem; line-height: 1.5; color: #4b5563; }
         .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; }
-        
-        /* Layout de Gráficas y Tablas */
         .sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
         .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
         .full-width { grid-column: span 2; }
-        
-        /* Tabla Responsive */
         .table-container { width: 100%; overflow-x: auto; border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 500px; }
         th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; }
@@ -104,17 +103,21 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
         .editable:focus { outline: none; background: #eff6ff; border-bottom-color: #2563eb; }
 
-        /* Media Queries para Móviles */
         @media (max-width: 768px) {
             .sections-grid { grid-template-columns: 1fr; }
             .full-width { grid-column: span 1; }
             .main-value { font-size: 1.5rem; }
-            body { padding: 8px; }
-            .wrap-box { padding: 15px; }
         }
     </style>
 </head>
 <body>
+
+    <div class="header-top">
+        <h2 style="margin:0; font-size: 1.2rem; color: #1f2937;">Panel Administrativo</h2>
+        <div class="timer-box">
+            ⏱️ Actualización en: <span id="countdown">03:00</span>
+        </div>
+    </div>
 
     <div class="grid-cards">
         <div class="card">
@@ -185,6 +188,23 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     </div>
 
 <script>
+    // Lógica del Contador (3 minutos)
+    let secondsLeft = 180;
+    const timerDisplay = document.getElementById('countdown');
+
+    const timer = setInterval(() => {
+        secondsLeft--;
+        let mins = Math.floor(secondsLeft / 60);
+        let secs = secondsLeft % 60;
+        timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        if (secondsLeft <= 0) {
+            clearInterval(timer);
+            location.reload();
+        }
+    }, 1000);
+
+    // Gráficas (Se mantiene igual)
     Chart.register(ChartDataLabels);
     const chartOptions = { 
         maintainAspectRatio: false,
@@ -220,7 +240,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
         options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom' } } } 
     });
 
-    // Guardado de egresos editables
+    // Guardado de egresos (Se mantiene igual)
     document.querySelectorAll('.edit-compra').forEach(el => {
         el.addEventListener('blur', function() {
             const rawVal = this.innerText.replace(/\./g, '').replace(/,/g, '.');
