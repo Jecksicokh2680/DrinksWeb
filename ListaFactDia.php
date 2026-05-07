@@ -1,6 +1,4 @@
 <?php
-session_start();
-
 require('ConnCentral.php'); // $mysqliCentral
 require('ConnDrinks.php');  // $mysqliDrinks
 require('Conexion.php');    // $mysqliWeb + $mysqli
@@ -8,6 +6,7 @@ require('Conexion.php');    // $mysqliWeb + $mysqli
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 
+session_start();
 mysqli_report(MYSQLI_REPORT_OFF);
 
 /* =====================================================
@@ -37,7 +36,7 @@ function Autorizacion($User, $Solicitud) {
 }
 
 if (Autorizacion($UsuarioSesion, '0003') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización</h2>");
+    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización para acceder a esta página</h2>");
 }
 
 date_default_timezone_set('America/Bogota');
@@ -48,38 +47,33 @@ date_default_timezone_set('America/Bogota');
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
 
-    $params = [];
-    $types  = '';
-
-    // Condiciones dinámicas para FACTURAS y PEDIDOS
-    $condProdFactura = '';
-    $condProdPedido  = '';
-    $condFacFactura  = '';
-    $condFacPedido   = '';
-
-    if ($busqProd !== '') {
-        $likeProd = '%' . $busqProd . '%';
-        $condProdFactura = " AND (PRODUCTOS.Descripcion LIKE ? OR PRODUCTOS.Barcode LIKE ?) ";
-        $condProdPedido  = " AND (PRODUCTOS.Descripcion LIKE ? OR PRODUCTOS.Barcode LIKE ?) ";
+    $extraCond = "";
+    if ($busqProd != "") {
+        $busqProdEsc = $cnx->real_escape_string($busqProd);
+        $extraCond .= " AND (PRODUCTOS.Descripcion LIKE '%$busqProdEsc%' OR PRODUCTOS.Barcode LIKE '%$busqProdEsc%') ";
     }
-    if ($f_fac !== '') {
-        $condFacFactura = " AND T1.NOMBRES = ? ";
-        $condFacPedido  = " AND T2.NOMBRES = ? ";
+    
+    $condFactura = $extraCond;
+    $condPedido = $extraCond;
+    if ($f_fac != "") {
+        $f_fac_esc = $cnx->real_escape_string($f_fac);
+        $condFactura .= " AND T1.NOMBRES = '$f_fac_esc' ";
+        $condPedido  .= " AND T2.NOMBRES = '$f_fac_esc' ";
     }
 
     $sql = "
     SELECT 
-        ? AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
         FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD
     FROM FACTURAS
     INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA
     INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO
     INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR
-    WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condProdFactura $condFacFactura
+    WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura
     UNION ALL
     SELECT 
-        ? AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
         PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD
     FROM PEDIDOS
@@ -87,43 +81,13 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO
     INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO
     INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO
-    WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condProdPedido $condFacPedido
+    WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido
     ORDER BY DOCUMENTO ASC
     ";
 
-    // Parámetros para la primera parte (FACTURAS)
-    $types .= 'sss'; // sucursal, f_ini, f_fin
-    $params[] = $nombreSucursal;
-    $params[] = $f_ini;
-    $params[] = $f_fin;
-    if ($busqProd !== '') {
-        $types .= 'ss';
-        $params[] = $likeProd;
-        $params[] = $likeProd;
-    }
-    if ($f_fac !== '') {
-        $types .= 's';
-        $params[] = $f_fac;
-    }
-
-    // Parámetros para la segunda parte (PEDIDOS)
-    $types .= 'sss'; // sucursal, f_ini, f_fin
-    $params[] = $nombreSucursal;
-    $params[] = $f_ini;
-    $params[] = $f_fin;
-    if ($busqProd !== '') {
-        $types .= 'ss';
-        $params[] = $likeProd;
-        $params[] = $likeProd;
-    }
-    if ($f_fac !== '') {
-        $types .= 's';
-        $params[] = $f_fac;
-    }
-
     $stmt = $cnx->prepare($sql);
     if (!$stmt) return [];
-    $stmt->bind_param($types, ...$params);
+    $stmt->bind_param("ssss", $f_ini, $f_fin, $f_ini, $f_fin);
     $stmt->execute();
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
@@ -171,7 +135,6 @@ if ($skus && isset($mysqliWeb)) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte Ejecutivo - Sistema Drinks</title>
     <style>
         body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; margin: 20px;}
@@ -191,14 +154,12 @@ if ($skus && isset($mysqliWeb)) {
         .gran-total{ background: #263238; color: #fff; font-weight: 900; }
         .badge{ padding: 4px 8px; border-radius: 4px; font-size: 11px; color: white; font-weight: bold; }
         .central{ background: #1565c0; } .drinks{ background: #2e7d32; }
-        .fecha-actual{ color: #78909c; font-size: 12px; font-weight: bold; margin-bottom: 5px; display: block;}
     </style>
     <script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
 </head>
 <body>
 
 <div class="card">
-    <span class="fecha-actual">📅 Generado: <?= date('d/m/Y h:i A') ?></span>
     <h2>📊 Ejecución de Ventas</h2>
 
     <form method="GET" class="filter-box">
@@ -237,11 +198,11 @@ if ($skus && isset($mysqliWeb)) {
         <table id="tablaVentas">
             <thead>
                 <tr>
-                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Fecha</th><th>Hora</th>
-                    <th>Sku</th><th>Producto</th><th>Precio</th>
+                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
+                    <th>Sku</th><th>Producto</th><th>Costo</th>
                     <th style="text-align:center">Cajas</th>
                     <th style="text-align:center">Und</th>
-                    <th>Subtotal</th>
+                    <th>Total Item</th>
                 </tr>
             </thead>
             <tbody>
@@ -251,36 +212,27 @@ if ($skus && isset($mysqliWeb)) {
 
                 foreach($rows as $r){
                     if($docAnt && $docAnt != $r['DOCUMENTO']){
-                        echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                        echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                         $subDoc = 0;
                     }
 
                     $uni = $unicaja[$r['Barcode']] ?? 1;
                     $cant_total = $r['CANTIDAD'];
-                    $cajas = ($uni > 0) ? floor($cant_total / $uni) : 0;
-                    $unds  = ($uni > 0) ? $cant_total % $uni : $cant_total;
+                    $cajas = floor($cant_total);
+                    $unds  = round(($cant_total - $cajas) * $uni);
                     $total_item = $cant_total * $r['VALORPROD'];
 
                     $totalCajasGlobal += $cajas;
                     $totalUndsGlobal  += $unds;
                     $badge_class = ($r['SUCURSAL'] == 'CENTRAL') ? 'central' : 'drinks';
 
-                    $eSuc  = htmlspecialchars($r['SUCURSAL']);
-                    $eFact = htmlspecialchars($r['FACTURADOR']);
-                    $eDoc  = htmlspecialchars($r['DOCUMENTO']);
-                    $eFec  = htmlspecialchars($r['FECHA']);
-                    $eHor  = htmlspecialchars($r['HORA']);
-                    $eBar  = htmlspecialchars($r['Barcode']);
-                    $eProd = htmlspecialchars($r['PRODUCTO']);
-
                     echo "<tr>
-                        <td><span class='badge $badge_class'>$eSuc</span></td>
-                        <td>$eFact</td>
-                        <td>$eDoc</td>
-                        <td>$eFec</td>
-                        <td>$eHor</td>
-                        <td><code>$eBar</code></td>
-                        <td>$eProd</td>
+                        <td><span class='badge $badge_class'>{$r['SUCURSAL']}</span></td>
+                        <td>{$r['FACTURADOR']}</td>
+                        <td>{$r['DOCUMENTO']}</td>
+                        <td>{$r['HORA']}</td>
+                        <td><code>{$r['Barcode']}</code></td>
+                        <td>{$r['PRODUCTO']}</td>
                         <td>".number_format($r['VALORPROD'],0,'.','.')."</td>
                         <td align='center'>$cajas</td>
                         <td align='center'>$unds</td>
@@ -291,12 +243,12 @@ if ($skus && isset($mysqliWeb)) {
                     $subDoc    += $total_item;
                     $docAnt     = $r['DOCUMENTO'];
                 }
-                if($docAnt) echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                if($docAnt) echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                 ?>
             </tbody>
             <tfoot>
                 <tr class="gran-total">
-                    <td colspan="8" style="text-align:right">GRAN TOTAL:</td>
+                    <td colspan="7" style="text-align:right">GRAN TOTAL GENERAL:</td>
                     <td align="center"><?=number_format($totalCajasGlobal,0)?></td>
                     <td align="center"><?=number_format($totalUndsGlobal,0)?></td>
                     <td>$ <?=number_format($granTotal,0,'.','.')?></td>
@@ -316,93 +268,86 @@ function exportarExcel() {
         sheet: { name: "Ventas" }
     });
 }
+
 function imprimirReporte() {
-    // 1. Conversión segura de datos PHP a JavaScript
-    const rows = <?php echo json_encode($rows, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '[]'; ?>;
-    const unicaja = <?php echo json_encode($unicaja, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}'; ?>;
+    const rows = <?php echo json_encode($rows) ?: '[]'; ?>;
+    const unicaja = <?php echo json_encode($unicaja) ?: '{}'; ?>;
+    const fIni = "<?= $f_ini_raw ?>";
+    const fFin = "<?= $f_fin_raw ?>";
 
-    // Validación de datos antes de intentar abrir la ventana
-    if (!rows || rows.length === 0) {
-        alert("No hay datos en la tabla para imprimir. Por favor, filtre primero.");
+    if (rows.length === 0) {
+        alert("No hay datos para imprimir.");
         return;
     }
 
-    // 2. Abrir la ventana emergente
     let win = window.open('', '_blank', 'width=450,height=600');
-
-    if (!win || win.closed || typeof win.closed == 'undefined') { 
-        alert("⚠️ El navegador bloqueó la ventana de impresión. Por favor, permite los 'Pop-ups' en este sitio.");
-        return;
-    }
-
-    // 3. Escribir el contenido del Ticket
-    win.document.write('<html><head><title>POS Print - Drinks</title>');
-    win.document.write('<style>');
-    win.document.write('body { font-family: "Courier New", monospace; width: 95%; margin: 0; padding: 10px; font-size: 11px; font-weight: bold; }');
-    win.document.write('.text-center { text-align: center; } .text-right { text-align: right; }');
-    win.document.write('.border-dashed { border-top: 1px dashed #000; margin: 5px 0; }');
-    win.document.write('.doc-header { font-weight: 900; margin-top: 10px; border-bottom: 1px solid #eee; }');
-    win.document.write('.item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }');
-    win.document.write('</style></head><body>');
-    
-    win.document.write('<div class="text-center"><strong>SISTEMA DRINKS</strong><br>');
-    win.document.write('Reporte: <?= htmlspecialchars($f_ini_raw) ?> / <?= htmlspecialchars($f_fin_raw) ?></div>');
-    win.document.write('<div class="border-dashed"></div>');
+    win.document.write(`
+        <html>
+        <head>
+            <title>Ticket POS</title>
+            <style>
+                body { font-family: "Courier New", monospace; font-size: 12px; padding: 10px; font-weight: bold; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .border-dashed { border-top: 1px dashed #000; margin: 5px 0; }
+                .doc-header { background: #eee; padding: 2px; margin-top: 10px; }
+                .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center">
+                <strong>SISTEMA DRINKS</strong><br>
+                REPORTE: ${fIni} / ${fFin}
+            </div>
+            <div class="border-dashed"></div>
+    `);
 
     let gTotal = 0;
     let subDoc = 0;
     let docAnt = '';
-    const formatoCop = new Intl.NumberFormat('de-DE');
+    const formato = new Intl.NumberFormat('de-DE');
 
     rows.forEach((r, index) => {
-        // Al cambiar de documento, imprimimos el subtotal del anterior
         if (docAnt !== '' && docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="text-right">SUBTOTAL DOC ${docAnt}: $ ${formatoCop.format(subDoc)}</div><div class="border-dashed"></div>`);
+            win.document.write(`<div class="text-right">SUBTOTAL: $ ${formato.format(subDoc)}</div><div class="border-dashed"></div>`);
             subDoc = 0;
         }
 
-        // Encabezado del documento
         if (docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO || ''} | HORA: ${r.HORA || ''}</div>`);
+            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.HORA}</div>`);
         }
 
-        let itemTotal = parseFloat(r.CANTIDAD || 0) * parseFloat(r.VALORPROD || 0);
+        let uni = unicaja[r.Barcode] || 1;
+        let cantTotal = parseFloat(r.CANTIDAD);
+        let cajas = Math.floor(cantTotal);
+        let unds = Math.round((cantTotal - cajas) * uni);
+        let itemTotal = cantTotal * parseFloat(r.VALORPROD);
+
         subDoc += itemTotal;
         gTotal += itemTotal;
         docAnt = r.DOCUMENTO;
 
-        // Fila del producto
-        let nombreProd = (r.PRODUCTO || '').substring(0, 22);
         win.document.write(`
             <div class="item-row">
-                <span>${nombreProd}</span>
-                <span>$${formatoCop.format(itemTotal)}</span>
+                <span>${(r.PRODUCTO || '').substring(0, 22)}</span>
+                <span>${cajas}c+${unds}u</span>
+                <span>$${formato.format(itemTotal)}</span>
             </div>`);
-        
-        // Si es el último registro de todos, cerramos el último subtotal
+
         if (index === rows.length - 1) {
-            win.document.write(`<div class="text-right">SUBTOTAL DOC ${r.DOCUMENTO}: $ ${formatoCop.format(subDoc)}</div>`);
+            win.document.write(`<div class="text-right">SUBTOTAL: $ ${formato.format(subDoc)}</div>`);
         }
     });
 
-    win.document.write('<div class="border-dashed"></div>');
-    win.document.write(`<div class="text-center" style="font-size:14px; margin-top:10px;">TOTAL GENERAL: $ ${formatoCop.format(gTotal)}</div>`);
-    win.document.write('</body></html>');
+    win.document.write(`
+            <div class="border-dashed"></div>
+            <div class="text-center" style="font-size:14px; margin-top:10px;">TOTAL: $ ${formato.format(gTotal)}</div>
+        </body></html>
+    `);
 
-    // 4. Cerramos el flujo y esperamos a que cargue
-    win.document.close(); 
-
-    // Esperamos a que el navegador renderice los datos antes de imprimir
-    setTimeout(function() {
-        win.focus();
-        win.print();
-        win.close(); 
-    }, 500); 
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
 }
-
-
-
-
 </script>
 </body>
 </html>
