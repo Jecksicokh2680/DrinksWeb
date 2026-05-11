@@ -94,9 +94,9 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
 $f_ini_raw = $_GET['fecha_ini'] ?? date('Y-m-d');
 $f_fin_raw = $_GET['fecha_fin'] ?? date('Y-m-d');
-$f_prod    = trim($_GET['filtro_prod'] ?? '');
-$fSuc      = $_GET['sucursal'] ?? '';
-$fFac      = $_GET['facturador'] ?? '';
+$f_prod     = trim($_GET['filtro_prod'] ?? '');
+$fSuc       = $_GET['sucursal'] ?? '';
+$fFac       = $_GET['facturador'] ?? '';
 
 $f_ini = str_replace('-', '', $f_ini_raw);
 $f_fin = str_replace('-', '', $f_fin_raw);
@@ -113,6 +113,7 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     }
 }
 
+// Mantener lista de facturadores para el select
 if ($fFac == '' && !empty($rows)) {
     $listaFacturadores = array_unique(array_column($rows, 'FACTURADOR'));
     $_SESSION['UltimosFacturadores'] = $listaFacturadores;
@@ -121,6 +122,7 @@ if ($fFac == '' && !empty($rows)) {
 }
 sort($listaFacturadores);
 
+// Obtener Unicaja
 $unicaja = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 if ($skus && isset($mysqliWeb)) {
@@ -269,29 +271,34 @@ function exportarExcel() {
     });
 }
 
+/**
+ * Función Corregida: Lee directamente el contenido del HTML para evitar errores de sincronización
+ * y asegurar que el ticket sea idéntico a lo que el usuario ve.
+ */
 function imprimirReporte() {
-    const rows = <?php echo json_encode($rows) ?: '[]'; ?>;
-    const unicaja = <?php echo json_encode($unicaja) ?: '{}'; ?>;
-    const fIni = "<?= $f_ini_raw ?>";
-    const fFin = "<?= $f_fin_raw ?>";
-
-    if (rows.length === 0) {
-        alert("No hay datos para imprimir.");
+    const tabla = document.getElementById("tablaVentas");
+    
+    if (!tabla || tabla.querySelector("tbody").rows.length === 0) {
+        alert("No hay datos en la tabla para imprimir.");
         return;
     }
 
+    const fIni = "<?= $f_ini_raw ?>";
+    const fFin = "<?= $f_fin_raw ?>";
+    
     let win = window.open('', '_blank', 'width=450,height=600');
     win.document.write(`
         <html>
         <head>
             <title>Ticket POS</title>
             <style>
-                body { font-family: "Courier New", monospace; font-size: 12px; padding: 10px; font-weight: bold; }
+                body { font-family: "Courier New", monospace; font-size: 11px; padding: 10px; font-weight: bold; }
                 .text-center { text-align: center; }
                 .text-right { text-align: right; }
                 .border-dashed { border-top: 1px dashed #000; margin: 5px 0; }
-                .doc-header { background: #eee; padding: 2px; margin-top: 10px; }
-                .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 11px; }
+                .doc-header { background: #eee; padding: 2px; margin-top: 8px; }
+                .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                .subtotal-line { text-align: right; font-style: italic; margin: 3px 0 8px 0; font-size: 10px; }
             </style>
         </head>
         <body>
@@ -302,46 +309,42 @@ function imprimirReporte() {
             <div class="border-dashed"></div>
     `);
 
-    let gTotal = 0;
-    let subDoc = 0;
-    let docAnt = '';
-    const formato = new Intl.NumberFormat('de-DE');
+    const filas = tabla.querySelectorAll("tbody tr");
+    let ultimoDoc = "";
 
-    rows.forEach((r, index) => {
-        if (docAnt !== '' && docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="text-right">SUBTOTAL: $ ${formato.format(subDoc)}</div><div class="border-dashed"></div>`);
-            subDoc = 0;
-        }
+    filas.forEach(fila => {
+        if (fila.classList.contains('total-row')) {
+            // Es una fila de subtotal
+            const textoSubtotal = fila.cells[1] ? fila.cells[1].innerText : fila.innerText;
+            win.document.write(`<div class="subtotal-line">${fila.innerText.trim()}</div><div class="border-dashed"></div>`);
+        } else {
+            // Es una fila de producto
+            const c = fila.cells;
+            const docActual = c[2].innerText;
 
-        if (docAnt !== r.DOCUMENTO) {
-            win.document.write(`<div class="doc-header">DOC: ${r.DOCUMENTO} | ${r.HORA}</div>`);
-        }
+            // Si el documento cambia, podemos poner un separador opcional
+            if(ultimoDoc !== docActual) {
+                win.document.write(`<div class="doc-header">DOC: ${docActual} - ${c[3].innerText}</div>`);
+                ultimoDoc = docActual;
+            }
 
-        let uni = unicaja[r.Barcode] || 1;
-        let cantTotal = parseFloat(r.CANTIDAD);
-        let cajas = Math.floor(cantTotal);
-        let unds = Math.round((cantTotal - cajas) * uni);
-        let itemTotal = cantTotal * parseFloat(r.VALORPROD);
-
-        subDoc += itemTotal;
-        gTotal += itemTotal;
-        docAnt = r.DOCUMENTO;
-
-        win.document.write(`
-            <div class="item-row">
-                <span>${(r.PRODUCTO || '').substring(0, 22)}</span>
-                <span>${cajas}c+${unds}u</span>
-                <span>$${formato.format(itemTotal)}</span>
-            </div>`);
-
-        if (index === rows.length - 1) {
-            win.document.write(`<div class="text-right">SUBTOTAL: $ ${formato.format(subDoc)}</div>`);
+            win.document.write(`
+                <div class="item-row">
+                    <span>${c[5].innerText.substring(0, 22)}</span>
+                    <span>${c[7].innerText}c+${c[8].innerText}u</span>
+                    <span>${c[9].innerText}</span>
+                </div>
+            `);
         }
     });
 
+    const granTotal = tabla.querySelector("tfoot .gran-total td:last-child").innerText;
     win.document.write(`
             <div class="border-dashed"></div>
-            <div class="text-center" style="font-size:14px; margin-top:10px;">TOTAL: $ ${formato.format(gTotal)}</div>
+            <div class="text-center" style="font-size:13px; margin-top:10px;">
+                <strong>TOTAL GENERAL: ${granTotal}</strong>
+            </div>
+            <div style="margin-top:20px; text-align:center; font-size:9px;">Generado el: <?=date('d/m/Y H:i:s')?></div>
         </body></html>
     `);
 
