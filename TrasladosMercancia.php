@@ -93,7 +93,6 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
         }
     }
 
-    // AJUSTE: Ahora permite reversión si es 9999 O 0003
     if(isset($_POST['aprobar']) && ($aut_9999=="SI" || $aut_0003=="SI")){
         $id = (int)$_POST['idMov'];
         $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id AND Aprobado=1")->fetch_assoc();
@@ -242,12 +241,9 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                     <td><?= $r['usuario_Orig'] ?></td>
                     <td data-nombre="<?= htmlspecialchars($nomProd) ?>"><code><?= $r['barcode'] ?></code></td>
                     <td style="font-weight:bold;"><?= number_format($r['cant'], 1) ?></td>
-                    <td><?= $origName ?></td>
-                    <td><?= $destName ?></td>
-                    <td style="font-size:11px;"><?= $r['Observacion'] ?></td>
+                    <td style="font-weight:bold;"><?= $origName ?></td> <td style="font-weight:bold;"><?= $destName ?></td> <td style="font-size:11px;"><?= $r['Observacion'] ?></td>
                     <td>
                         <?php 
-                        // AJUSTE: Ahora se muestra el botón si es 9999 O 0003
                         if(($aut_9999=="SI" || $aut_0003=="SI") && $r['Aprobado']==1): ?>
                             <form method="POST" onsubmit="return confirm('¿Realmente desea reversar este movimiento?')">
                                 <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
@@ -287,8 +283,9 @@ function printMovimientos(){
             <div style="font-size:9px; font-family:monospace;">[${celdaBarcode.innerText}]</div>
         `;
 
-        row.cells[4].innerText = nombresSedes[row.cells[4].innerText.trim()] || row.cells[4].innerText;
-        row.cells[5].innerText = nombresSedes[row.cells[5].innerText.trim()] || row.cells[5].innerText;
+        // AJUSTE: Sedes en negrilla para la impresión
+        row.cells[4].innerHTML = `<b>${nombresSedes[row.cells[4].innerText.trim()] || row.cells[4].innerText}</b>`;
+        row.cells[5].innerHTML = `<b>${nombresSedes[row.cells[5].innerText.trim()] || row.cells[5].innerText}</b>`;
 
         row.deleteCell(7);
         row.deleteCell(6);
@@ -323,9 +320,9 @@ function printMovimientos(){
                 th { background: #000 !important; color: #fff !important; font-size: 10px; }
                 th:nth-child(1), td:nth-child(1) { width: 15%; } 
                 th:nth-child(2), td:nth-child(2) { width: 45%; text-align: left; } 
-                th:nth-child(3), td:nth-child(3) { width: 12%; font-size: 13px; } 
-                th:nth-child(4), td:nth-child(4) { width: 14%; } 
-                th:nth-child(5), td:nth-child(5) { width: 14%; }
+                th:nth-child(3), td:nth-child(3) { width: 12%; font-size: 13px; font-weight: bold; } 
+                th:nth-child(4), td:nth-child(4) { width: 14%; font-weight: bold; } 
+                th:nth-child(5), td:nth-child(5) { width: 14%; font-weight: bold; }
                 .footer-firmas { margin-top: 30px; display: flex; justify-content: space-between; }
                 .firma-box { border-top: 1px solid #000; width: 45%; text-align: center; font-size: 9px; padding-top: 5px; }
             </style>
