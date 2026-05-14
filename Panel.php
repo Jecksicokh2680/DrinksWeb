@@ -136,13 +136,13 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </button>
                             <div id="adminInv" class="accordion-collapse collapse">
                                 <div class="accordion-body">
+                                    <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
                                     <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
                                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
                                     <a class="nav-link" href="ajustesdeInventario.php" target="contentFrame">Ajustes de Inventario</a>
                                     <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Ver Ajustes Conteos</a>
                                     <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
-                                    <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>
-                                    <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
+                                    <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                                    
                                     <a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
                                 </div>
                             </div>
