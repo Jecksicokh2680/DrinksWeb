@@ -115,31 +115,53 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
         body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 10px; color: #374151; }
-        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 0 5px; }
+        
+        /* Ajuste de Header */
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .header-top h2 { margin:0; font-size: 1.2rem; color: #1f2937; }
+
         .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .timer-box span { color: #60a5fa; min-width: 45px; }
+
+        /* Grid Responsivo de Tarjetas */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        
         .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; }
         .card:hover { transform: translateY(-2px); }
         .card h3 { font-size: 1.1rem; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #111827; }
-        .main-value { font-size: 1.75rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; }
-        .details { font-size: 0.9rem; line-height: 1.5; color: #4b5563; }
+
+        .main-value { font-size: 1.6rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; word-break: break-all; }
+        .details { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
         .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; }
-        .sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
-        .full-width { grid-column: span 2; }
-        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 500px; }
-        th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; }
+
+        /* Grid Responsivo de Secciones Inferiores */
+        .sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        
+        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
+        .full-width { grid-column: 1 / -1; }
+
+        /* Tabla Adaptable */
+        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
+        th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; position: sticky; top: 0; }
         td { padding: 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+        
         .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+
+        /* Media Queries para ajustes finos */
+        @media (max-width: 600px) {
+            body { padding: 5px; }
+            .main-value { font-size: 1.4rem; }
+            .card { padding: 15px; }
+            .sections-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
 
     <div class="header-top">
-        <h2 style="margin:0; font-size: 1.2rem; color: #1f2937;">Panel Administrativo</h2>
-        <div class="timer-box">⏱️ Actualización en: <span id="countdown">03:00</span></div>
+        <h2>Panel Administrativo</h2>
+        <div class="timer-box">⏱️ Act: <span id="countdown">03:00</span></div>
     </div>
 
     <div class="grid-cards">
@@ -180,15 +202,15 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 
     <div class="sections-grid">
         <div class="wrap-box">
-            <h4 style="text-align:center; margin-top:0; color:#4b5563;">📊 % PARTICIPACION DE INVENTARIOS</h4>
+            <h4 style="text-align:center; margin-top:0; color:#4b5563;">📊 % PARTICIPACION INVENTARIOS</h4>
             <div style="position: relative; height:200px;"><canvas id="chartInv"></canvas></div>
         </div>
         <div class="wrap-box">
-            <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION DE VENTAS</h4>
+            <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION VENTAS</h4>
             <div style="position: relative; height:200px;"><canvas id="chartVenta"></canvas></div>
         </div>
         <div class="wrap-box full-width">
-            <h3 style="margin-top:0; color:#111827;">🚚 Compras del Día</h3>
+            <h3 style="margin-top:0; color:#111827; font-size:1.1rem;">🚚 Compras del Día</h3>
             <div class="table-container">
                 <table>
                     <thead><tr><th>Sede</th><th>Proveedor</th><th style="text-align:right">Valor Compra</th></tr></thead>
@@ -200,6 +222,9 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
                             <td style="text-align:right"><span contenteditable="true" class="editable edit-compra" data-id="<?= $c['idcompra'] ?>" data-sede="<?= $c['sede'] ?>"><?= number_format($c['total'], 0, ',', '.') ?></span></td>
                         </tr>
                         <?php endforeach; ?>
+                        <?php if(empty($todasLasCompras)): ?>
+                            <tr><td colspan="3" style="text-align:center; color:#9ca3af;">No hay compras hoy</td></tr>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -220,7 +245,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     Chart.register(ChartDataLabels);
     const chartOptions = { 
         maintainAspectRatio: false, responsive: true, 
-        plugins: { legend: { display: false }, datalabels: { color: '#fff', font: { weight: 'bold', size: 12 }, formatter: (v, c) => { let s = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 ? (v * 100 / s).toFixed(1) + "%" : "0%"; } } } 
+        plugins: { legend: { display: false }, datalabels: { color: '#fff', font: { weight: 'bold', size: 11 }, formatter: (v, c) => { let s = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 ? (v * 100 / s).toFixed(1) + "%" : "0%"; } } } 
     };
     
     new Chart(document.getElementById('chartInv'), { 
@@ -232,7 +257,7 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     new Chart(document.getElementById('chartVenta'), { 
         type: 'pie', 
         data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?= $drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
-        options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom' } } } 
+        options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } 
     });
 
     document.querySelectorAll('.edit-compra').forEach(el => {
@@ -243,7 +268,13 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             fetch('?action=update_compra', { 
                 method: 'POST', body: JSON.stringify({ id: this.dataset.id, sede: this.dataset.sede, valor: val }), 
                 headers: { 'Content-Type': 'application/json' } 
-            }).then(res => res.json()).then(data => { if(data.success) { this.innerText = new Intl.NumberFormat('es-CO').format(val); this.style.backgroundColor = "#dcfce7"; setTimeout(() => this.style.backgroundColor = "transparent", 1000); } });
+            }).then(res => res.json()).then(data => { 
+                if(data.success) { 
+                    this.innerText = new Intl.NumberFormat('es-CO').format(val); 
+                    this.style.backgroundColor = "#dcfce7"; 
+                    setTimeout(() => this.style.backgroundColor = "transparent", 1000); 
+                } 
+            });
         });
     });
 </script>
