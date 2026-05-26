@@ -10,6 +10,54 @@ if (empty($_SESSION['Usuario'])) {
     exit;
 }
 date_default_timezone_set('America/Bogota');
+
+// -------------------------------------------------
+// ACCIÓN: EXPORTAR A EXCEL (Debe ir antes de cualquier HTML)
+// -------------------------------------------------
+if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['exportar'] == 1) {
+    
+    $nit = $mysqli->real_escape_string($_GET['proveedor']);
+
+    // Cabeceras para forzar la descarga del Excel
+    header("Content-Type: application/vnd.ms-excel; charset=utf-8");
+    header("Content-Disposition: attachment; filename=Reporte_Proveedor_$nit.xls");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+
+    // Consultar el histórico completo (sin paginación)
+    $resExcel = $mysqli->query("
+        SELECT F_Creacion, H_Creacion, TipoMonto, Monto, Descripcion 
+        FROM pagosproveedores 
+        WHERE Nit='$nit' AND Estado='1' 
+        ORDER BY F_Creacion DESC, H_Creacion DESC
+    ");
+    ?>
+    <table border="1">
+        <thead>
+            <tr style="background-color: #007bff; color: #ffffff; font-weight: bold;">
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Tipo</th>
+                <th>Monto</th>
+                <th>Descripcion</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php while ($r = $resExcel->fetch_assoc()): ?>
+                <tr>
+                    <td><?= $r['F_Creacion'] ?></td>
+                    <td><?= $r['H_Creacion'] ?></td>
+                    <td><?= $r['TipoMonto'] == 'F' ? 'Factura' : 'Pago' ?></td>
+                    <td><?= $r['Monto'] ?></td>
+                    <td><?= htmlspecialchars($r['Descripcion']) ?></td>
+                </tr>
+            <?php endwhile; ?>
+        </tbody>
+    </table>
+    <?php
+    exit; // Detiene la ejecución para que no descargue el resto del HTML de la página
+}
+
 // -------------------------------------------------
 // PROVEEDORES
 // -------------------------------------------------
@@ -25,8 +73,6 @@ $proveedores = $mysqli->query("
 // -------------------------------------------------
 if (isset($_POST['grabar'])) {
 
-    date_default_timezone_set('America/Bogota');
-
     $nit   = $_POST['proveedor'];
     $fecha = str_replace('-', '', $_POST['fecha']);
     $hora  = date("H:i:s");
@@ -34,7 +80,6 @@ if (isset($_POST['grabar'])) {
 
     // QUITAR SEPARADORES
     $monto = floatval(str_replace('.', '', $_POST['monto']));
-
     $desc  = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
 
     if ($tipo === 'F') $monto *= -1;
@@ -108,7 +153,7 @@ $pagina = max(1, intval($_GET['page'] ?? 1));
 $offset = ($pagina - 1) * $porPagina;
 
 // -------------------------------------------------
-// CONSULTA
+// CONSULTA PARA LA TABLA EN PANTALLA
 // -------------------------------------------------
 $abonos = [];
 $total = 0;
@@ -160,6 +205,20 @@ a{text-decoration:none;font-weight:bold}
 .btn-del{color:#dc3545}
 .btn-save{color:#198754}
 .paginacion{text-align:center;margin-top:10px}
+
+/* BOTÓN EXCEL */
+.btn-excel {
+    background-color: #198754;
+    color: white !important;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: inline-block;
+    transition: background 0.2s;
+}
+.btn-excel:hover {
+    background-color: #146c43;
+}
 </style>
 </head>
 <body>
@@ -194,7 +253,10 @@ a{text-decoration:none;font-weight:bold}
 <?php endif; ?>
 
 <?php if($abonos): ?>
-<div class="total">Saldo Pte: <?= number_format($total,0,',','.') ?></div>
+<div class="total" style="display: flex; justify-content: space-between; align-items: center;">
+    <span>Saldo Pte: <?= number_format($total,0,',','.') ?></span>
+    <a href="?proveedor=<?= $nit ?>&consultar=1&exportar=1" class="btn-excel">📊 Exportar a Excel</a>
+</div>
 
 <table>
 <tr>
@@ -232,8 +294,7 @@ a{text-decoration:none;font-weight:bold}
 <input type="hidden" name="hora" value="<?= $a['H_Creacion'] ?>">
 <button class="btn-save" name="editar">💾</button>
 <a class="btn-del"
-   href="?proveedor=<?= $nit ?>&consultar=1&borrar=1
-         &nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
+   href="?proveedor=<?= $nit ?>&consultar=1&borrar=1&nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
    onclick="return confirm('¿Eliminar este registro?')">🗑️</a>
 </td>
 </tr>
