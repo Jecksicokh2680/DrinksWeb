@@ -57,9 +57,7 @@ function VerificarAnulacion($NroDoc, $nitSede) {
         $stmtP->execute();
         $resP = $stmtP->get_result();
         if ($rowP = $resP->fetch_assoc()) {
-            if ($rowP['estado'] == 1 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul'])) {
-                return 1; 
-            }
+            if ($rowP['estado'] == 1 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul'])) return 1; 
         }
     }
 
@@ -102,18 +100,34 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
 }
 
 if (isset($_POST['grabar'])) {
-    $factura   = $_POST['FactAnular'];
-    $reemplazo = $_POST['NroFactReemplaza']; 
-    $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
-    $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
+    $factura   = $_POST['FactAnular'] ?? '';
+    $reemplazo = $_POST['NroFactReemplaza'] ?? ''; 
+    $tipoDoc   = $_POST['TipoDocAnular'] ?? 'F'; 
+    $motivoMayusculas = mb_strtoupper($_POST['motivo'] ?? '', 'UTF-8');
     
+    if (empty($factura)) {
+        header("Location: ?error=falta_documento&fConsulta=".$fechaConsulta); exit;
+    }
+
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
     }
 
-    $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
+    $valorFactura = 0;
+    $dbSede = conectarPOS($NroSucursal);
+    if ($dbSede) {
+        $stmtV = $dbSede->prepare("SELECT VALORTOTAL FROM facturas WHERE NUMERO = ? UNION ALL SELECT VALORTOTAL FROM pedidos WHERE NUMERO = ? LIMIT 1");
+        $stmtV->bind_param("ss", $factura, $factura);
+        $stmtV->execute();
+        $resV = $stmtV->get_result();
+        if ($rowV = $resV->fetch_assoc()) {
+            $valorFactura = (float)$rowV['VALORTOTAL'];
+        }
+    }
+
+    $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado, Tipo) VALUES (?,?,?,?,?,?,?,?,?, '1', ?)");
     $ft = date('Y-m-d H:i:s');
-    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo);
+    $stmt->bind_param("ssssssdsss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $valorFactura, $motivoMayusculas, $reemplazo, $tipoDoc);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -131,7 +145,6 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
     }
     
     if ($_GET['accion'] == 'gerencia' && Autorizacion($Usuario, '2010') === 'SI') {
-        // Se quitó la validación estricta de VerificarAnulacion para permitir el grabado directo
         $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=?, Estado='0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
         $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
         $stmt->execute();
@@ -149,9 +162,16 @@ $nombreSedeActual = ($NroSucursal == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
-    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' ORDER BY NUMERO DESC";
-    $listaDocs = $dbSede->query($queryDocs);
-    if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
+    $queryDocs = "SELECT NUMERO, VALORTOTAL, 'F' AS TIPO FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = ? AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL, 'P' AS TIPO FROM pedidos WHERE estado = '0' AND fecha = ? ORDER BY NUMERO DESC";
+    $stmtDocs = $dbSede->prepare($queryDocs);
+    $stmtDocs->bind_param("ss", $fPosFormat, $fPosFormat);
+    $stmtDocs->execute();
+    $listaDocs = $stmtDocs->get_result();
+    if($listaDocs) {
+        while($row = $listaDocs->fetch_assoc()) { 
+            $docsArray[] = $row; 
+        }
+    }
 }
 ?>
 
@@ -174,10 +194,29 @@ if ($dbSede) {
         .uppercase-input { text-transform: uppercase; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.65rem; color: #6c757d; }
+        
+        .badge-tipo {
+            font-size: 0.58rem;
+            padding: 2px 5px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 3px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .bg-factura { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+        .bg-pedido { background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
     </style>
 </head>
 <body class="bg-light">
 <div class="container-fluid px-4 py-4">
+
+    <?php if (isset($_GET['error']) && $_GET['error'] === 'mismo_documento'): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>¡Error!</strong> El documento a anular no puede ser igual al documento de reemplazo.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    <?php endif; ?>
 
     <div class="header-bar d-flex justify-content-between align-items-center shadow-sm">
         <div class="d-flex align-items-center">
@@ -203,15 +242,16 @@ if ($dbSede) {
     </div>
 
     <div class="card p-3 shadow-sm border-0 mb-4">
-        <form method="post" id="formAnulacion">
-            <input type="hidden" name="FactAnular" id="FactAnular">
-            <input type="hidden" name="ValorAnular" id="ValorAnular">
+        <form method="post" id="formAnulacion" autocomplete="off">
+            <input type="hidden" name="TipoDocAnular" id="TipoDocAnular" value="">
             <div class="row g-2">
                 <div class="col-md-3">
-                    <select class="form-select form-select-sm" id="selAnular" required>
+                    <select class="form-select form-select-sm" name="FactAnular" id="selAnular" required onchange="capturarTipo(this)">
                         <option value="">-- Seleccione a Anular --</option>
                         <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
+                            <option value="<?= $d['NUMERO'] ?>" data-tipo="<?= $d['TIPO'] ?>">
+                                <?= $d['NUMERO'] ?> [<?= ($d['TIPO']=='F') ? 'FACTURA' : 'PEDIDO' ?>] ($<?= number_format($d['VALORTOTAL'],0) ?>)
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -220,7 +260,9 @@ if ($dbSede) {
                         <option value="">-- Doc. Reemplazo --</option>
                         <option value="N/A">-- NO LLEVA NADA --</option>
                         <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
+                            <option value="<?= $d['NUMERO'] ?>">
+                                <?= $d['NUMERO'] ?> [<?= ($d['TIPO']=='F') ? 'FACTURA' : 'PEDIDO' ?>]
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -246,20 +288,28 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
+                    // MODIFICACIÓN CRITICA: Añadida la condición s.Estado = '1' para ocultar las autorizadas (Estado 0)
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-                            WHERE s.F_Creacion = ? 
+                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
                             ORDER BY s.FH_CajeroCheck DESC";
                     $stmtH = $mysqli->prepare($sql);
                     $stmtH->bind_param("s", $fechaConsulta);
                     $stmtH->execute();
                     $resH = $stmtH->get_result();
                     while ($r = $resH->fetch_assoc()): 
-                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
-                        $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
-                        
+                        $anuladoPOS  = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
+                        $txtSede     = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
                         $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
                         $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
+
+                        if ($r['Tipo'] === 'P') {
+                            $textoTipo = 'PEDIDO';
+                            $claseBadgeTipo = 'bg-pedido';
+                        } else {
+                            $textoTipo = 'FACTURA';
+                            $claseBadgeTipo = 'bg-factura';
+                        }
                     ?>
                     <tr>
                         <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
@@ -268,7 +318,10 @@ if ($dbSede) {
                             <span class="nombre-cajero text-uppercase"><?= $r['NombreCajero'] ?: $r['NitCajero'] ?></span>
                             <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
                         </td>
-                        <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
+                        <td class="fw-bold">
+                            <span class="text-danger d-block"><?= $r['NroFactAnular'] ?></span>
+                            <span class="badge-tipo <?= $claseBadgeTipo ?>"><?= $textoTipo ?></span>
+                        </td>
                         <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                         <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
                         <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
@@ -298,6 +351,7 @@ if ($dbSede) {
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let timeLeft = 180;
     const timerDisplay = document.getElementById('timer-box');
@@ -308,14 +362,11 @@ if ($dbSede) {
         if (timeLeft <= 0) window.location.reload();
     }, 1000);
 
-    document.getElementById('formAnulacion').addEventListener('submit', function(e) {
-        const sel = document.getElementById('selAnular');
-        const opt = sel.options[sel.selectedIndex];
-        if (opt.value !== "") {
-            document.getElementById('FactAnular').value = opt.value;
-            document.getElementById('ValorAnular').value = opt.dataset.valor || '0';
-        }
-    });
+    function capturarTipo(select) {
+        const option = select.options[select.selectedIndex];
+        const tipo = option.getAttribute('data-tipo') || 'F';
+        document.getElementById('TipoDocAnular').value = tipo;
+    }
 
     function confirmar(tipo, fact, nitSede) {
         if (confirm(`¿Autorizar ${tipo.toUpperCase()} para la factura ${fact}?`)) {
