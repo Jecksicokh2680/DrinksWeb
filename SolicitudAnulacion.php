@@ -104,16 +104,17 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
 if (isset($_POST['grabar'])) {
     $factura   = $_POST['FactAnular'];
     $reemplazo = $_POST['NroFactReemplaza']; 
-    $v = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
+    $v         = (float)str_replace(['$', ' ', ','], '', $_POST['ValorAnular']);
+    $tipoDoc   = $_POST['TipoDoc'] ?? ''; 
     $motivoMayusculas = mb_strtoupper($_POST['motivo'], 'UTF-8');
     
     if (!empty($reemplazo) && $factura === $reemplazo) {
         header("Location: ?error=mismo_documento&fConsulta=".$fechaConsulta); exit;
     }
 
-    $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado) VALUES (?,?,?,?,?,?,?,?,?, '1')");
+    $stmt = $mysqli->prepare("INSERT INTO solicitud_anulacion (F_Creacion, Nit_Empresa, NroSucursal, NitCajero, FH_CajeroCheck, NroFactAnular, ValorFactAnular, MotivoAnulacion, NroFactReemplaza, Estado, Tipo) VALUES (?,?,?,?,?,?,?,?,?, '1', ?)");
     $ft = date('Y-m-d H:i:s');
-    $stmt->bind_param("ssssssdss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo);
+    $stmt->bind_param("ssssssdsss", $fechaConsulta, $NitEmpresa, $NroSucursal, $Usuario, $ft, $factura, $v, $motivoMayusculas, $reemplazo, $tipoDoc);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -131,7 +132,6 @@ if (isset($_GET['accion']) && isset($_GET['factura'])) {
     }
     
     if ($_GET['accion'] == 'gerencia' && Autorizacion($Usuario, '2010') === 'SI') {
-        // Se quitó la validación estricta de VerificarAnulacion para permitir el grabado directo
         $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET GerenteCheck='1', NitGerente=?, FH_GerenteCheck=?, Estado='0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
         $stmt->bind_param("sssss", $Usuario, $ahora, $factTarget, $fechaRef, $nitSedeAccion);
         $stmt->execute();
@@ -149,9 +149,16 @@ $nombreSedeActual = ($NroSucursal == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
 if ($dbSede) {
-    $queryDocs = "SELECT NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') UNION ALL SELECT NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' ORDER BY NUMERO DESC";
+    $queryDocs = "SELECT 'FACTURA' AS TIPO, NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') 
+                  UNION ALL 
+                  SELECT 'PEDIDO' AS TIPO, NUMERO, VALORTOTAL FROM pedidos WHERE estado = '0' AND fecha = '$fPosFormat' 
+                  ORDER BY NUMERO DESC";
     $listaDocs = $dbSede->query($queryDocs);
-    if($listaDocs) while($row = $listaDocs->fetch_assoc()) { $docsArray[] = $row; }
+    if($listaDocs) {
+        while($row = $listaDocs->fetch_assoc()) { 
+            $docsArray[] = $row; 
+        }
+    }
 }
 ?>
 
@@ -206,22 +213,28 @@ if ($dbSede) {
         <form method="post" id="formAnulacion">
             <input type="hidden" name="FactAnular" id="FactAnular">
             <input type="hidden" name="ValorAnular" id="ValorAnular">
+            <input type="hidden" name="TipoDoc" id="TipoDoc">
+            
             <div class="row g-2">
                 <div class="col-md-3">
                     <select class="form-select form-select-sm" id="selAnular" required>
                         <option value="">-- Seleccione a Anular --</option>
-                        <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>"><?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
-                        <?php endforeach; ?>
+                        <?php if(!empty($docsArray)): ?>
+                            <?php foreach($docsArray as $d): ?>
+                                <option value="<?= $d['NUMERO'] ?>" data-valor="<?= $d['VALORTOTAL'] ?>" data-tipo="<?= $d['TIPO'] ?>">[<?= $d['TIPO'] ?>] <?= $d['NUMERO'] ?> ($<?= number_format($d['VALORTOTAL'],0) ?>)</option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <select name="NroFactReemplaza" id="selReemplaza" class="form-select form-select-sm" required>
                         <option value="">-- Doc. Reemplazo --</option>
                         <option value="N/A">-- NO LLEVA NADA --</option>
-                        <?php foreach($docsArray as $d): ?>
-                            <option value="<?= $d['NUMERO'] ?>"><?= $d['NUMERO'] ?></option>
-                        <?php endforeach; ?>
+                        <?php if(!empty($docsArray)): ?>
+                            <?php foreach($docsArray as $d): ?>
+                                <option value="<?= $d['NUMERO'] ?>">[<?= $d['TIPO'] ?>] <?= $d['NUMERO'] ?></option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -239,59 +252,68 @@ if ($dbSede) {
             <table class="table table-hover table-xs align-middle text-center mb-0">
                 <thead class="table-dark">
                     <tr>
-                        <th>HORA</th><th>SEDE</th><th>CAJERO</th><th>DOC. ANULAR</th><th>VALOR</th><th>REEMPLAZO</th>
+                        <th>HORA</th><th>SEDE</th><th>CAJERO</th><th>TIPO</th><th>DOC. ANULAR</th><th>VALOR</th><th>REEMPLAZO</th>
                         <th style="width: 20%;">MOTIVO</th><th>BODEGA</th><th>GERENCIA</th><th>ESTADO POS</th>
                         <?php if($puedeBorrar): ?><th></th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
                     <?php
+                    // Se agregó el filtro s.Estado = '1' para listar únicamente lo activo/pendiente
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
-                            WHERE s.F_Creacion = ? 
+                            WHERE s.F_Creacion = ? AND s.Estado = '1' 
                             ORDER BY s.FH_CajeroCheck DESC";
                     $stmtH = $mysqli->prepare($sql);
-                    $stmtH->bind_param("s", $fechaConsulta);
-                    $stmtH->execute();
-                    $resH = $stmtH->get_result();
-                    while ($r = $resH->fetch_assoc()): 
-                        $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
-                        $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
-                        
-                        $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
-                        $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
-                    ?>
-                    <tr>
-                        <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
-                        <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
-                        <td class="text-start">
-                            <span class="nombre-cajero text-uppercase"><?= $r['NombreCajero'] ?: $r['NitCajero'] ?></span>
-                            <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
-                        </td>
-                        <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
-                        <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
-                        <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
-                        <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
-                        
-                        <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['Nit_Empresa']}')\"" : 'disabled') ?>></td>
-                        
-                        <td>
-                            <?php if ($r['GerenteCheck'] == '1'): ?>
-                                <input class="form-check-input" type="checkbox" checked disabled>
-                            <?php elseif ($esGerente): ?>
-                                <input class="form-check-input border-primary shadow-sm" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>')">
-                                <?php if($anuladoPOS == 0): ?><span class="badge-wait">PENDIENTE POS</span><?php endif; ?>
-                            <?php else: ?>
-                                <input class="form-check-input" type="checkbox" disabled>
-                            <?php endif; ?>
-                        </td>
+                    if($stmtH) {
+                        $stmtH->bind_param("s", $fechaConsulta);
+                        $stmtH->execute();
+                        $resH = $stmtH->get_result();
+                        while ($r = $resH->fetch_assoc()): 
+                            $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
+                            $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
+                            
+                            $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
+                            $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
+                            
+                            $tipoBadgeColor = ($r['Tipo'] === 'P') ? 'bg-info text-dark' : 'bg-primary';
+                            $tipoTexto      = ($r['Tipo'] === 'P') ? 'PEDIDO' : 'FACTURA';
+                        ?>
+                        <tr>
+                            <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
+                            <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
+                            <td class="text-start">
+                                <span class="nombre-cajero text-uppercase"><?= $r['NombreCajero'] ?: $r['NitCajero'] ?></span>
+                                <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
+                            </td>
+                            <td><span class="badge <?= $tipoBadgeColor ?>"><?= $tipoTexto ?></span></td>
+                            <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
+                            <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
+                            <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
+                            <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
+                            
+                            <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['Nit_Empresa']}')\"" : 'disabled') ?>></td>
+                            
+                            <td>
+                                <?php if ($r['GerenteCheck'] == '1'): ?>
+                                    <input class="form-check-input" type="checkbox" checked disabled>
+                                <?php elseif ($esGerente): ?>
+                                    <input class="form-check-input border-primary shadow-sm" type="checkbox" onclick="confirmar('gerencia', '<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>')">
+                                    <?php if($anuladoPOS == 0): ?><span class="badge-wait">PENDIENTE POS</span><?php endif; ?>
+                                <?php else: ?>
+                                    <input class="form-check-input" type="checkbox" disabled>
+                                <?php endif; ?>
+                            </td>
 
-                        <td><span class="badge <?= $badgeEstado ?> rounded-pill"><?= $textoEstado ?></span></td>
-                        <?php if($puedeBorrar): ?>
-                        <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>
-                        <?php endif; ?>
-                    </tr>
-                    <?php endwhile; ?>
+                            <td><span class="badge <?= $badgeEstado ?> rounded-pill"><?= $textoEstado ?></span></td>
+                            <?php if($puedeBorrar): ?>
+                            <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>
+                            <?php endif; ?>
+                        </tr>
+                        <?php 
+                        endwhile; 
+                    }
+                    ?>
                 </tbody>
             </table>
         </div>
@@ -314,6 +336,9 @@ if ($dbSede) {
         if (opt.value !== "") {
             document.getElementById('FactAnular').value = opt.value;
             document.getElementById('ValorAnular').value = opt.dataset.valor || '0';
+            
+            const tipoCompleto = opt.dataset.tipo || 'FACTURA';
+            document.getElementById('TipoDoc').value = (tipoCompleto === 'PEDIDO') ? 'P' : 'F';
         }
     });
 
