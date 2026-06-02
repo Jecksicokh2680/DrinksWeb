@@ -61,9 +61,10 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
         $condPedido  .= " AND T2.NOMBRES = '$f_fac_esc' ";
     }
 
+    // Se agrega FACTURAS.FECHA / PEDIDOS.FECHA al SELECT para poder ordenar cronológicamente de forma estricta
     $sql = "
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
         FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD
     FROM FACTURAS
@@ -73,7 +74,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura
     UNION ALL
     SELECT 
-        '$nombreSucursal' AS SUCURSAL, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
+        '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR,
         PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO,
         DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD
     FROM PEDIDOS
@@ -82,7 +83,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO
     INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO
     WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido
-    ORDER BY DOCUMENTO ASC
+    ORDER BY FECHA ASC, HORA ASC, DOCUMENTO ASC
     ";
 
     $stmt = $cnx->prepare($sql);
@@ -111,6 +112,19 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     if (isset($mysqliDrinks) && !$mysqliDrinks->connect_error) {
         $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $f_prod, $fFac));
     }
+}
+
+// Si se unieron datos de dos bases de datos distintas, volvemos a ordenar el array global en PHP para que no se mezclen los días entre sucursales
+if (!empty($rows)) {
+    usort($rows, function($a, $b) {
+        if ($a['FECHA'] != $b['FECHA']) {
+            return strcmp($a['FECHA'], $b['FECHA']);
+        }
+        if ($a['HORA'] != $b['HORA']) {
+            return strcmp($a['HORA'], $b['HORA']);
+        }
+        return strcmp($a['DOCUMENTO'], $b['DOCUMENTO']);
+    });
 }
 
 // Mantener lista de facturadores para el select
@@ -271,10 +285,6 @@ function exportarExcel() {
     });
 }
 
-/**
- * Función Corregida: Lee directamente el contenido del HTML para evitar errores de sincronización
- * y asegurar que el ticket sea idéntico a lo que el usuario ve.
- */
 function imprimirReporte() {
     const tabla = document.getElementById("tablaVentas");
     
@@ -314,15 +324,11 @@ function imprimirReporte() {
 
     filas.forEach(fila => {
         if (fila.classList.contains('total-row')) {
-            // Es una fila de subtotal
-            const textoSubtotal = fila.cells[1] ? fila.cells[1].innerText : fila.innerText;
             win.document.write(`<div class="subtotal-line">${fila.innerText.trim()}</div><div class="border-dashed"></div>`);
         } else {
-            // Es una fila de producto
             const c = fila.cells;
             const docActual = c[2].innerText;
 
-            // Si el documento cambia, podemos poner un separador opcional
             if(ultimoDoc !== docActual) {
                 win.document.write(`<div class="doc-header">DOC: ${docActual} - ${c[3].innerText}</div>`);
                 ultimoDoc = docActual;
