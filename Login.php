@@ -23,6 +23,7 @@ $empresas = $mysqli->query("SELECT Nit, RazonSocial
 <title>Iniciar Sesión | Portal de Distribución</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Iconos de Bootstrap -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 
 <style>
@@ -33,9 +34,9 @@ body {
 .login-row {
     min-height: 100vh;
 }
-/* Panel lateral adaptativo con la foto de tu bodega */
+/* Panel lateral con la foto de tu bodega de fondo */
 .brand-panel {
-    background: linear-gradient(135deg, rgba(15, 32, 67, 0.92) 0%, rgba(28, 56, 121, 0.88) 100%), 
+    background: linear-gradient(135deg, rgba(15, 32, 67, 0.94) 0%, rgba(28, 56, 121, 0.90) 100%), 
                 url('bodega.jpg') no-repeat center center;
     background-size: cover;
     color: white;
@@ -47,7 +48,26 @@ body {
 @media (min-width: 992px) {
     .brand-panel { padding: 4rem; }
 }
-/* Logos aliados en el panel lateral */
+
+/* Tarjetas de productos dentro del carrusel */
+.product-card-preview {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 15px;
+    max-width: 420px;
+}
+.product-thumb {
+    width: 90px;
+    height: 90px;
+    object-fit: contain;
+    background: white;
+    border-radius: 8px;
+    padding: 5px;
+}
+
+/* Logos aliados en la parte inferior */
 .partner-logos img {
     height: 60px;
     object-fit: contain;
@@ -60,7 +80,8 @@ body {
 .partner-logos img:hover {
     transform: scale(1.05);
 }
-/* Estilizado e iconos de inputs */
+
+/* Estilizado de inputs */
 .input-group-text {
     background-color: #f8f9fa;
     color: #6c757d;
@@ -103,7 +124,6 @@ function cargarSucursales() {
         return;
     }
 
-    // Intercambio dinámico de logo en desktop según selección
     let textoEmpresa = selectEmpresa.options[selectEmpresa.selectedIndex].text.toLowerCase();
     if(textoEmpresa.includes("drinks")) {
         imgLogo.src = "logoDrinks.png";
@@ -146,27 +166,65 @@ if (isset($_GET['loadSucursales'])) {
 <div class="container-fluid">
     <div class="row login-row">
         
+        <!-- COLUMNA 1: PANEL PUBLICITARIO CON ENFOQUE EN PRODUCTOS E INFRAESTRUCTURA -->
         <div class="col-md-6 col-lg-7 d-none d-md-flex brand-panel">
             <div style="max-width: 550px;" class="w-100">
-                <span class="badge bg-warning text-dark mb-4 fw-bold px-3 py-2 text-uppercase tracking-wider">Infraestructura Logística</span>
                 
+                <!-- Carrusel de anuncios -->
                 <div id="carouselPublicidad" class="carousel slide" data-bs-ride="carousel">
+                    
+                    <!-- Indicadores (Líneas de abajo para saber cuántos slides hay) -->
+                    <div class="carousel-indicators" style="justify-content: flex-start; margin-left: 0; margin-bottom: 2rem;">
+                        <button type="button" data-bs-target="#carouselPublicidad" data-bs-slide-to="0" class="active" aria-current="true"></button>
+                        <button type="button" data-bs-target="#carouselPublicidad" data-bs-slide-to="1"></button>
+                        <button type="button" data-bs-target="#carouselPublicidad" data-bs-slide-to="2"></button>
+                    </div>
+
                     <div class="carousel-inner">
-                        <div class="carousel-item active" data-bs-interval="5000">
-                            <h1 class="display-5 fw-bold mb-3 text-white">Todo en Bebidas y Confitería</h1>
-                            <p class="lead text-white-50 mb-5">Abastece tu negocio de forma rápida, segura y con un soporte corporativo diseñado para crecer contigo.</p>
+                        
+                        <!-- Slide 1: Enfoque Institucional e Infraestructura -->
+                        <div class="carousel-item active" data-bs-interval="6000">
+                            <span class="badge bg-warning text-dark mb-3 fw-bold px-3 py-2 text-uppercase">Infraestructura Logística</span>
+                            <h1 class="display-5 fw-bold mb-3 text-white">Abastecimiento a Gran Escala</h1>
+                            <p class="lead text-white-50 mb-5">Operamos con un complejo logístico de alta capacidad. Stock permanente garantizado y despachos programados e inmediatos.</p>
                         </div>
-                        <div class="carousel-item" data-bs-interval="5000">
-                            <h1 class="display-5 fw-bold mb-3 text-warning">Grandes Volúmenes, Listos</h1>
-                            <p class="lead text-white-50 mb-5">Operamos desde nuestro propio complejo logístico. Garantizamos stock permanente y despachos inmediatos a cada una de tus sucursales.</p>
+
+                        <!-- Slide 2: Promoción de Portafolio Bebidas (NUEVO) -->
+                        <div class="carousel-item" data-bs-interval="6000">
+                            <span class="badge bg-info text-dark mb-3 fw-bold px-3 py-2 text-uppercase">Portafolio Líquidos</span>
+                            <h1 class="display-5 fw-bold mb-3 text-white">Las Mejores Marcas</h1>
+                            <p class="lead text-white-50 mb-4">Cervezas nacionales e importadas, gaseosas, energizantes e hidratantes listos para despachar al por mayor.</p>
+                            
+                            <!-- Tarjeta interna que simula un producto destacado -->
+                            <div class="d-flex align-items-center product-card-preview mb-5">
+                                <img src="productos/bebidas-mix.jpg" alt="Bebidas" class="product-thumb shadow">
+                                <div class="ms-3">
+                                    <h6 class="mb-1 text-white fw-bold">Línea de Alta Rotación</h6>
+                                    <p class="small text-white-50 mb-0">Pregunta a tu asesor asignado por los descuentos especiales por volumen de esta semana.</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="carousel-item" data-bs-interval="5000">
-                            <h1 class="display-5 fw-bold mb-3 text-white">Gestión Integrada de Egresos</h1>
-                            <p class="lead text-white-50 mb-5">Controla las finanzas de tus empresas asociadas de manera centralizada. Ahora puedes gestionar las sesiones de egresos al instante.</p>
+
+                        <!-- Slide 3: Promoción de Confitería y Snacks (NUEVO) -->
+                        <div class="carousel-item" data-bs-interval="6000">
+                            <span class="badge bg-danger text-white mb-3 fw-bold px-3 py-2 text-uppercase">Línea Confitería</span>
+                            <h1 class="display-5 fw-bold mb-3 text-white">Variedad para tu Negocio</h1>
+                            <p class="lead text-white-50 mb-4">Todo en dulcería, galletería y snacks para complementar el inventario de tus puntos de venta.</p>
+                            
+                            <!-- Tarjeta interna para el segundo rubro de productos -->
+                            <div class="d-flex align-items-center product-card-preview mb-5">
+                                <img src="productos/confiteria-mix.jpg" alt="Confitería" class="product-thumb shadow">
+                                <div class="ms-3">
+                                    <h6 class="mb-1 text-white fw-bold">Surtido Completo</h6>
+                                    <p class="small text-white-50 mb-0">Consolida tu pedido mezclando bebidas y confitería en una sola factura y un solo viaje.</p>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
                 </div>
                 
+                <!-- Footer fijo con las marcas corporativas -->
                 <div class="pt-4 border-top border-secondary border-opacity-50 mt-4">
                     <p class="small text-uppercase fw-bold text-warning mb-3">Marcas Distribuidas Oficiales</p>
                     <div class="d-flex gap-3 partner-logos">
@@ -174,9 +232,11 @@ if (isset($_GET['loadSucursales'])) {
                         <img src="logoDrinks.png" alt="Drinks Depot">
                     </div>
                 </div>
+
             </div>
         </div>
 
+        <!-- COLUMNA 2: FORMULARIO DE ACCESO -->
         <div class="col-12 col-md-6 col-lg-5 d-flex align-items-center justify-content-center bg-white py-4 py-md-5">
             <div class="w-100 px-3 px-sm-4 px-xl-5" style="max-width: 460px;">
                 
@@ -200,6 +260,7 @@ if (isset($_GET['loadSucursales'])) {
                 <?php endif; ?>
 
                 <form method="POST" action="Validar.php">
+                    <!-- Usuario -->
                     <div class="mb-3">
                         <label class="form-label small fw-semibold text-secondary">Cédula / NIT Usuario</label>
                         <div class="input-group">
@@ -208,6 +269,7 @@ if (isset($_GET['loadSucursales'])) {
                         </div>
                     </div>
 
+                    <!-- Empresa -->
                     <div class="mb-3">
                         <label class="form-label small fw-semibold text-secondary">Empresa</label>
                         <div class="input-group">
@@ -223,6 +285,7 @@ if (isset($_GET['loadSucursales'])) {
                         </div>
                     </div>
 
+                    <!-- Sucursal -->
                     <div class="mb-3">
                         <label class="form-label small fw-semibold text-secondary">Sucursal</label>
                         <div class="input-group">
@@ -233,6 +296,7 @@ if (isset($_GET['loadSucursales'])) {
                         </div>
                     </div>
 
+                    <!-- Contraseña -->
                     <div class="mb-4">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label class="form-label small fw-semibold text-secondary mb-0">Contraseña</label>
