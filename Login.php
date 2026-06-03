@@ -123,8 +123,8 @@ if (isset($_GET['loadSucursales'])) {
                 <div class="pt-4 border-top border-secondary border-opacity-50">
                     <p class="small text-uppercase fw-bold text-warning mb-3">Nuestras Marcas Principales</p>
                     <div class="d-flex gap-3 partner-logos">
-                        <img src="LogoDBC.jpg" alt="Distribuidora de Bebidas Central">
-                        <img src="logoDrinks.jpg" alt="Drinks Depot">
+                        <img src="LogoDBC.png" alt="Distribuidora de Bebidas Central">
+                        <img src="logoDrinks.png" alt="Drinks Depot">
                     </div>
                 </div>
             </div>
