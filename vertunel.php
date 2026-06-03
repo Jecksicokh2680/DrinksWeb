@@ -69,10 +69,15 @@ $egresos_ejemplo = [
         
         /* Contenedor y Botones de Filtros */
         .filter-container { margin-bottom: 25px; }
-        .filter-menu { display: flex; gap: 10px; }
+        .filter-menu { display: flex; gap: 10px; margin-bottom: 15px; }
         .btn-filter { background: white; border: 1px solid #e5e7eb; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: 0.2s; color: #4b5563; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .btn-filter:hover { background: #f9fafb; border-color: #d1d5db; }
         .btn-filter.active { background: #374151; color: white; border-color: #374151; }
+
+        /* Lista de Resumen de estados */
+        .resumen-lista { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3b82f6; }
+        .resumen-lista ul { margin: 5px 0 0 0; padding-left: 20px; }
+        .resumen-lista li { margin-bottom: 4px; }
 
         /* Monitor de Sedes */
         .db-monitor { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
@@ -105,9 +110,15 @@ $egresos_ejemplo = [
         </div>
     </div>
 
+    <div class="resumen-lista">
+        <strong>Listado de Estado actual:</strong>
+        <ul id="lista-estados">
+            </ul>
+    </div>
+
     <div class="db-monitor">
         <?php foreach ($conexiones_estado as $sede => $info): ?>
-            <div class="card card-sede" data-tipo="<?= $info['tipo'] ?>" style="border-top-color: <?= $info['color'] ?>;">
+            <div class="card card-sede" data-nombre="<?= $sede ?>" data-tipo="<?= $info['tipo'] ?>" data-status="<?= $info['status'] ?>" style="border-top-color: <?= $info['color'] ?>;">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: #6b7280; font-weight: 700; letter-spacing: 0.05em;"><?= $sede ?></div>
                 <div style="font-size: 1.4rem; font-weight: 700; margin: 6px 0; color: #111827; display: flex; align-items: center;">
                     <span class="status-dot" style="background-color: <?= $info['color'] ?>;"></span>
@@ -120,23 +131,42 @@ $egresos_ejemplo = [
 
     <script>
     function filtrarSedes(filtro, boton) {
-        // 1. Alternar la clase activa en los botones
-        document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
-        boton.classList.add('active');
+        // 1. Alternar la clase activa en los botones de filtro
+        if (boton) {
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            boton.classList.add('active');
+        }
 
-        // 2. Ocultar o mostrar las tarjetas según el data-tipo
+        const listaUl = document.getElementById('lista-estados');
+        listaUl.innerHTML = ''; // Limpiar la lista de texto
+
+        // 2. Ocultar o mostrar las tarjetas y armar la lista de texto
         document.querySelectorAll('.card-sede').forEach(tarjeta => {
-            if (filtro === 'todos') {
+            const nombre = tarjeta.getAttribute('data-nombre');
+            const tipo = tarjeta.getAttribute('data-tipo');
+            const status = tarjeta.getAttribute('data-status');
+
+            if (filtro === 'todos' || tipo === filtro) {
                 tarjeta.style.display = 'block';
+                
+                // Crear el elemento de lista de texto
+                const li = document.createElement('li');
+                li.innerHTML = `El túnel de la sede <strong>${nombre}</strong> está <span style="color: ${tipo === 'abierto' ? '#10b981' : '#ef4444'}; font-weight: bold;">${status}</span>.`;
+                listaUl.appendChild(li);
             } else {
-                if (tarjeta.getAttribute('data-tipo') === filtro) {
-                    tarjeta.style.display = 'block';
-                } else {
-                    tarjeta.style.display = 'none';
-                }
+                tarjeta.style.display = 'none';
             }
         });
+
+        if (listaUl.children.length === 0) {
+            listaUl.innerHTML = '<li>No hay túneles en este estado.</li>';
+        }
     }
+
+    // Ejecutar al cargar la página para que la lista se cree inicialmente
+    document.addEventListener("DOMContentLoaded", function() {
+        filtrarSedes('todos', null);
+    });
     </script>
 
 </body>
