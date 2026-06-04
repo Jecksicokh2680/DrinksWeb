@@ -173,6 +173,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                                     <a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">Lo más Vendido</a>
                                     <a class="nav-link" href="Estadistica_Vtas_Cajero.php" target="contentFrame">Lo más Vendido por Cajero</a>
                                     <a class="nav-link" href="Estadistica_Vtas_mas_tamaño.php" target="contentFrame">Lo más Vendido por tamaño</a>
+                                    <a class="nav-link" href="Estadistica_Vtas_MesaMes.php" target="contentFrame">Lo más Vendido por Mesa/Mes</a>
                                     <a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">Lo más Vendido por Empresa</a>
                                 </div>
                             </div>
