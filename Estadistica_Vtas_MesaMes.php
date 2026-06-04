@@ -6,14 +6,13 @@ require('ConnCentral.php'); // Debe definir $mysqliCentral
 require('ConnDrinks.php');  // Debe definir $mysqliDrinks
 
 $anioSel = $_POST['anio'] ?? date('Y');
-$sedeSel = $_POST['sede'] ?? 'todas'; // Filtro inicial de procesamiento en servidor
+$sedeSel = $_POST['sede'] ?? 'todas'; 
 
 ResumenAnualSedes($anioSel, $sedeSel);
 
 function ResumenAnualSedes($anio, $sedeSel) {
     global $mysqliCentral, $mysqliDrinks;
 
-    // Estructuras de almacenamiento mensualizado
     $datosMensuales = [];
     $mesesNombres = [
         '01' => 'Enero', '02' => 'Febrero', '03' => 'Marzo', '04' => 'Abril',
@@ -21,7 +20,6 @@ function ResumenAnualSedes($anio, $sedeSel) {
         '09' => 'Septiembre', '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre'
     ];
 
-    // Inicializar los 12 meses del año para asegurar estructura completa
     foreach ($mesesNombres as $num => $txt) {
         $datosMensuales[$num] = [
             'mes' => $txt,
@@ -60,7 +58,7 @@ function ResumenAnualSedes($anio, $sedeSel) {
             $stmt->execute();
             $result = $stmt->get_result();
             while ($row = $result->fetch_assoc()) {
-                $mesKey = substr($row['DIA'], 4, 2); // Extrae el mes '01'-'12'
+                $mesKey = substr($row['DIA'], 4, 2);
                 $total = (float)$row['TOTAL'];
                 
                 if (isset($datosMensuales[$mesKey])) {
@@ -72,7 +70,6 @@ function ResumenAnualSedes($anio, $sedeSel) {
         }
     }
 
-    // Preparar vectores lineales nativos para pasárselos ordenadamente a JavaScript
     $labelsJS = [];
     $centralJS = [];
     $drinksJS = [];
@@ -92,29 +89,30 @@ function ResumenAnualSedes($anio, $sedeSel) {
         <meta charset="UTF-8">
         <title>Dashboard de Ventas Mensuales</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
         <style>
             body { font-family: 'Segoe UI', sans-serif; margin:20px; background:#f4f7f6; color: #333; }
             .card { background:#fff; padding:25px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05); max-width: 1200px; margin: 0 auto; }
             .filter-container { display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; margin-bottom: 25px; padding: 15px; background: #e8eaf6; border-radius: 10px; align-items: center; }
-            .interactive-box { background: #fff3e0; border: 1px solid #ffe0b2; padding: 12px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
-            .interactive-box select { padding: 8px 15px; font-size: 14px; font-weight: bold; color: #e65100; border: 1px solid #ffb74d; border-radius: 6px; outline: none; background: #fff;}
+            .interactive-box { background: #e0f2f1; border: 1px solid #b2dfdb; padding: 12px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
+            .interactive-box select { padding: 8px 15px; font-size: 14px; font-weight: bold; color: #004d40; border: 1px solid #00796b; border-radius: 6px; outline: none; background: #fff;}
             select, input[type="submit"] { padding:8px 12px; border-radius:5px; border:1px solid #ccc; font-size: 14px; }
             input[type="submit"] { background:#3f51b5; color:white; cursor:pointer; font-weight:bold; border: none; }
-            .dashboard-layout { display: grid; grid-template-columns: 5fr 7fr; gap: 25px; margin-top: 20px; }
+            .dashboard-layout { display: grid; grid-template-columns: 4fr 8fr; gap: 25px; margin-top: 20px; }
             @media (max-width: 900px) { .dashboard-layout { grid-template-columns: 1fr; } }
             table { border-collapse:collapse; width:100%; font-size:13px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
             th, td { padding:12px 15px; text-align:right; }
             th { background:#283593; color:white; text-align:center; font-weight: 600; }
             td { border-bottom: 1px solid #f0f0f0; font-weight: 500; }
             .total-row { background:#1a237e; color:white; font-weight:bold; font-size: 14px; }
-            .chart-wrapper { background:#fff; border:1px solid #e0e0e0; padding:15px; border-radius:8px; min-height: 380px; position: relative; }
+            .chart-wrapper { background:#fff; border:1px solid #e0e0e0; padding:20px 15px 15px 15px; border-radius:8px; min-height: 400px; position: relative; }
             label { font-size: 12px; font-weight: bold; color: #5c6bc0; text-transform: uppercase; }
         </style>
     </head>
     <body>
 
     <div class="card">
-        <h2 style="text-align:center; color:#283593; margin-top: 0;">📊 Valorización y Evolución Mensual de Ventas</h2>
+        <h2 style="text-align:center; color:#283593; margin-top: 0;">📊 Valorización Mensual de Ventas</h2>
 
         <form method="post" class="filter-container">
             <div>
@@ -127,13 +125,13 @@ function ResumenAnualSedes($anio, $sedeSel) {
         </form>
 
         <div class="interactive-box">
-            <span style="font-weight: bold; color: #e65100; font-size: 14px;">📍 Filtrar Vista de Sede:</span>
+            <span style="font-weight: bold; color: #004d40; font-size: 14px;">📍 Filtrar Vista de Sede:</span>
             <select id="filtroPantallaSede" onchange="conmutarSedeDashboard()">
                 <option value="CONSOLIDADO">🏢 VER CONSOLIDADO EMPRESA</option>
                 <option value="CENTRAL">🔹 SEDE CENTRAL</option>
                 <option value="DRINKS">🍹 SEDE DRINKS</option>
             </select>
-            <span style="font-size: 12px; color: #757575; font-style: italic;">*Modifica el selector para recalcular la tabla y la gráfica al instante.</span>
+            <span style="font-size: 11px; color: #546e7a;">*Valores sobre las barras expresados automáticamente en miles (K).</span>
         </div>
 
         <div class="dashboard-layout">
@@ -165,7 +163,9 @@ function ResumenAnualSedes($anio, $sedeSel) {
     </div>
 
     <script>
-        // Inyección transparente de los totales consolidados por PHP
+        // Registrar globalmente el plugin de etiquetas de datos para Chart.js
+        Chart.register(ChartDataLabels);
+
         const mesesEjeX = <?= json_encode($labelsJS) ?>;
         const dataSedeCentral = <?= json_encode($centralJS) ?>;
         const dataSedeDrinks = <?= json_encode($drinksJS) ?>;
@@ -173,12 +173,10 @@ function ResumenAnualSedes($anio, $sedeSel) {
 
         let objGrafico = null;
 
-        // Renderizado automático inicial al completar el DOM
         document.addEventListener("DOMContentLoaded", function() {
             conmutarSedeDashboard();
         });
 
-        // FUNCIÓN CONTROLADORA REACTIVA EN JAVASCRIPT
         function conmutarSedeDashboard() {
             const sedeSeleccionada = document.getElementById("filtroPantallaSede").value;
             
@@ -186,22 +184,21 @@ function ResumenAnualSedes($anio, $sedeSel) {
             let colorGrafico = '';
             let nombreLeyenda = '';
 
-            // Clasificación de la información basada en el filtro de pantalla
             if (sedeSeleccionada === 'CENTRAL') {
                 datasetActivo = dataSedeCentral;
-                colorGrafico = '#1e88e5'; // Azul Corporativo
-                nombreLeyenda = 'Ventas Mensuales Sede CENTRAL';
+                colorGrafico = '#1e88e5'; 
+                nombreLeyenda = 'Ventas Sede CENTRAL';
             } else if (sedeSeleccionada === 'DRINKS') {
                 datasetActivo = dataSedeDrinks;
-                colorGrafico = '#43a047'; // Verde Drinks
-                nombreLeyenda = 'Ventas Mensuales Sede DRINKS';
+                colorGrafico = '#43a047'; 
+                nombreLeyenda = 'Ventas Sede DRINKS';
             } else {
                 datasetActivo = dataEmpresaTotal;
-                colorGrafico = '#ff9800'; // Naranja Consolidado original
-                nombreLeyenda = 'Consolidado General (Ambas Sedes)';
+                colorGrafico = '#ff9800'; 
+                nombreLeyenda = 'Consolidado General';
             }
 
-            // 1. RECALCULAR E INYECTAR LA TABLA DE VALORIZACIÓN
+            // 1. INYECTAR DATOS EN TABLA (Muestra valor completo real)
             const tbody = document.getElementById("cuerpoTablaMensual");
             tbody.innerHTML = "";
             let sumatoriaAnual = 0;
@@ -217,14 +214,13 @@ function ResumenAnualSedes($anio, $sedeSel) {
                 tbody.innerHTML += fila;
             });
 
-            // Actualizar celda de totales inferiores
             document.getElementById("txtCeldaTotal").innerText = "$ " + sumatoriaAnual.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-            // 2. DESTRUIR Y VOLVER A DIBUJAR LA GRÁFICA DE BARRAS
+            // 2. GENERAR GRÁFICA CON VALORES EN MILES (K) SOBRE LAS BARRAS
             const ctx = document.getElementById('graficoMensualVentas').getContext('2d');
             
             if (objGrafico) {
-                objGrafico.destroy(); // Limpieza del puntero de animación de Chart.js
+                objGrafico.destroy();
             }
 
             objGrafico = new Chart(ctx, {
@@ -237,27 +233,51 @@ function ResumenAnualSedes($anio, $sedeSel) {
                         backgroundColor: colorGrafico,
                         borderColor: colorGrafico,
                         borderWidth: 1,
-                        borderRadius: 4
+                        borderRadius: 5
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            top: 25 // Espacio superior para que el texto no se corte
+                        }
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                // Formatea el eje Y dinámicamente a moneda local colombiana
-                                callback: function(val) { return '$' + val.toLocaleString('es-CO'); }
+                                callback: function(val) { return '$' + (val / 1000).toLocaleString('es-CO') + 'K'; }
                             }
                         }
                     },
                     plugins: {
+                        legend: { display: true, position: 'top' },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
                                     return ' ' + context.dataset.label + ': $' + context.parsed.y.toLocaleString('es-CO');
                                 }
+                            }
+                        },
+                        // Configuración del plugin nativo de etiquetas de datos
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            backgroundColor: '#263238',
+                            color: '#ffffff',
+                            borderRadius: 4,
+                            padding: 4,
+                            font: {
+                                weight: 'bold',
+                                size: 10
+                            },
+                            formatter: function(value) {
+                                if (value === 0) return null; // No dibuja etiquetas si el mes está en 0
+                                // Divide entre 1,000, redondea a un decimal y añade la K
+                                let enMiles = value / 1000000;
+                                return '$' + enMiles.toLocaleString('es-CO', { maximumFractionDigits: 1 }) + 'K';
                             }
                         }
                     }
