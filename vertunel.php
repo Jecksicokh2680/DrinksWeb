@@ -1,62 +1,74 @@
 <?php
 /**
- * 1. CARGA DE CONEXIONES
- * Se verifica la existencia de los archivos y se cargan las variables de conexión.
+ * 1. PROCESAMIENTO DE PETICIONES ASÍNCRONAS (API AUTO-CONSULTA)
  */
-require_once 'Conexion.php'; // Define $mysqli (General)
+if (isset($_GET['ajax']) && isset($_GET['sede'])) {
+    header('Content-Type: application/json');
+    date_default_timezone_set('America/Bogota');
 
-if (file_exists(__DIR__ . '/ConnCentral.php')) {
-    require_once 'ConnCentral.php'; // Define $mysqliCentral
-}
-if (file_exists(__DIR__ . '/ConnDrinks.php')) {
-    require_once 'ConnDrinks.php';  // Define $mysqliDrinks
-}
+    ini_set('mysql.connect_timeout', 3);
+    ini_set('default_socket_timeout', 3);
 
-/** * 2. LÓGICA DE VALIDACIÓN DE ESTADO (Abierto / Cerrado)
- */
-$instancias = [
-    'General' => isset($mysqli) ? $mysqli : null,
-    'Central' => isset($mysqliCentral) ? $mysqliCentral : null,
-    'Drinks'  => isset($mysqliDrinks) ? $mysqliDrinks : null
-];
+    $sede = $_GET['sede'];
+    $response = [
+        'status' => 'Cerrado',
+        'color' => '#6b7280',
+        'msg' => 'Instancia no válida',
+        'tipo' => 'cerrado'
+    ];
 
-$conexiones_estado = [];
+    $con = null;
 
-foreach ($instancias as $nombre => $con) {
-    if ($con instanceof mysqli) {
-        if ($con->connect_error) {
-            $conexiones_estado[$nombre] = [
-                'status' => 'Cerrado', 
-                'color' => '#ef4444', 
-                'msg' => 'Error de Red: ' . $con->connect_error, 
-                'tipo' => 'cerrado'
-            ];
+    if ($sede === 'General' && file_exists(__DIR__ . '/Conexion.php')) {
+        include __DIR__ . '/Conexion.php';
+        $con = $mysqli ?? null;
+    } elseif ($sede === 'Central' && file_exists(__DIR__ . '/ConnCentral.php')) {
+        include __DIR__ . '/ConnCentral.php';
+        $con = $mysqliCentral ?? null;
+    } elseif ($sede === 'Drinks' && file_exists(__DIR__ . '/ConnDrinks.php')) {
+        include __DIR__ . '/ConnDrinks.php';
+        $con = $mysqliDrinks ?? null;
+    }
+
+    if (isset($con)) {
+        if ($con instanceof mysqli) {
+            if ($con->connect_error) {
+                $response = [
+                    'status' => 'Cerrado',
+                    'color' => '#ef4444',
+                    'msg' => 'Error de Red / Túnel Caído: ' . $con->connect_error,
+                    'tipo' => 'cerrado'
+                ];
+            } else {
+                $con->close();
+                $response = [
+                    'status' => 'Abierto',
+                    'color' => '#10b981',
+                    'msg' => 'Túnel estable - En línea',
+                    'tipo' => 'abierto'
+                ];
+            }
         } else {
-            $conexiones_estado[$nombre] = [
-                'status' => 'Abierto', 
-                'color' => '#10b981', 
-                'msg' => 'En línea', 
-                'tipo' => 'abierto'
+            $response = [
+                'status' => 'Cerrado',
+                'color' => '#ef4444',
+                'msg' => 'Error de inicialización del controlador MySQL',
+                'tipo' => 'cerrado'
             ];
         }
     } else {
-        $causa = is_null($con) ? 'Archivo no encontrado' : 'Tipo de objeto inválido';
-        $conexiones_estado[$nombre] = [
-            'status' => 'Cerrado', 
-            'color' => '#6b7280', 
-            'msg' => $causa, 
-            'tipo' => 'cerrado'
-        ];
+        $response['msg'] = 'Archivo de conexión correspondiente ausente u objeto nulo';
     }
+
+    echo json_encode($response);
+    exit;
 }
 
 /**
- * 3. SIMULACIÓN DE DATOS PARA EGRESOS (Editable)
+ * 2. CARGA DE VISTA PRINCIPAL
  */
-$egresos_ejemplo = [
-    ['id' => 101, 'concepto' => 'Pago Proveedor Bebidas', 'monto' => 1500000, 'sede' => 'Central'],
-    ['id' => 102, 'concepto' => 'Mantenimiento Bodega', 'monto' => 450000, 'sede' => 'Drinks'],
-];
+date_default_timezone_set('America/Bogota');
+$sedes_a_monitorear = ['General', 'Central', 'Drinks'];
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -74,32 +86,21 @@ $egresos_ejemplo = [
         .btn-filter:hover { background: #f9fafb; border-color: #d1d5db; }
         .btn-filter.active { background: #374151; color: white; border-color: #374151; }
 
-        /* Lista de Resumen de estados */
-        .resumen-lista { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3b82f6; }
-        .resumen-lista ul { margin: 5px 0 0 0; padding-left: 20px; }
-        .resumen-lista li { margin-bottom: 4px; }
-
         /* Monitor de Sedes */
         .db-monitor { display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap; }
-        .card { background: white; padding: 18px 20px; border-radius: 12px; min-width: 240px; flex: 1; max-width: 320px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border-top: 5px solid; transition: all 0.25s ease; }
-        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+        .card { background: white; padding: 18px 20px; border-radius: 12px; min-width: 240px; flex: 1; max-width: 320px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border-top: 5px solid #9ca3af; transition: all 0.25s ease; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; background-color: #9ca3af; }
         
-        /* Tablas y otros elementos */
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-        th { background-color: #374151; color: white; }
-        tr:hover { background-color: #f9fafb; }
-        
-        .btn-edit { background: #2563eb; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
-        .btn-edit:hover { background: #1d4ed8; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; background: #e5e7eb; }
+        /* Animación de carga */
+        .loading-pulse { animation: pulse 1.5s infinite ease-in-out; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
     </style>
 </head>
 <body>
 
     <header style="margin-bottom: 25px;">
         <h1 style="margin: 0; font-size: 1.75rem;">Panel de Control Administrativo</h1>
-        <p style="margin: 5px 0 0 0; color: #6b7280;">Monitoreo de conexiones Túneles.</p>
+        <p style="margin: 5px 0 0 0; color: #6b7280;">Monitoreo individual de conexiones y estado de Túneles.</p>
     </header>
 
     <div class="filter-container">
@@ -110,64 +111,84 @@ $egresos_ejemplo = [
         </div>
     </div>
 
-    <div class="resumen-lista">
-        <strong>Listado de Estado actual:</strong>
-        <ul id="lista-estados">
-            </ul>
-    </div>
-
     <div class="db-monitor">
-        <?php foreach ($conexiones_estado as $sede => $info): ?>
-            <div class="card card-sede" data-nombre="<?= $sede ?>" data-tipo="<?= $info['tipo'] ?>" data-status="<?= $info['status'] ?>" style="border-top-color: <?= $info['color'] ?>;">
+        <?php foreach ($sedes_a_monitorear as $sede): ?>
+            <div class="card card-sede loading-pulse" id="card-<?= $sede ?>" data-nombre="<?= $sede ?>" data-tipo="pendiente" data-status="Cargando..." style="border-top-color: #9ca3af;">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: #6b7280; font-weight: 700; letter-spacing: 0.05em;"><?= $sede ?></div>
                 <div style="font-size: 1.4rem; font-weight: 700; margin: 6px 0; color: #111827; display: flex; align-items: center;">
-                    <span class="status-dot" style="background-color: <?= $info['color'] ?>;"></span>
-                    <?= $info['status'] ?>
+                    <span class="status-dot" id="dot-<?= $sede ?>"></span>
+                    <span id="status-txt-<?= $sede ?>">Consultando...</span>
                 </div>
-                <small style="color: #9ca3af; font-style: italic; font-size: 0.85rem;"><?= $info['msg'] ?></small>
+                <small id="msg-txt-<?= $sede ?>" style="color: #9ca3af; font-style: italic; font-size: 0.85rem;">Validando credenciales de puerto...</small>
             </div>
         <?php endforeach; ?>
     </div>
 
     <script>
+    let filtroActivo = 'todos';
+
+    document.addEventListener("DOMContentLoaded", function() {
+        consultarCadaTunel();
+    });
+
+    function consultarCadaTunel() {
+        const tarjetas = document.querySelectorAll('.card-sede');
+        let promesas = [];
+
+        tarjetas.forEach(tarjeta => {
+            const sede = tarjeta.getAttribute('data-nombre');
+            
+            let peticion = fetch(`?ajax=1&sede=${sede}`)
+                .then(res => res.json())
+                .then(data => {
+                    tarjeta.classList.remove('loading-pulse');
+                    tarjeta.setAttribute('data-tipo', data.tipo);
+                    tarjeta.setAttribute('data-status', data.status);
+                    tarjeta.style.borderTopColor = data.color;
+                    
+                    document.getElementById(`dot-${sede}`).style.backgroundColor = data.color;
+                    document.getElementById(`status-txt-${sede}`).innerText = data.status;
+                    document.getElementById(`msg-txt-${sede}`).innerText = data.msg;
+                })
+                .catch(err => {
+                    tarjeta.classList.remove('loading-pulse');
+                    tarjeta.setAttribute('data-tipo', 'cerrado');
+                    tarjeta.setAttribute('data-status', 'Cerrado');
+                    tarjeta.style.borderTopColor = '#ef4444';
+                    
+                    document.getElementById(`dot-${sede}`).style.backgroundColor = '#ef4444';
+                    document.getElementById(`status-txt-${sede}`).innerText = 'Cerrado';
+                    document.getElementById(`msg-txt-${sede}`).innerText = 'Tiempo de respuesta agotado / Caída crítica.';
+                });
+            
+            promesas.push(peticion);
+        });
+
+        Promise.all(promesas).then(() => {
+            procesarVisibilidadTarjetas();
+        });
+    }
+
     function filtrarSedes(filtro, boton) {
-        // 1. Alternar la clase activa en los botones de filtro
         if (boton) {
             document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
             boton.classList.add('active');
         }
+        filtroActivo = filtro;
+        procesarVisibilidadTarjetas();
+    }
 
-        const listaUl = document.getElementById('lista-estados');
-        listaUl.innerHTML = ''; // Limpiar la lista de texto
-
-        // 2. Ocultar o mostrar las tarjetas y armar la lista de texto
+    function procesarVisibilidadTarjetas() {
         document.querySelectorAll('.card-sede').forEach(tarjeta => {
-            const nombre = tarjeta.getAttribute('data-nombre');
             const tipo = tarjeta.getAttribute('data-tipo');
-            const status = tarjeta.getAttribute('data-status');
 
-            if (filtro === 'todos' || tipo === filtro) {
+            if (filtroActivo === 'todos' || tipo === filtroActivo) {
                 tarjeta.style.display = 'block';
-                
-                // Crear el elemento de lista de texto
-                const li = document.createElement('li');
-                li.innerHTML = `El túnel de la sede <strong>${nombre}</strong> está <span style="color: ${tipo === 'abierto' ? '#10b981' : '#ef4444'}; font-weight: bold;">${status}</span>.`;
-                listaUl.appendChild(li);
             } else {
                 tarjeta.style.display = 'none';
             }
         });
-
-        if (listaUl.children.length === 0) {
-            listaUl.innerHTML = '<li>No hay túneles en este estado.</li>';
-        }
     }
-
-    // Ejecutar al cargar la página para que la lista se cree inicialmente
-    document.addEventListener("DOMContentLoaded", function() {
-        filtrarSedes('todos', null);
-    });
     </script>
-
 </body>
 </html>
