@@ -155,7 +155,6 @@ $datosSemanales = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
 <body>
 
 <div class="container">
-    <!-- Sección superior: Título y Filtros -->
     <div class="header-flex">
         <div class="title">📈 Evolución de Ventas Diarias</div>
         <form method="GET" class="filters">
@@ -177,12 +176,10 @@ $datosSemanales = obtenerComparativoSemanas($mysqliCentral, $mysqliDrinks);
         </form>
     </div>
 
-    <!-- Gráfica de Barras Apiladas -->
     <div class="chart-container">
         <canvas id="ventasChart"></canvas>
     </div>
 
-    <!-- Tabla Comparativa de 4 Semanas -->
     <div class="table-title">📊 Comparativa 4 Semanas (Lunes a Domingo)</div>
     <table>
         <thead>
