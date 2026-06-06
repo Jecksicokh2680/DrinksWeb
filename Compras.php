@@ -106,7 +106,7 @@ function fmonedaNegativa($v) {
         .central{background:#0d6efd} .drinks{background:#198754}
         .subtotal{ background:#eef6ff; font-weight:800; }
         .total{ background:#e6fffa; font-weight:900; }
-        .porc-pos{color:#1b5e20;font-weight:800} .porc-neg覆{color:#b71c1c;font-weight:800}
+        .porc-pos{color:#1b5e20;font-weight:800} 
         .porc-neg{color:#b71c1c;font-weight:800}
         .resumen-title { margin-top: 40px; margin-bottom: 15px; color: #333; }
         .table-resumen { min-width: 800px; max-width: 1000px; margin: 0; }
@@ -123,8 +123,13 @@ function fmonedaNegativa($v) {
 
     <form method="GET" class="filters">
         <div>
-            <label>Fecha</label>
-            <input type="date" name="Fecha" value="<?=htmlspecialchars($_GET['Fecha'] ?? date('Y-m-d'))?>">
+            <label>Desde Fecha</label>
+            <input type="date" name="FechaDesde" value="<?=htmlspecialchars($_GET['FechaDesde'] ?? date('Y-m-d'))?>">
+        </div>
+
+        <div>
+            <label>Hasta Fecha</label>
+            <input type="date" name="FechaHasta" value="<?=htmlspecialchars($_GET['FechaHasta'] ?? date('Y-m-d'))?>">
         </div>
 
         <div>
@@ -146,25 +151,26 @@ function fmonedaNegativa($v) {
             <select name="Proveedor">
                 <option value="">Todos</option>
                 <?php
-                if (!empty($_GET['Fecha'])) {
-                    $FechaSQL = DateTime::createFromFormat('Y-m-d', $_GET['Fecha'])->format('Ymd');
+                if (!empty($_GET['FechaDesde']) && !empty($_GET['FechaHasta'])) {
+                    $FechaDesdeSQL = DateTime::createFromFormat('Y-m-d', $_GET['FechaDesde'])->format('Ymd');
+                    $FechaHastaSQL = DateTime::createFromFormat('Y-m-d', $_GET['FechaHasta'])->format('Ymd');
                     $SucursalSel = $_GET['Sucursal'] ?? 'AMBAS';
                     
-                    function provs($mysqli, $f){
+                    function provs($mysqli, $fDesde, $fHasta){
                         return $mysqli->query("SELECT DISTINCT T.NIT, CONCAT(T.nombres,' ',T.apellidos) prov 
                                                FROM compras C 
                                                JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO 
-                                               WHERE C.FECHA='$f' AND C.ESTADO='0' 
+                                               WHERE C.FECHA BETWEEN '$fDesde' AND '$fHasta' AND C.ESTADO='0' 
                                                ORDER BY prov");
                     }
                     
                     $pList = [];
                     if($SucursalSel != 'DRINKS' && isset($mysqliCentral)){ 
-                        $r = provs($mysqliCentral, $FechaSQL); 
+                        $r = provs($mysqliCentral, $FechaDesdeSQL, $FechaHastaSQL); 
                         while($r && $p = $r->fetch_assoc()) $pList[$p['NIT']] = $p['prov']; 
                     }
                     if($SucursalSel != 'CENTRAL' && isset($mysqliDrinks)){ 
-                        $r = provs($mysqliDrinks, $FechaSQL); 
+                        $r = provs($mysqliDrinks, $FechaDesdeSQL, $FechaHastaSQL); 
                         while($r && $p = $r->fetch_assoc()) $pList[$p['NIT']] = $p['prov']; 
                     }
                     
@@ -184,14 +190,16 @@ function fmonedaNegativa($v) {
     </form>
 
 <?php
-$FechaGet = $_GET['Fecha'] ?? '';
+$FechaDesdeGet = $_GET['FechaDesde'] ?? '';
+$FechaHastaGet = $_GET['FechaHasta'] ?? '';
 $IDCompraGet = preg_replace('/[^0-9]/', '', $_GET['IDCompra'] ?? '');
 $ProvGet = preg_replace('/[^0-9]/', '', $_GET['Proveedor'] ?? '');
 $SucursalGet = $_GET['Sucursal'] ?? 'AMBAS';
 
-if (!empty($FechaGet) || !empty($IDCompraGet)) {
+if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) {
 
-    $FechaSQL = !empty($FechaGet) ? DateTime::createFromFormat('Y-m-d', $FechaGet)->format('Ymd') : '';
+    $FechaDesdeSQL = !empty($FechaDesdeGet) ? DateTime::createFromFormat('Y-m-d', $FechaDesdeGet)->format('Ymd') : '';
+    $FechaHastaSQL = !empty($FechaHastaGet) ? DateTime::createFromFormat('Y-m-d', $FechaHastaGet)->format('Ymd') : '';
 
     /* --- LOGICA PRECIO PROMEDIO VENTA --- */
     function precioProm($mysqli){
@@ -209,13 +217,13 @@ if (!empty($FechaGet) || !empty($IDCompraGet)) {
     $pvC = ($SucursalGet != 'DRINKS') ? precioProm($mysqliCentral) : [];
     $pvD = ($SucursalGet != 'CENTRAL') ? precioProm($mysqliDrinks) : [];
 
-    /* --- CONSULTA DE COMPRAS --- */
-    function consultarCompras($mysqli, $suc, $f, $p, $id){
+    /* --- CONSULTA DE COMPRAS EN RANGO --- */
+    function consultarCompras($mysqli, $suc, $fDesde, $fHasta, $p, $id){
         $cond = " WHERE C.ESTADO='0' ";
         if(!empty($id)){
             $cond .= " AND C.idcompra = '$id' ";
         } else {
-            $cond .= " AND C.FECHA = '$f' ";
+            $cond .= " AND C.FECHA BETWEEN '$fDesde' AND '$fHasta' ";
         }
         if(!empty($p)) $cond .= " AND T.NIT = '$p' ";
 
@@ -232,8 +240,8 @@ if (!empty($FechaGet) || !empty($IDCompraGet)) {
     }
 
     $resultados = [];
-    if($SucursalGet != 'DRINKS') $resultados[] = consultarCompras($mysqliCentral, 'Central', $FechaSQL, $ProvGet, $IDCompraGet);
-    if($SucursalGet != 'CENTRAL') $resultados[] = consultarCompras($mysqliDrinks, 'Drinks', $FechaSQL, $ProvGet, $IDCompraGet);
+    if($SucursalGet != 'DRINKS') $resultados[] = consultarCompras($mysqliCentral, 'Central', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
+    if($SucursalGet != 'CENTRAL') $resultados[] = consultarCompras($mysqliDrinks, 'Drinks', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
 
     /* --- RENDERIZADO DE TABLA PRINCIPAL --- */
     echo "<div class='table-container'><table><thead><tr>
