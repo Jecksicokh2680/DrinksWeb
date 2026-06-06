@@ -16,7 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         if ($db) {
             $stmt = $db->prepare("UPDATE DETCOMPRAS SET VALOR = (? / NULLIF(CANTIDAD, 0)) WHERE idcompra = ?");
             $stmt->bind_param("di", $nuevoValor, $idCompra);
-            echo json_encode(['success' => $stmt->execute()]);
+            $echo_success = $stmt->execute();
+            echo json_encode(['success' => $echo_success]);
             $stmt->close();
         }
     }
@@ -103,6 +104,53 @@ foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $s => $db){
 }
 
 $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
+
+// ============================================================
+// LOGICA ANEXADA: RENDIMIENTO DE VENTAS POR CAJERO
+// ============================================================
+$rankingCajeros = [];
+$ventaGlobalConsolidada = $central['venta_dia'] + $drinks['venta_dia'];
+
+foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre => $dbActiva){
+    if (!$dbActiva) continue;
+    
+    $sqlCajeros = "SELECT NIT, NOMBRE FROM (
+        SELECT T1.NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOMBRE FROM FACTURAS F 
+        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fechaSinGuion'
+        UNION 
+        SELECT V.NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS NOMBRE FROM PEDIDOS P 
+        INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO 
+        INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fechaSinGuion'
+    ) X GROUP BY NIT";
+    
+    $resCajeros = $dbActiva->query($sqlCajeros);
+    if($resCajeros){
+        while($caj = $resCajeros->fetch_assoc()){
+            $nitCajero = $caj['NIT'];
+            $nombreCajero = $caj['NOMBRE'];
+            
+            $sqlVentaCajero = "SELECT SUM(T) AS TOTAL FROM (
+                SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
+                INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
+                LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fechaSinGuion' AND T1.NIT='$nitCajero'
+                UNION ALL 
+                SELECT (DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
+                INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO=P.IDUSUARIO 
+                INNER JOIN TERCEROS V ON V.IDTERCERO=UV.IDTERCERO WHERE P.ESTADO='0' AND P.FECHA='$fechaSinGuion' AND V.NIT='$nitCajero'
+            ) AS X";
+            
+            $vtaNeto = (float)($dbActiva->query($sqlVentaCajero)->fetch_assoc()['TOTAL'] ?? 0);
+            if($vtaNeto > 0){
+                $rankingCajeros[] = [
+                    'nombre' => $nombreCajero,
+                    'sede' => $sedeNombre,
+                    'total' => $vtaNeto
+                ];
+            }
+        }
+    }
+}
+usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; });
 ?>
 
 <!DOCTYPE html>
@@ -114,46 +162,66 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
-        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 10px; color: #374151; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; color: #374151; box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; }
         
         /* Ajuste de Header */
-        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
-        .header-top h2 { margin:0; font-size: 1.2rem; color: #1f2937; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .header-top h2 { margin:0; font-size: 1.4rem; color: #1f2937; }
 
         .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .timer-box span { color: #60a5fa; min-width: 45px; }
 
         /* Grid Responsivo de Tarjetas */
-        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-bottom: 20px; }
         
-        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; }
+        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
         .card:hover { transform: translateY(-2px); }
         .card h3 { font-size: 1.1rem; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #111827; }
 
         .main-value { font-size: 1.6rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; word-break: break-all; }
         .details { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
-        .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; }
+        .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; width: 100%; }
 
         /* Grid Responsivo de Secciones Inferiores */
         .sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        
-        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
         .full-width { grid-column: 1 / -1; }
 
+        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
+
         /* Tabla Adaptable */
-        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; }
+        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e5e7eb; }
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
         th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; position: sticky; top: 0; }
         td { padding: 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
         
-        .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+        .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; display: inline-block; }
 
-        /* Media Queries para ajustes finos */
-        @media (max-width: 600px) {
-            body { padding: 5px; }
+        /* Estilos Completamente Responsivos del Panel de Rendimiento */
+        .ranking-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; gap: 10px; }
+        .ranking-user { width: 30%; font-weight: 600; min-width: 110px; }
+        .ranking-bar-bg { flex-grow: 1; background: #e5e7eb; height: 100%; min-height: 8px; max-height: 8px; border-radius: 4px; overflow: hidden; }
+        .ranking-bar-fill { background: #8b5cf6; height: 8px; border-radius: 4px; }
+        .ranking-total { width: 25%; text-align: right; font-weight: bold; min-width: 90px; }
+
+        /* Media Queries para dispositivos móviles */
+        @media (max-width: 768px) {
+            .sections-grid { grid-template-columns: 1fr; }
+            .full-width { grid-column: unset; }
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .header-top { flex-direction: column; align-items: flex-start; }
+            .timer-box { align-self: flex-end; }
             .main-value { font-size: 1.4rem; }
             .card { padding: 15px; }
-            .sections-grid { grid-template-columns: 1fr; }
+            
+            /* Ajuste del ranking en móviles pequeños para evitar desbordes */
+            .ranking-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; }
+            .ranking-user { width: 100%; }
+            .ranking-bar-bg { width: 100%; height: 6px; }
+            .ranking-total { width: 100%; text-align: left; }
         }
     </style>
 </head>
@@ -166,36 +234,52 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
 
     <div class="grid-cards">
         <div class="card">
-            <h3>🏢 Central</h3>
-            <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
-            <div class="details">Trans: <?= moneda($central['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia']-$central['trans_dia']) ?></b></div>
-            <div class="separator"></div>
-            <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($central['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span></div>
+            <div>
+                <h3>🏢 Central</h3>
+                <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
+                <div class="details">Trans: <?= moneda($central['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia']-$central['trans_dia']) ?></b></div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($central['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span></div>
+            </div>
         </div>
 
         <div class="card">
-            <h3>🍹 Drinks</h3>
-            <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
-            <div class="details">Trans: <?= moneda($drinks['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia']-$drinks['trans_dia']) ?></b></div>
-            <div class="separator"></div>
-            <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($drinks['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span></div>
+            <div>
+                <h3>🍹 Drinks</h3>
+                <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
+                <div class="details">Trans: <?= moneda($drinks['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia']-$drinks['trans_dia']) ?></b></div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($drinks['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span></div>
+            </div>
         </div>
 
         <div class="card" style="border: 2px solid #3b82f6; background-color: #eff6ff;">
-            <h3>📌 Totales Consolidados</h3>
-            <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
-            <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span></div>
-            <div class="separator"></div>
-            <div class="details">Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br><b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span></div>
+            <div>
+                <h3>📌 Totales Consolidados</h3>
+                <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
+                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span></div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br><b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span></div>
+            </div>
         </div>
 
         <div class="card">
-            <h3>💼 Proveedores</h3>
-            <span class="main-value" style="color:#ef4444"><?= moneda($deudaProv) ?></span>
-            <div class="separator"></div>
-            <div class="details">
-                <b>Inv. Neto a Compra:</b><br><span style="color:#2563eb"><?= moneda(($central['inventario']+$drinks['inventario'])+$deudaProv) ?></span><br>
-                <b>Inv. Neto a Venta:</b><br><span style="color:#10b981"><?= moneda(($central['inv_venta']+$drinks['inv_venta'])+$deudaProv) ?></span>
+            <div>
+                <h3>💼 Proveedores</h3>
+                <span class="main-value" style="color:#ef4444"><?= moneda($deudaProv) ?></span>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">
+                    <b>Inv. Neto a Compra:</b><br><span style="color:#2563eb"><?= moneda(($central['inventario']+$drinks['inventario'])+$deudaProv) ?></span><br>
+                    <b>Inv. Neto a Venta:</b><br><span style="color:#10b981"><?= moneda(($central['inv_venta']+$drinks['inv_venta'])+$deudaProv) ?></span>
+                </div>
             </div>
         </div>
     </div>
@@ -209,6 +293,34 @@ $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto
             <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION VENTAS</h4>
             <div style="position: relative; height:200px;"><canvas id="chartVenta"></canvas></div>
         </div>
+
+        <div class="wrap-box full-width">
+            <h3 style="margin-top:0; color:#111827; font-size:1.1rem; display:flex; align-items:center; gap:8px;">🏆 Rendimiento de Ventas por Cajero</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <?php if(empty($rankingCajeros)): ?>
+                    <div style="text-align:center; color:#9ca3af; padding: 10px; font-size: 0.85rem;">No se registran ventas de cajeros el día de hoy</div>
+                <?php else: ?>
+                    <?php foreach($rankingCajeros as $index => $caj): 
+                        $porcentaje = $ventaGlobalConsolidada > 0 ? ($caj['total'] / $ventaGlobalConsolidada) * 100 : 0;
+                    ?>
+                    <div class="ranking-item">
+                        <div class="ranking-user">
+                            <span><?= $index + 1 ?>. <?= htmlspecialchars($caj['nombre']) ?></span>
+                            <small style="display:block; color:#9ca3af; font-size:10px; font-weight: normal;"><?= $caj['sede'] ?></small>
+                        </div>
+                        <div class="ranking-bar-bg">
+                            <div class="ranking-bar-fill" style="width: <?= $porcentaje ?>%;"></div>
+                        </div>
+                        <div class="ranking-total">
+                            <span><?= moneda($caj['total']) ?></span>
+                            <small style="display:block; color:#6b7280; font-size:10px; font-weight: normal;"><?= number_format($porcentaje, 1) ?>% del total</small>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        
         <div class="wrap-box full-width">
             <h3 style="margin-top:0; color:#111827; font-size:1.1rem;">🚚 Compras del Día</h3>
             <div class="table-container">
