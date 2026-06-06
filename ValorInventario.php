@@ -6,15 +6,16 @@ require_once("Conexion.php");
 
 date_default_timezone_set('America/Bogota');
 
-// --- Lógica de guardado de egresos (Sin cambios) ---
+// --- Lógica de guardado de egresos ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] == 'update_compra') {
     $data = json_decode(file_get_contents('php://input'), true);
     if ($data) {
         $idCompra = intval($data['id']);
         $nuevoValor = floatval(preg_replace('/[^0-9.]/', '', str_replace(',', '.', $data['valor'])));
         $db = ($data['sede'] === 'CENTRAL') ? $mysqliCentral : $mysqliDrinks;
+        
         if ($db) {
-            $stmt = $db->prepare("UPDATE DETCOMPRAS SET VALOR = (? / NULLIF(CANTIDAD, 0)) WHERE idcompra = ?");
+            $stmt = $db->prepare("UPDATE DETCOMPRAS SET VALOR = (? / NULLIF(CANTIDAD, 0)), descuento = 0, porciva = 0, ValICUIUni = 0 WHERE idcompra = ?");
             $stmt->bind_param("di", $nuevoValor, $idCompra);
             $echo_success = $stmt->execute();
             echo json_encode(['success' => $echo_success]);
@@ -99,14 +100,17 @@ $drinks  = analizarSucursal($mysqliDrinks, 'DRINKS');
 // Compras del día
 $todasLasCompras = [];
 foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $s => $db){
+    if (!$db) continue;
     $res = $db->query("SELECT C.idcompra, CONCAT(T.nombres, ' ', T.apellidos) AS prov, SUM(D.CANTIDAD * (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0)) + ( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * D.porciva / 100) + D.ValICUIUni)) AS total FROM compras C INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra WHERE C.FECHA = '$fechaSinGuion' AND C.ESTADO = '0' GROUP BY C.idcompra");
-    while($row = $res->fetch_assoc()){ $row['sede'] = $s; $todasLasCompras[] = $row; }
+    if($res) {
+        while($row = $res->fetch_assoc()){ $row['sede'] = $s; $todasLasCompras[] = $row; }
+    }
 }
 
 $deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
 
 // ============================================================
-// LOGICA ANEXADA: RENDIMIENTO DE VENTAS POR CAJERO
+// RENDIMIENTO DE VENTAS POR CAJERO
 // ============================================================
 $rankingCajeros = [];
 $ventaGlobalConsolidada = $central['venta_dia'] + $drinks['venta_dia'];
@@ -165,14 +169,12 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; color: #374151; box-sizing: border-box; }
         *, *:before, *:after { box-sizing: inherit; }
         
-        /* Ajuste de Header */
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .header-top h2 { margin:0; font-size: 1.4rem; color: #1f2937; }
 
         .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .timer-box span { color: #60a5fa; min-width: 45px; }
 
-        /* Grid Responsivo de Tarjetas */
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-bottom: 20px; }
         
         .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
@@ -183,13 +185,11 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         .details { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
         .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; width: 100%; }
 
-        /* Grid Responsivo de Secciones Inferiores */
         .sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
         .full-width { grid-column: 1 / -1; }
 
         .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
 
-        /* Tabla Adaptable */
         .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e5e7eb; }
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
         th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; position: sticky; top: 0; }
@@ -197,14 +197,12 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         
         .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; display: inline-block; }
 
-        /* Estilos Completamente Responsivos del Panel de Rendimiento */
         .ranking-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; gap: 10px; }
         .ranking-user { width: 30%; font-weight: 600; min-width: 110px; }
         .ranking-bar-bg { flex-grow: 1; background: #e5e7eb; height: 100%; min-height: 8px; max-height: 8px; border-radius: 4px; overflow: hidden; }
         .ranking-bar-fill { background: #8b5cf6; height: 8px; border-radius: 4px; }
         .ranking-total { width: 25%; text-align: right; font-weight: bold; min-width: 90px; }
 
-        /* Media Queries para dispositivos móviles */
         @media (max-width: 768px) {
             .sections-grid { grid-template-columns: 1fr; }
             .full-width { grid-column: unset; }
@@ -217,7 +215,6 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             .main-value { font-size: 1.4rem; }
             .card { padding: 15px; }
             
-            /* Ajuste del ranking en móviles pequeños para evitar desbordes */
             .ranking-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; }
             .ranking-user { width: 100%; }
             .ranking-bar-bg { width: 100%; height: 6px; }
@@ -261,11 +258,19 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             <div>
                 <h3>📌 Totales Consolidados</h3>
                 <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
-                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span></div>
+                <div class="details">
+                    Trans: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
+                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - ($central['trans_dia']+$drinks['trans_dia'])) ?></b>
+                </div>
             </div>
             <div>
                 <div class="separator"></div>
-                <div class="details">Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br><b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span><br>
+                    Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br>
+                    <b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span>
+                </div>
             </div>
         </div>
 
@@ -377,8 +382,10 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             const rawVal = this.innerText.replace(/\./g, '').replace(/,/g, '.');
             const val = parseFloat(rawVal);
             if(isNaN(val)) return;
+            
             fetch('?action=update_compra', { 
-                method: 'POST', body: JSON.stringify({ id: this.dataset.id, sede: this.dataset.sede, valor: val }), 
+                method: 'POST', 
+                body: JSON.stringify({ id: this.dataset.id, sede: this.dataset.sede, valor: val }), 
                 headers: { 'Content-Type': 'application/json' } 
             }).then(res => res.json()).then(data => { 
                 if(data.success) { 
