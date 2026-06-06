@@ -1,4 +1,7 @@
 <?php
+// CRUCIAL: Inicializar la sesión para poder leer $_SESSION['Usuario']
+session_start();
+
 // AJUSTE DE ZONA HORARIA BOGOTÁ
 date_default_timezone_set('America/Bogota');
 
@@ -6,6 +9,7 @@ date_default_timezone_set('America/Bogota');
 $session_timeout   = 3600; 
 $inactive_timeout  = 1800; 
 
+// Control de inactividad heredado de tu login
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
     session_unset();
     session_destroy();
@@ -14,7 +18,14 @@ if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > 
 }
 $_SESSION['ultimo_acceso'] = time();
 
-$UsuarioSesion   = $_SESSION['Usuario']     ?? 'CAJERO';
+// Si no hay sesión válida, redirige al Login (Protección de ruta)
+if (!isset($_SESSION['Usuario'])) {
+    header("Location: login.php?msg=Debe iniciar sesion");
+    exit;
+}
+
+// Ahora sí tomará la Cédula/Nit del usuario real logueado
+$UsuarioSesion   = $_SESSION['Usuario'];
 $fechaActual     = date("Y-m-d H:i");
 ?>
 <!DOCTYPE html>
@@ -26,8 +37,11 @@ $fechaActual     = date("Y-m-d H:i");
   <style>
     /* --- ESTILOS PARA PANTALLA --- */
     body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; flex-direction: column; align-items: center; color: #1c1e21; margin: 0; }
-    h2 { margin-bottom: 15px; color: #000; text-transform: uppercase; letter-spacing: 1px; }
-    .card { background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+    h2 { margin-top: 5px; margin-bottom: 15px; color: #000; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+    .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
+    
+    .user-badge-screen { background: #f8f9fa; border: 1px solid #e9ecef; padding: 8px 12px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #495057; }
+    
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
     th { background-color: #1a1a1a; color: white; padding: 10px; font-size: 13px; text-transform: uppercase; }
     td { text-align: center; padding: 8px; border-bottom: 1px solid #edf0f2; font-weight: 600; }
@@ -37,9 +51,11 @@ $fechaActual     = date("Y-m-d H:i");
     .buttons { margin-top: 20px; display: flex; gap: 12px; width: 100%; max-width: 400px; }
     button { flex: 1; background-color: #1a1a1a; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
     button.btn-clear { background-color: #dc3545; }
+    
     .solo-impresion { display: none; }
+    .no-print { display: block; }
 
-    /* --- AJUSTE PARA IMPRESIÓN (MÁS PEQUEÑA Y EN NEGRITA) --- */
+    /* --- AJUSTE PARA IMPRESIÓN --- */
     @media print {
       @page { margin: 0; }
       body { background: white !important; width: 100%; margin: 0; padding: 3px; font-family: 'Courier New', Courier, monospace; }
@@ -48,8 +64,8 @@ $fechaActual     = date("Y-m-d H:i");
       h2 { font-size: 12pt; margin: 5px 0 2px 0; text-align: center; }
       h2::before { content: "BNMA COORPORACION"; display: block; font-size: 13pt; border-bottom: 2px solid #000; margin-bottom: 3px; }
       
-      /* Usuario visible en impresión */
       .user-info-print { display: block !important; text-align: center; font-size: 9pt; margin-bottom: 5px; }
+      .no-print { display: none !important; }
       
       table { width: 98% !important; border: 1px solid #000; }
       th { background: #000 !important; color: #fff !important; font-size: 9pt; -webkit-print-color-adjust: exact; padding: 2px !important; }
@@ -67,7 +83,13 @@ $fechaActual     = date("Y-m-d H:i");
   <div class="card">
     <h2>Conteo Billetes</h2>
     
-    <div class="user-info-print solo-impresion">USUARIO: <?= $UsuarioSesion ?></div>
+    <div class="user-badge-screen no-print">
+      👤 Responsable: <?= htmlspecialchars($UsuarioSesion) ?>
+    </div>
+
+    <div class="user-info-print solo-impresion">
+      USUARIO: <?= htmlspecialchars($UsuarioSesion) ?>
+    </div>
 
     <table>
       <thead>
@@ -85,10 +107,6 @@ $fechaActual     = date("Y-m-d H:i");
         </tr>
       </tfoot>
     </table>
-
-    <div style="text-align: center; font-size: 13px; font-weight: bold;" class="no-print">
-      Usuario: <?= $UsuarioSesion ?>
-    </div>
 
     <div class="solo-impresion">
       <div style="text-align: center;">Fecha: <?= $fechaActual; ?></div>

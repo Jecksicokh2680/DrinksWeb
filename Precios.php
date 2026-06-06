@@ -45,7 +45,8 @@ if ($is_ajax_save) {
 if ($is_ajax_filter) {
     header('Content-Type: application/json');
     $filtro = trim($_POST['filtro'] ?? '');
-    $estado_filtro = $_POST['estado'] ?? 'todos';
+    // CAMBIO 1: Se define '1' como valor por defecto si no viene en el POST
+    $estado_filtro = $_POST['estado'] ?? '1'; 
     
     $sql = "SELECT barcode, descripcion, costo, precioventa, precioespecial1, precioespecial2, estado FROM productos WHERE 1=1";
     if ($estado_filtro !== 'todos') $sql .= " AND estado = $estado_filtro";
@@ -157,7 +158,7 @@ if ($is_ajax_filter) {
                 <input type="text" id="busqueda" class="form-control form-control-sm" placeholder="Buscar..." style="width: 160px;">
                 <select id="filtro-est" class="form-select form-select-sm" style="width: 80px;">
                     <option value="todos">Todos</option>
-                    <option value="1">Activos</option>
+                    <option value="1" selected>Activos</option> 
                     <option value="0">Inactivos</option>
                 </select>
                 <button onclick="location.reload()" class="btn btn-light btn-sm border px-2"><i class="bi bi-arrow-clockwise"></i></button>
