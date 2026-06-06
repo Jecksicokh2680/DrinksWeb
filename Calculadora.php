@@ -27,6 +27,28 @@ if (!isset($_SESSION['Usuario'])) {
 // Ahora sí tomará la Cédula/Nit del usuario real logueado
 $UsuarioSesion   = $_SESSION['Usuario'];
 $fechaActual     = date("Y-m-d H:i");
+$nombreUsuario   = "Usuario desconocido"; // Valor por defecto si no se encuentra en la base de datos
+
+// --- INTEGRACIÓN DE TU CONEXIÓN Y CONSULTA DE NOMBRE ---
+require("Conexion.php");
+
+if (isset($mysqli) && !$mysqli->connect_error) {
+    // Definimos el charset correcto para evitar problemas con tildes o la Ñ
+    $mysqli->set_charset("utf8mb4");
+
+    // Consulta preparada para buscar el Nombre usando CedulaNit
+    $stmt = $mysqli->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? AND Estado = 1 LIMIT 1");
+    if ($stmt) {
+        $stmt->bind_param("s", $UsuarioSesion);
+        $stmt->execute();
+        $resultado = $stmt->get_result();
+
+        if ($fila = $resultado->fetch_assoc()) {
+            $nombreUsuario = $fila['Nombre'];
+        }
+        $stmt->close();
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -40,7 +62,7 @@ $fechaActual     = date("Y-m-d H:i");
     h2 { margin-top: 5px; margin-bottom: 15px; color: #000; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
     .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
     
-    .user-badge-screen { background: #f8f9fa; border: 1px solid #e9ecef; padding: 8px 12px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #495057; }
+    .user-badge-screen { background: #f8f9fa; border: 1px solid #e9ecef; padding: 8px 12px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #495057; line-height: 1.4; }
     
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
     th { background-color: #1a1a1a; color: white; padding: 10px; font-size: 13px; text-transform: uppercase; }
@@ -64,7 +86,7 @@ $fechaActual     = date("Y-m-d H:i");
       h2 { font-size: 12pt; margin: 5px 0 2px 0; text-align: center; }
       h2::before { content: "BNMA COORPORACION"; display: block; font-size: 13pt; border-bottom: 2px solid #000; margin-bottom: 3px; }
       
-      .user-info-print { display: block !important; text-align: center; font-size: 9pt; margin-bottom: 5px; }
+      .user-info-print { display: block !important; text-align: center; font-size: 9pt; margin-bottom: 5px; line-height: 1.3; }
       .no-print { display: none !important; }
       
       table { width: 98% !important; border: 1px solid #000; }
@@ -84,11 +106,13 @@ $fechaActual     = date("Y-m-d H:i");
     <h2>Conteo Billetes</h2>
     
     <div class="user-badge-screen no-print">
-      👤 Responsable: <?= htmlspecialchars($UsuarioSesion) ?>
+      👤 Responsable: <?= htmlspecialchars($nombreUsuario) ?><br>
+      <span style="font-size: 11px; font-weight: normal; color: #65676b;">C.C. <?= htmlspecialchars($UsuarioSesion) ?></span>
     </div>
 
     <div class="user-info-print solo-impresion">
-      USUARIO: <?= htmlspecialchars($UsuarioSesion) ?>
+      RESPONSABLE: <?= htmlspecialchars($nombreUsuario) ?><br>
+      DOCUMENTO: <?= htmlspecialchars($UsuarioSesion) ?>
     </div>
 
     <table>
@@ -112,6 +136,7 @@ $fechaActual     = date("Y-m-d H:i");
       <div style="text-align: center;">Fecha: <?= $fechaActual; ?></div>
       <div class="firma-linea"></div>
       <div style="text-align: center; font-weight: bold; font-size: 9pt;">FIRMA RESPONSABLE</div>
+      <div style="text-align: center; font-size: 8pt; text-transform: uppercase; margin-top: 2px;">(<?= htmlspecialchars($nombreUsuario) ?>)</div>
     </div>
   </div>
 
