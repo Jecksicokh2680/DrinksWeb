@@ -112,9 +112,11 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             <div id="adminOp" class="accordion-collapse collapse">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>                                    
+                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                              
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
+
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
                                     <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
@@ -122,6 +124,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
+                                    
                                     <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
@@ -173,7 +176,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                                     <a class="nav-link" href="Estadistica_Vtas_mas.php" target="contentFrame">Lo más Vendido</a>
                                     <a class="nav-link" href="Estadistica_Vtas_Cajero.php" target="contentFrame">Lo más Vendido por Cajero</a>
                                     <a class="nav-link" href="Estadistica_Vtas_mas_tamaño.php" target="contentFrame">Lo más Vendido por tamaño</a>
-                                    <a class="nav-link" href="Estadistica_Vtas_MesaMes.php" target="contentFrame">Lo más Vendido por Mesa/Mes</a>
+                                    <a class="nav-link" href="Estadistica_Vtas_MesaMes.php" target="contentFrame">Lo más Vendido por Mes/Mes</a>
                                     <a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">Lo más Vendido por Empresa</a>
                                 </div>
                             </div>
