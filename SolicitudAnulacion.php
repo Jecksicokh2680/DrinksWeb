@@ -259,11 +259,11 @@ if ($dbSede) {
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // Se agregó el filtro s.Estado = '1' para listar únicamente lo activo/pendiente
+                    // Se modificó la cláusula ORDER BY para ordenar por sede (Nit_Empresa) y luego por hora (FH_CajeroCheck)
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
                             WHERE s.F_Creacion = ? AND s.Estado = '1' 
-                            ORDER BY s.FH_CajeroCheck DESC";
+                            ORDER BY s.Nit_Empresa ASC, s.FH_CajeroCheck DESC";
                     $stmtH = $mysqli->prepare($sql);
                     if($stmtH) {
                         $stmtH->bind_param("s", $fechaConsulta);
