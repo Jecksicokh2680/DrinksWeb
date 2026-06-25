@@ -217,7 +217,7 @@ $resultConteos = $resH->get_result();
 while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 ?>
 
-<!DOCTYPE html>
+DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
@@ -293,7 +293,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 $ya = in_array($c['CodCat'], $contados);
             ?>
             <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $ya?'disabled':'' ?>>
-                <?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $ya?' (CONTEO REALIZADO)':'' ?>
+                <?= $c['CodCat'].' - '.strtoupper($c['Nombre']) ?><?= $ya?' (CONTEO REALIZADO)':'' ?>
             </option>
             <?php endforeach; ?>
         </select>
@@ -361,7 +361,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                         <tr>
                             <td><span class="badge-sede <?= $sedeClass ?>"><?= $sedeTag ?></span></td>
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
-                            <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
+                            <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= strtoupper($c['Nombre']) ?></small></td>
                             
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>

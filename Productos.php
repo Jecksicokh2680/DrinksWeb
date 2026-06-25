@@ -57,7 +57,6 @@ $sql = "SELECT p.barcode, p.descripcion, p.estado, IFNULL(SUM(i.cantidad),0) can
         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
 
 // ... Ejecución de $stmtC y $stmtD para llenar arrays $central y $drinks ...
-// (Para el ejemplo, asumo que $barcodes contiene la lista de SKUs a mostrar)
 
 $stmtC = $mysqliCentral->prepare($sql);
 $stmtC->bind_param("ss", $like, $like);
@@ -110,12 +109,31 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
         .badge-sede { font-size: 10px; padding: 3px 6px; border-radius: 4px; color: white; font-weight: bold; text-transform: uppercase; }
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
+
+        /* NUEVOS ESTILOS PARA EL BUSCADOR */
+        .search-container { margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e3e6f0; }
+        .search-form { display: flex; gap: 10px; }
+        .search-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        .btn-search { background: #1a2a6c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-search:hover { background: #142154; }
+        .btn-clear { background: #6c757d; color: white; text-decoration: none; padding: 10px 15px; border-radius: 6px; font-size: 14px; display: inline-flex; align-items: center; }
+        .btn-clear:hover { background: #5a6268; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>🛠️ Panel de Inventario Edición Directa</h2>
+
+    <div class="search-container">
+        <form method="GET" action="" class="search-form">
+            <input type="text" name="term" class="search-input" placeholder="Buscar por descripción o código de barras..." value="<?= htmlspecialchars($term) ?>">
+            <button type="submit" class="btn-search">🔍 Buscar</button>
+            <?php if ($term !== ''): ?>
+                <a href="?" class="btn-clear">❌ Limpiar</a>
+            <?php endif; ?>
+        </form>
+    </div>
 
     <table>
         <thead>
@@ -127,6 +145,12 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
             </tr>
         </thead>
         <tbody>
+            <?php if (empty($barcodes)): ?>
+                <tr>
+                    <td colspan="4" style="padding: 20px; color: #888;">No se encontraron productos que coincidan con la búsqueda.</td>
+                </tr>
+            <?php endif; ?>
+
             <?php foreach ($barcodes as $b): 
                 $d = $drinks[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---'];
                 $c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---'];
