@@ -47,7 +47,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
                 $dbOrig->query("UPDATE inventario SET cantidad = cantidad - $cantidad WHERE idproducto = $idO");
                 $dbDest->query("UPDATE inventario SET cantidad = cantidad + $cantidad WHERE idproducto = $idD");
                 
-                // Registrar el log en la tabla global
+                // Registrar el log en la tabla global con Aprobado = 1
                 $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) 
                            VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, NOW())";
                 $stmtLog = $mysqliWeb->prepare($sqlLog);
@@ -80,17 +80,46 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
 $f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
 $f_fin    = $_GET['f_fin']    ?? date('Y-m-d');
 $sede_out = $_GET['sede_origen'] ?? 'TODAS';
+$buscar   = isset($_GET['buscar']) ? trim($_GET['buscar']) : '';
 
-// Construcción del WHERE dinámico según la sede de salida
+// 1. Obtener barcodes que coincidan con la descripción en la BD Central (si hay búsqueda por texto)
+$barcodesFiltrados = [];
+$busquedaPorTexto = false;
+
+if(!empty($buscar)){
+    $busquedaPorTexto = true;
+    // Buscamos en productos tanto por barcode como por descripción
+    $buscarEscaped = $mysqliCentral->real_escape_string($buscar);
+    $rFiltroProd = $mysqliCentral->query("SELECT barcode FROM productos WHERE descripcion LIKE '%$buscarEscaped%' OR barcode LIKE '%$buscarEscaped%'");
+    while($rf = $rFiltroProd->fetch_assoc()){
+        $barcodesFiltrados[] = "'".$rf['barcode']."'";
+    }
+}
+
+// 2. Construcción del WHERE dinámico
 $whereSede = "";
 if($sede_out !== 'TODAS'){
     $nitFiltro = ($sede_out == 'CENTRAL') ? $nits['CENTRAL'] : $nits['DRINKS'];
     $whereSede = " AND NitEmpresa_Orig = '$nitFiltro' ";
 }
 
+$whereProducto = "";
+if($busquedaPorTexto){
+    if(!empty($barcodesFiltrados)){
+        $listaFiltroCodes = implode(",", $barcodesFiltrados);
+        $whereProducto = " AND barcode IN ($listaFiltroCodes) ";
+    } else {
+        // Si buscó algo que no existe, forzamos a que no traiga resultados erróneos
+        $whereProducto = " AND barcode = 'X-X-NO-MATCH-X-X' ";
+    }
+}
+
+// Consulta final uniendo los filtros y exigiendo Aprobado = 1
 $query = "SELECT * FROM inventario_movimientos 
           WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' 
+          AND Aprobado = 1 
           $whereSede 
+          $whereProducto
           ORDER BY fecha DESC";
 
 $resMov = $mysqliWeb->query($query);
@@ -133,6 +162,7 @@ function nombreSede($nit) {
         .f-group label { font-size: 13px; font-weight: 700; color: #495057; }
         
         select, input { padding: 9px; border: 1px solid #ced4da; border-radius: 5px; outline: none; }
+        .input-buscar { width: 250px; }
         .btn-filter { background: #0d6efd; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .btn-filter:hover { background: #0b5ed7; }
 
@@ -176,6 +206,10 @@ function nombreSede($nit) {
             <label>Fecha Fin:</label>
             <input type="date" name="f_fin" value="<?= $f_fin ?>">
         </div>
+        <div class="f-group">
+            <label>Producto / Barcode:</label>
+            <input type="text" name="buscar" class="input-buscar" placeholder="Ej: Aguardiente o 770..." value="<?= htmlspecialchars($buscar) ?>">
+        </div>
         <button type="submit" class="btn-filter">🔍 Aplicar Filtros</button>
     </form>
 
@@ -192,11 +226,10 @@ function nombreSede($nit) {
         </thead>
         <tbody>
             <?php if(empty($movimientos)): ?>
-                <tr><td colspan="6" style="padding: 40px; color: #6c757d;">No hay registros para este filtro.</td></tr>
+                <tr><td colspan="6" style="padding: 40px; color: #6c757d;">No hay registros activos para este filtro.</td></tr>
             <?php else: ?>
                 <?php foreach($movimientos as $r): 
                     $nom = $nombresGlobales[$r['barcode']] ?? 'Producto Desconocido';
-                    // Buscamos la marca en el texto de observación
                     $revisado = (strpos($r['Observacion'], '[REVISADO POR BODEGA]') !== false);
                 ?>
                 <tr>
