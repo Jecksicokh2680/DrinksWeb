@@ -82,7 +82,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
                     <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
                     <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Solicitud Anulación</a>
-                    <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado de Facturas del Día</a>
+                    <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Facturas del Día</a>
                     <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
                     <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>
                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Traslados de mercancia</a>
