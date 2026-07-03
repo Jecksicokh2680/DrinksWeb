@@ -26,6 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
 }
 
 function moneda($v){ return '$' . number_format((float)$v, 0, ',', '.'); }
+function porcentaje($parte, $total) { 
+    if ($total <= 0) return '0%';
+    return number_format(($parte / $total) * 100, 1, ',', '.') . '%'; 
+}
 
 $fechaSQL = date('Y-m-d');
 $fechaSinGuion = date('Ymd');
@@ -162,7 +166,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Administrativo</title>
+    <title>Dashboard Administrative</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
@@ -238,7 +242,12 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             </div>
             <div>
                 <div class="separator"></div>
-                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($central['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad'], $central['venta_mes']) ?>)</b><br>
+                    Bodega Costo: <?= moneda($central['inventario']) ?><br>
+                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span>
+                </div>
             </div>
         </div>
 
@@ -250,7 +259,12 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             </div>
             <div>
                 <div class="separator"></div>
-                <div class="details">Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>Bodega Costo: <?= moneda($drinks['inventario']) ?><br><b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($drinks['utilidad']) ?></span> <b>(<?= porcentaje($drinks['utilidad'], $drinks['venta_mes']) ?>)</b><br>
+                    Bodega Costo: <?= moneda($drinks['inventario']) ?><br>
+                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span>
+                </div>
             </div>
         </div>
 
@@ -267,7 +281,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <div class="separator"></div>
                 <div class="details">
                     Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad']+$drinks['utilidad'], $central['venta_mes']+$drinks['venta_mes']) ?>)</b><br>
                     Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br>
                     <b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span>
                 </div>
