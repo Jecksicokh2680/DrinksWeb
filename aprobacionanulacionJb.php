@@ -108,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="60"> 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel Control - Jefe de Bodega</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -116,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         .table-xs { font-size: 0.8rem; }
         .header-bar { background: #112233; color: #fff; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #ffc107; }
         .header-info { border-right: 1px solid #495057; padding-right: 15px; margin-right: 15px; }
-        #timer-box { font-family: monospace; font-size: 0.9rem; background: #212529; padding: 2px 8px; border-radius: 4px; border: 1px solid #ffc107; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.7rem; color: #6c757d; }
         .form-check-input { width: 1.5em; height: 1.5em; cursor: pointer; }
@@ -136,7 +134,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
                     <span class="fw-bold text-info"><?= $fechaConsulta ?></span>
                 <?php endif; ?>
             </div>
-            <div><small class="text-secondary d-block">MONITOR ACTIVOS</small><span id="timer-box" class="text-warning">60s</span></div>
         </div>
         <div class="text-end">
             <h5 class="m-0 text-white fw-bold">Solicitudes de Anulación</h5>
@@ -237,16 +234,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
 </div>
 
 <script>
-    // Contador para refrescar la pantalla automáticamente
-    let timeLeft = 60;
-    const timerDisplay = document.getElementById('timer-box');
-    setInterval(() => {
-        timeLeft--;
-        timerDisplay.textContent = timeLeft + "s";
-        if (timeLeft <= 10) timerDisplay.classList.replace('text-warning', 'text-danger');
-        if (timeLeft <= 0) window.location.reload();
-    }, 1000);
-
     // Confirmación nativa y envío por POST seguro
     function confirmarAprobacion(element, fact, nitSede) {
         if (confirm(`¿Dar el Visto Bueno (Bodega) para el Documento Nro: ${fact}?\nEsto confirmará que la mercancía está físicamente disponible.`)) {
