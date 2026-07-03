@@ -258,6 +258,8 @@ if (!empty($_GET['cedula'])) {
                         <div class="mb-2"><label class="lbl-ley">Salud (4%)</label><input type="number" name="salud" id="salud" class="form-control calc" value="<?= $nominaExistente['salud'] ?? 0 ?>"></div>
                         <div class="mb-2"><label class="lbl-ley">Pensión (4%)</label><input type="number" name="pension" id="pension" class="form-control calc" value="<?= $nominaExistente['pension'] ?? 0 ?>"></div>
                         <div class="mb-2"><label class="lbl-ley">Otros Dctos</label><input type="number" name="descuentos" id="desc" class="form-control calc border-warning" value="<?= $nominaExistente['descuentos'] ?? 0 ?>"></div>
+                        <div class="mb-2"><label class="lbl-ley text-danger">TOTAL DEDUCCIONES</label><input type="text" id="total_deducciones" class="form-control fw-bold bg-light text-danger" readonly value="$ 0"></div>
+                        <div class="mb-2"><label class="lbl-ley text-success fw-bold">OPERACIÓN DE COMPROBACIÓN</label><input type="text" id="operacion_neto_descuentos" class="form-control fw-bold bg-dark text-warning" style="font-size: 0.9rem;" readonly value="$ 0 - $ 0 = $ 0"></div>
                     </div>
                 </div>
 
@@ -270,7 +272,6 @@ if (!empty($_GET['cedula'])) {
     <?php endif; ?>
 </div>
 
-<!-- Modal Historial -->
 <div class="modal fade" id="modalHistorial" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -297,8 +298,8 @@ if (!empty($_GET['cedula'])) {
                                     if($tH = $qH->fetch_assoc()) $n_h = trim("{$tH['nombres']} {$tH['apellidos']}");
                                 }
                                 
-                                // Escapamos de forma segura la data JSON para inyectarla en el botón de retorno
                                 $cronDataJson = htmlspecialchars($h['cronograma_data'], ENT_QUOTES, 'UTF-8');
+                                $netoGuardado = floatval($h['total_pagado']);
                                 
                                 echo "<tr>
                                     <td class='fw-bold'>$c_h</td>
@@ -309,10 +310,10 @@ if (!empty($_GET['cedula'])) {
                                     <td class='text-center'>{$h['cant_rn']}</td>
                                     <td class='text-center'>{$h['cant_dom']}</td>
                                     <td class='text-center'>{$h['cant_rndf']}</td>
-                                    <td class='fw-bold text-success'>$".number_format($h['total_pagado'])."</td>
+                                    <td class='fw-bold text-success'>$".number_format($netoGuardado)."</td>
                                     <td class='no-export text-center'>
                                         <button type='button' class='btn btn-sm btn-info me-1 py-0 px-1' title='Devolver a edición'
-                                            onclick='devolverDatosAEdicion(\"$c_h\", $cronDataJson, {$h['bonificaciones']}, {$h['salud']}, {$h['pension']}, {$h['descuentos']})'>
+                                            onclick='devolverDatosAEdicion(\"$c_h\", $cronDataJson, {$h['bonificaciones']}, {$h['salud']}, {$h['pension']}, {$h['descuentos']}, $netoGuardado)'>
                                             🔄
                                         </button>
                                         <a href='$self?eliminar={$h['id']}' class='text-danger text-decoration-none fs-5 align-middle' onclick='return confirm(\"¿Eliminar registro de historial?\")'>🗑</a>
@@ -348,18 +349,14 @@ $(document).ready(function() {
     });
 });
 
-function devolverDatosAEdicion(cedula, cronData, bonos, salud, pension, descuentos) {
-    // 1. Validar si el formulario de la cédula seleccionada coincide con el actual en pantalla
+function devolverDatosAEdicion(cedula, cronData, bonos, salud, pension, descuentos, netoGuardado) {
     let cedulaActualEnPantalla = $('#form_cedula_nit').val();
     
     if (cedulaActualEnPantalla !== cedula) {
-        // Si es un colaborador diferente, cambiamos el select2 y enviamos el GET para renderizar su estructura quincenal correspondiente
         $('#buscar_colaborador').val(cedula).trigger('change');
-        // El formulario se recargará automáticamente por el evento onchange del select2.
         return;
     }
 
-    // 2. Si ya es la cédula que está en pantalla, mapeamos y rellenamos la matriz del cronograma en tiempo real
     if (cronData) {
         for (let concepto in cronData) {
             for (let dia in cronData[concepto]) {
@@ -369,16 +366,16 @@ function devolverDatosAEdicion(cedula, cronData, bonos, salud, pension, descuent
         }
     }
 
-    // 3. Rellenar los inputs manuales de bonos y deducciones
     $('#bonos').val(bonos);
     $('#salud').val(salud);
     $('#pension').val(pension);
     $('#desc').val(descuentos);
 
-    // 4. Recalcular todo el tablero financiero de devengados y neto
+    $('#txt_neto').text("$" + Math.round(netoGuardado).toLocaleString('es-CO'));
+    $('#input_neto').val(Math.round(netoGuardado));
+
     sumarCronograma();
 
-    // 5. Cerrar el modal de historial de manera limpia y subir la pantalla de forma suave
     $('#modalHistorial').modal('hide');
     $('html, body').animate({ scrollTop: 0 }, 'slow');
 }
@@ -463,16 +460,32 @@ function calcular(isInitial = false) {
 
     let extras = v_hed + v_rn + v_dom + v_rndf;
     let bonos = parseFloat(document.getElementById('bonos').value) || 0;
-    let ibc = basico + extras + bonos;
+    
+    let totalDevengado = basico + extras + bonos;
 
     if(isInitial && document.getElementById('salud').value == 0) {
-        document.getElementById('salud').value = Math.round(ibc * 0.04);
-        document.getElementById('pension').value = Math.round(ibc * 0.04);
+        document.getElementById('salud').value = Math.round(totalDevengado * 0.04);
+        document.getElementById('pension').value = Math.round(totalDevengado * 0.04);
     }
 
-    let neto = (ibc + valorAux) - (parseFloat(document.getElementById('salud').value)||0 + parseFloat(document.getElementById('pension').value)||0 + parseFloat(document.getElementById('desc').value)||0);
+    let salud = parseFloat(document.getElementById('salud').value) || 0;
+    let pension = parseFloat(document.getElementById('pension').value) || 0;
+    let otrosDescuentos = parseFloat(document.getElementById('desc').value) || 0;
+
+    let totalDeducciones = salud + pension + otrosDescuentos;
+    document.getElementById('total_deducciones').value = "$ " + Math.round(totalDeducciones).toLocaleString('es-CO');
+
+    let neto = (totalDevengado + valorAux) - totalDeducciones;
+    
     document.getElementById('txt_neto').innerText = "$" + Math.round(neto).toLocaleString('es-CO');
     document.getElementById('input_neto').value = Math.round(neto);
+
+    // Ejecuta la resta real entre el Neto a pagar y el total de deducciones
+    let diferenciaFinal = neto - totalDeducciones;
+
+    // Renderiza la ecuación completa en la interfaz
+    let textoOperacion = "$" + Math.round(neto).toLocaleString('es-CO') + " - $" + Math.round(totalDeducciones).toLocaleString('es-CO') + " = $" + Math.round(diferenciaFinal).toLocaleString('es-CO');
+    document.getElementById('operacion_neto_descuentos').value = textoOperacion;
 }
 
 document.addEventListener('input', e => {
