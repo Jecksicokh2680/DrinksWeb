@@ -37,7 +37,7 @@ if (isset($_POST['importar_terceros'])) {
 }
 
 /* ============================================================
-    LÓGICA 2: ELIMINACIÓN DE COLABORADOR
+    LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
    ============================================================ */
 if (isset($_GET['eliminar_id'])) {
     $id_a_borrar = intval($_GET['eliminar_id']);
@@ -49,6 +49,24 @@ if (isset($_GET['eliminar_id'])) {
         exit();
     }
     $stmtDel->close();
+}
+
+/* ============================================================
+    LÓGICA NUEVA: RETIRAR COLABORADOR (CAMBIO DE ESTADO)
+   ============================================================ */
+if (isset($_GET['retirar_id'])) {
+    $id_a_retirar = intval($_GET['retirar_id']);
+    $fecha_hoy = date('Y-m-d');
+    
+    // Cambia el estado a RETIRADO y guarda la fecha del día de hoy
+    $stmtRet = $mysqli->prepare("UPDATE colaborador SET estado = 'RETIRADO', fecha_retiro = ? WHERE id = ? AND NitEmpresa = ?");
+    $stmtRet->bind_param("sis", $fecha_hoy, $id_a_retirar, $NitEmpresa);
+    
+    if ($stmtRet->execute()) {
+        header("Location: " . $_SERVER['PHP_SELF'] . "?msg=retired");
+        exit();
+    }
+    $stmtRet->close();
 }
 
 /* ============================================================
@@ -101,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
 if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'deleted') $mensaje = "<div class='alert alert-warning fw-bold'>🗑️ Registro eliminado correctamente.</div>";
     if ($_GET['msg'] == 'success') $mensaje = "<div class='alert alert-success fw-bold'>✅ Colaborador guardado correctamente.</div>";
+    if ($_GET['msg'] == 'retired') $mensaje = "<div class='alert alert-info fw-bold'>🚪 Colaborador marcado como RETIRADO exitosamente.</div>";
 }
 
 $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inactivo = 0 ORDER BY nombres ASC");
@@ -153,7 +172,9 @@ $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inacti
                     <select name="nit_seleccionado" class="form-select" required>
                         <option value="">-- Seleccione un Tercero --</option>
                         <?php while ($t = $resTerceros->fetch_assoc()): ?>
-                            <option value="<?= $t['nit'] ?>"><?= htmlspecialchars($t['nombres']) ?> (<?= $t['nit'] ?>)</option>
+                            <option value="<?= $t['nit'] ?>">
+                                <?= htmlspecialchars(trim(preg_replace('/\s+/', ' ', $t['nombres']))) ?> (<?= $t['nit'] ?>)
+                            </option>
                         <?php endwhile; ?>
                     </select>
                 </div>
@@ -209,6 +230,7 @@ $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inacti
                                 <th>Nombre Completo</th>
                                 <th>Cargo</th>
                                 <th>Salario</th>
+                                <th class="text-center">Estado</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
@@ -218,14 +240,31 @@ $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inacti
                                      LEFT JOIN terceros t ON c.CedulaNit = t.CedulaNit 
                                      WHERE c.NitEmpresa = '$NitEmpresa' ORDER BY c.id DESC";
                             $resL = $mysqli->query($sqlL);
-                            while ($c = $resL->fetch_assoc()): ?>
+                            while ($c = $resL->fetch_assoc()): 
+                                $esActivo = (strtoupper($c['estado'] ?? 'ACTIVO') === 'ACTIVO');
+                            ?>
                             <tr>
                                 <td class="ps-4 fw-bold"><?= $c['CedulaNit'] ?></td>
                                 <td><?= htmlspecialchars($c['Nombre'] ?? 'No sincronizado') ?></td>
                                 <td><?= htmlspecialchars($c['cargo']) ?></td>
                                 <td>$<?= number_format($c['salario'], 0) ?></td>
                                 <td class="text-center">
-                                    <a href="?eliminar_id=<?= $c['id'] ?>" class="btn btn-link text-danger p-0" onclick="return confirm('¿Eliminar?');">
+                                    <?php if ($esActivo): ?>
+                                        <span class="badge bg-success">Activo</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger" title="Retirado el: <?= $c['fecha_retiro'] ?? 'N/A' ?>">Retirado</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center">
+                                    <?php if ($esActivo): ?>
+                                        <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de que desea registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
+                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L13.293 7l-1.147-1.146a.5.5 0 0 1 0-.708"/>
+                                            </svg>
+                                        </a>
+                                    <?php endif; ?>
+
+                                    <a href="?eliminar_id=<?= $c['id'] ?>" class="btn btn-link text-danger p-0" onclick="return confirm('¿Eliminar por completo este registro?');" title="Eliminar Registro">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trash-fill" viewBox="0 0 16 16">
                                             <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0"/>
                                         </svg>

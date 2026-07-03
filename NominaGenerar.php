@@ -24,7 +24,7 @@ if (isset($_GET['eliminar'])) {
     exit();
 }
 
-// --- 3. LÓGICA DE GUARDADO (CON AUTO-REPARACIÓN DE COLUMNA) ---
+// --- 3. LÓGICA DE GUARDADO ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     $cedula  = $mysqli->real_escape_string($_POST['CedulaNit']);
     $periodo = $periodoActual;
@@ -43,10 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['CedulaNit'])) {
     $c_dom  = floatval($_POST['cant_dom']);
     $c_rndf = floatval($_POST['cant_rndf']);
     
-    // Capturamos el total de días de auxilio para la base de datos
     $dias_aux_transp = floatval($_POST['dias_aux_hidden'] ?? 0);
     $cron_json = $mysqli->real_escape_string(json_encode($_POST['cron']));
 
+    // Porcentajes de Ley 2026: HED 1.25, RN 0.35, DOM/FEST 1.75, RNDF 2.10
     $valor_extras_total = ($c_hed * ($vHora * 1.25)) + ($c_rn * ($vHora * 0.35)) + 
                           ($c_dom * ($vHora * 1.75)) + ($c_rndf * ($vHora * 2.10));
     $total_neto = floatval($_POST['total_pagado']);
@@ -100,7 +100,7 @@ if (!empty($_GET['cedula'])) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Nómina Pro 2026</title>
+    <title>Nómina Pro 2026 - Jornada 42H</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
@@ -113,6 +113,7 @@ if (!empty($_GET['cedula'])) {
         .input-cron { width: 38px; border: 1px solid #ddd; text-align: center; font-size: 0.75rem; }
         .bg-aux { background-color: #e3f2fd !important; }
         .modal-xl { max-width: 95% !important; }
+        .val-pesos { font-size: 0.8rem; color: #27ae60; font-weight: bold; display: block; margin-top: 2px; }
     </style>
 </head>
 <body class="p-4">
@@ -122,7 +123,7 @@ if (!empty($_GET['cedula'])) {
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <?php if(isset($_GET['success'])): ?>
-                <span class="text-success fw-bold">✅ PROCESADO</span>
+                <span class="text-success fw-bold">✅ PROCESADO EXITOSAMENTE</span>
             <?php endif; ?>
         </div>
         <button type="button" class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalHistorial">📂 VER HISTORIAL / EXPORTAR EXCEL</button>
@@ -130,7 +131,7 @@ if (!empty($_GET['cedula'])) {
 
     <div class="card mb-4 border-0 shadow-sm">
         <div class="card-body">
-            <form method="GET" action="<?= $self ?>" class="row g-2">
+            <form method="GET" action="<?= $self ?>" id="form_cargar_colaborador" class="row g-2">
                 <div class="col-md-10">
                     <select name="cedula" id="buscar_colaborador" class="form-select" onchange="this.form.submit()">
                         <option value="">-- Seleccionar Colaborador --</option>
@@ -155,7 +156,8 @@ if (!empty($_GET['cedula'])) {
     </div>
 
     <?php if ($colaborador): 
-        $v_h = $colaborador['salario'] / 240; 
+        // Legislación 2026: Divisor de 168 horas por jornada semanal de 42h
+        $v_h = $colaborador['salario'] / 168; 
         if ($diaActual <= 15) { $inicio = 1; $fin = 15; } 
         else { $inicio = 16; $fin = date('t', mktime(0,0,0,$mesActual,1,$anioActual)); }
         $nombresDias = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
@@ -164,7 +166,7 @@ if (!empty($_GET['cedula'])) {
     <div class="card card-nomina border-0">
         <form action="<?= $self ?>" method="POST">
             <input type="hidden" id="v_hora" name="v_hora_hidden" value="<?= $v_h ?>">
-            <input type="hidden" name="CedulaNit" value="<?= $colaborador['CedulaNit'] ?>">
+            <input type="hidden" name="CedulaNit" id="form_cedula_nit" value="<?= $colaborador['CedulaNit'] ?>">
             <input type="hidden" name="total_pagado" id="input_neto">
             <input type="hidden" name="dias_aux_hidden" id="dias_aux_hidden">
 
@@ -172,12 +174,17 @@ if (!empty($_GET['cedula'])) {
                 <div class="row mb-3 align-items-center">
                     <div class="col-md-8">
                         <h2 class="fw-bold text-dark mb-0"><?= $nombreCompletoForm ?></h2>
-                        <span class="text-muted fw-bold">Periodo: <?= $periodoActual ?> | Sueldo: $<?= number_format($colaborador['salario']) ?></span>
+                        <span class="text-muted fw-bold">Periodo: <?= $periodoActual ?> | Sueldo: $<?= number_format($colaborador['salario']) ?> | Valor Hora: $<?= number_format($v_h, 2) ?></span>
                     </div>
                     <div class="col-md-4 text-md-end">
                         <label class="lbl-ley">Neto a Pagar</label>
                         <h1 id="txt_neto" class="fw-bold text-primary mb-0">$ 0</h1>
                     </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="lbl-ley">Distribución de horas por día</span>
+                    <button type="button" class="btn btn-warning btn-sm fw-bold shadow-sm" onclick="replicarPrimerDia()">📋 REPLICAR EN DÍAS ORDINARIOS (OMITIR DOMINGOS)</button>
                 </div>
 
                 <div class="table-responsive mb-4 border shadow-sm">
@@ -188,22 +195,23 @@ if (!empty($_GET['cedula'])) {
                                 <?php for($i=$inicio; $i<=$fin; $i++): 
                                     $fU = mktime(0,0,0,$mesActual,$i,$anioActual);
                                     $esFest = (date('w',$fU)==0); ?>
-                                <th class="<?= $esFest ? 'bg-festivo' : 'bg-dia' ?>"><?= $i ?><br><?= $nombresDias[date('w',$fU)] ?></th>
+                                <th class="<?= $esFest ? 'bg-festivo' : 'bg-dia' ?>" data-dia-semana="<?= date('w',$fU) ?>"><?= $i ?><br><?= $nombresDias[date('w',$fU)] ?></th>
                                 <?php endfor; ?>
                                 <th class="bg-dark text-white">TOTAL</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php 
-                            $filas = ["Días Lab"=>"d_lab", "Aux. Transp"=>"d_aux", "Rec Noct"=>"r_noc", "Ext Diur"=>"ext", "Dom/Fest"=>"h_df", "RN Fest"=>"rn_df"];
+                            $filas = ["Días Lab"=>"d_lab", "Aux. Transp"=>"d_aux", "Rec Noct (35%)"=>"r_noc", "Ext Diur (25%)"=>"ext", "Dom/Fest (75%)"=>"h_df", "RN Fest (110%)"=>"rn_df"];
                             foreach($filas as $lbl => $code): ?>
                             <tr>
                                 <td class="text-start ps-2 fw-bold <?= $code=='d_aux'?'bg-aux':'' ?>"><?= $lbl ?></td>
                                 <?php for($i=$inicio; $i<=$fin; $i++): 
+                                    $fU = mktime(0,0,0,$mesActual,$i,$anioActual);
                                     $def = ($code == 'd_lab' || $code == 'd_aux') ? 1 : 0;
                                     $val = $cronPre[$code][$i] ?? $def; ?>
                                     <td class="<?= $code=='d_aux'?'bg-aux':'' ?>">
-                                        <input type="number" step="0.5" class="input-cron <?= $code=='d_lab'?'master-dia':'' ?>" name="cron[<?= $code ?>][<?= $i ?>]" data-dia="<?= $i ?>" value="<?= $val ?>">
+                                        <input type="number" step="0.5" class="input-cron <?= $code=='d_lab'?'master-dia':'' ?>" name="cron[<?= $code ?>][<?= $i ?>]" data-dia="<?= $i ?>" data-concepto="<?= $code ?>" data-w="<?= date('w',$fU) ?>" value="<?= $val ?>">
                                     </td>
                                 <?php endfor; ?>
                                 <td class="bg-light fw-bold" id="total_<?= $code ?>">0</td>
@@ -223,10 +231,26 @@ if (!empty($_GET['cedula'])) {
                             <div class="col-md-3"><label class="lbl-ley">Bonos</label><input type="number" name="bonificaciones" id="bonos" class="form-control calc" value="<?= $nominaExistente['bonificaciones'] ?? 0 ?>"></div>
                         </div>
                         <div class="row g-2 mt-2">
-                            <div class="col-md-3"><label class="lbl-ley">HED</label><input type="number" id="hed" class="form-control" name="cant_hed" readonly></div>
-                            <div class="col-md-3"><label class="lbl-ley">RN</label><input type="number" id="rn" class="form-control" name="cant_rn" readonly></div>
-                            <div class="col-md-3"><label class="lbl-ley">DOM</label><input type="number" id="dom" class="form-control" name="cant_dom" readonly></div>
-                            <div class="col-md-3"><label class="lbl-ley">RNDF</label><input type="number" id="rndf" class="form-control" name="cant_rndf" readonly></div>
+                            <div class="col-md-3">
+                                <label class="lbl-ley">HED (1.25)</label>
+                                <input type="number" id="hed" class="form-control" name="cant_hed" readonly>
+                                <span id="v_hed_pesos" class="val-pesos">$ 0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="lbl-ley">RN (0.35)</label>
+                                <input type="number" id="rn" class="form-control" name="cant_rn" readonly>
+                                <span id="v_rn_pesos" class="val-pesos">$ 0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="lbl-ley">DOM/FEST (1.75)</label>
+                                <input type="number" id="dom" class="form-control" name="cant_dom" readonly>
+                                <span id="v_dom_pesos" class="val-pesos">$ 0</span>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="lbl-ley">RNDF (2.10)</label>
+                                <input type="number" id="rndf" class="form-control" name="cant_rndf" readonly>
+                                <span id="v_rndf_pesos" class="val-pesos">$ 0</span>
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-4">
@@ -246,6 +270,7 @@ if (!empty($_GET['cedula'])) {
     <?php endif; ?>
 </div>
 
+<!-- Modal Historial -->
 <div class="modal fade" id="modalHistorial" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -259,7 +284,7 @@ if (!empty($_GET['cedula'])) {
                     <table class="table table-sm table-hover align-middle mb-0" id="tablaParaExcel">
                         <thead class="table-light">
                             <tr>
-                                <th>Cedula</th><th>Nombre</th><th>Días</th><th>Aux.T</th><th>HED</th><th>RN</th><th>DOM</th><th>RNDF</th><th>Neto</th><th class="no-export"></th>
+                                <th>Cedula</th><th>Nombre</th><th>Días</th><th>Aux.T</th><th>HED</th><th>RN</th><th>DOM</th><th>RNDF</th><th>Neto</th><th class="no-export">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -271,6 +296,10 @@ if (!empty($_GET['cedula'])) {
                                     $qH = $mysqliPos->query("SELECT nombres, apellidos FROM terceros WHERE nit = '$c_h' LIMIT 1");
                                     if($tH = $qH->fetch_assoc()) $n_h = trim("{$tH['nombres']} {$tH['apellidos']}");
                                 }
+                                
+                                // Escapamos de forma segura la data JSON para inyectarla en el botón de retorno
+                                $cronDataJson = htmlspecialchars($h['cronograma_data'], ENT_QUOTES, 'UTF-8');
+                                
                                 echo "<tr>
                                     <td class='fw-bold'>$c_h</td>
                                     <td><small>$n_h</small></td>
@@ -281,7 +310,13 @@ if (!empty($_GET['cedula'])) {
                                     <td class='text-center'>{$h['cant_dom']}</td>
                                     <td class='text-center'>{$h['cant_rndf']}</td>
                                     <td class='fw-bold text-success'>$".number_format($h['total_pagado'])."</td>
-                                    <td class='no-export'><a href='$self?eliminar={$h['id']}' class='text-danger' onclick='return confirm(\"¿Eliminar?\")'>🗑</a></td>
+                                    <td class='no-export text-center'>
+                                        <button type='button' class='btn btn-sm btn-info me-1 py-0 px-1' title='Devolver a edición'
+                                            onclick='devolverDatosAEdicion(\"$c_h\", $cronDataJson, {$h['bonificaciones']}, {$h['salud']}, {$h['pension']}, {$h['descuentos']})'>
+                                            🔄
+                                        </button>
+                                        <a href='$self?eliminar={$h['id']}' class='text-danger text-decoration-none fs-5 align-middle' onclick='return confirm(\"¿Eliminar registro de historial?\")'>🗑</a>
+                                    </td>
                                 </tr>";
                             }
                             ?>
@@ -305,10 +340,68 @@ $(document).ready(function() {
     $(document).on('input', '.master-dia', function() {
         let dia = $(this).data('dia');
         let val = $(this).val();
-        $(`input[name="cron[d_aux][${dia}]"]`).val(val);
+        let w = $(this).data('w');
+        if (w !== 0) {
+            $(`input[name="cron[d_aux][${dia}]"]`).val(val);
+        }
         sumarCronograma();
     });
 });
+
+function devolverDatosAEdicion(cedula, cronData, bonos, salud, pension, descuentos) {
+    // 1. Validar si el formulario de la cédula seleccionada coincide con el actual en pantalla
+    let cedulaActualEnPantalla = $('#form_cedula_nit').val();
+    
+    if (cedulaActualEnPantalla !== cedula) {
+        // Si es un colaborador diferente, cambiamos el select2 y enviamos el GET para renderizar su estructura quincenal correspondiente
+        $('#buscar_colaborador').val(cedula).trigger('change');
+        // El formulario se recargará automáticamente por el evento onchange del select2.
+        return;
+    }
+
+    // 2. Si ya es la cédula que está en pantalla, mapeamos y rellenamos la matriz del cronograma en tiempo real
+    if (cronData) {
+        for (let concepto in cronData) {
+            for (let dia in cronData[concepto]) {
+                let valorDia = cronData[concepto][dia];
+                $(`input[name="cron[${concepto}][${dia}]"]`).val(valorDia);
+            }
+        }
+    }
+
+    // 3. Rellenar los inputs manuales de bonos y deducciones
+    $('#bonos').val(bonos);
+    $('#salud').val(salud);
+    $('#pension').val(pension);
+    $('#desc').val(descuentos);
+
+    // 4. Recalcular todo el tablero financiero de devengados y neto
+    sumarCronograma();
+
+    // 5. Cerrar el modal de historial de manera limpia y subir la pantalla de forma suave
+    $('#modalHistorial').modal('hide');
+    $('html, body').animate({ scrollTop: 0 }, 'slow');
+}
+
+function replicarPrimerDia() {
+    const inicioDia = parseInt(<?= $inicio ?? 1 ?>);
+    const finDia = parseInt(<?= $fin ?? 15 ?>);
+    const conceptos = ['d_lab', 'd_aux', 'r_noc', 'ext', 'h_df', 'rn_df'];
+
+    conceptos.forEach(concepto => {
+        let valorBase = parseFloat($(`input[data-concepto="${concepto}"][data-dia="${inicioDia}"]`).val()) || 0;
+        
+        for (let i = inicioDia + 1; i <= finDia; i++) {
+            let inputDestino = $(`input[data-concepto="${concepto}"][data-dia="${i}"]`);
+            let diaSemana = parseInt(inputDestino.data('w'));
+
+            if (diaSemana !== 0) { 
+                inputDestino.val(valorBase);
+            }
+        }
+    });
+    sumarCronograma();
+}
 
 function exportarExcel() {
     let tabla = document.getElementById("tablaParaExcel");
@@ -353,13 +446,22 @@ function calcular(isInitial = false) {
     let valorAux = (salarioMensual <= 1750905 * 2) ? Math.round((249095 / 30) * dLiqAux) : 0;
     document.getElementById('aux_transp').value = valorAux;
 
-    let extras = Math.round(
-        (parseFloat(document.getElementById('hed').value || 0) * vH * 1.25) +
-        (parseFloat(document.getElementById('rn').value || 0) * vH * 0.35) +
-        (parseFloat(document.getElementById('dom').value || 0) * vH * 1.75) +
-        (parseFloat(document.getElementById('rndf').value || 0) * vH * 2.10)
-    );
+    let cant_hed = parseFloat(document.getElementById('hed').value || 0);
+    let cant_rn  = parseFloat(document.getElementById('rn').value || 0);
+    let cant_dom = parseFloat(document.getElementById('dom').value || 0);
+    let cant_rndf = parseFloat(document.getElementById('rndf').value || 0);
 
+    let v_hed  = Math.round(cant_hed  * vH * 1.25);
+    let v_rn   = Math.round(cant_rn   * vH * 0.35);
+    let v_dom  = Math.round(cant_dom  * vH * 1.75);
+    let v_rndf = Math.round(cant_rndf * vH * 2.10);
+
+    document.getElementById('v_hed_pesos').innerText  = "$ " + v_hed.toLocaleString('es-CO');
+    document.getElementById('v_rn_pesos').innerText   = "$ " + v_rn.toLocaleString('es-CO');
+    document.getElementById('v_dom_pesos').innerText  = "$ " + v_dom.toLocaleString('es-CO');
+    document.getElementById('v_rndf_pesos').innerText = "$ " + v_rndf.toLocaleString('es-CO');
+
+    let extras = v_hed + v_rn + v_dom + v_rndf;
     let bonos = parseFloat(document.getElementById('bonos').value) || 0;
     let ibc = basico + extras + bonos;
 
