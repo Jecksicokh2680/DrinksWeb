@@ -27,6 +27,7 @@ function Autorizacion($User, $Solicitud) {
 
 $EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 $EsAgenteAdmin = (Autorizacion($UsuarioSesion, '9999') === 'SI');
+$EsJefeBodega = (Autorizacion($UsuarioSesion, '0004') === 'SI');
 ?>
 <!doctype html>
 <html lang="es">
@@ -82,12 +83,18 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Transferencia</a>
                     <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Conteo Web</a>
                     <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Lista Solicitud Anulación</a>
+                    
                     <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
                     <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
                     <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>
                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>
-                    <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">🧮 Aprobar Traslados JB</a>
+                    
                     <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>
+                    <?php if ($EsJefeBodega): ?>
+                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación Solicitud Anulación</a>
+                    <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
+                    <?php endif; ?>
+                    
                     <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>
                 </div>
             </div>
