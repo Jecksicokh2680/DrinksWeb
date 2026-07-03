@@ -124,6 +124,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                              
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
+                                    <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
 
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
