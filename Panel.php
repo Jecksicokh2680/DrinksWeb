@@ -87,6 +87,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>
                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>
                     <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">🧮 Aprobar Traslados JB</a>
+                    <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>
                     <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>
                 </div>
             </div>
