@@ -148,24 +148,54 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
 <html lang="es">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corte de Caja</title>
     <style>
-        body{font-family:"Segoe UI",sans-serif; margin:20px; background:#eef3f7; color:#333;}
+        * { box-sizing: border-box; }
+        body{font-family:"Segoe UI",sans-serif; margin:15px; background:#eef3f7; color:#333;}
         .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
+        
+        /* Contenedores Responsivos */
+        .form-grid { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .form-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+        .form-group select, .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        
+        .row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        .status-container { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 150px; }
+        
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .table{width:100%; border-collapse:collapse;}
         .table td, .table th{padding:10px; border-bottom:1px solid #eee; text-align: left;}
-        .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;}
+        
+        /* Botones Adaptables */
+        .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; width: auto; text-align: center;}
+        .btn-block { width: 100%; }
         .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;}
+        .actions-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        
         .text-end{ text-align: right; }
-        .input-edit { width: 90%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
-        .modal-content { background: white; margin: 2% auto; padding: 15px; width: 98%; max-width: 420px; border-radius: 12px; }
+        .input-edit { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        
+        /* Modal Responsivo */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
+        .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        /* Media Queries para teléfonos móviles modernos */
+        @media (max-width: 576px) {
+            body { margin: 10px; }
+            .panel { padding: 12px; }
+            .form-group { min-width: 100%; }
+            .button { width: 100%; }
+            .actions-container .button { width: 100%; }
+            .table td, .table th { padding: 8px 5px; font-size: 14px; }
+        }
 
         @media print {
             @page { margin: 0; }
             body * { visibility: hidden !important; }
             #modalVoucher, #modalVoucher * { visibility: visible !important; }
-            #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; display: block !important; }
+            #modalVoucher { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: #fff !important; display: block !important; padding: 0 !important; }
+            .modal-content { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; box-shadow: none !important; }
             #printArea { 
                 width: 95% !important; 
                 margin: 0 !important; 
@@ -187,42 +217,53 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
 <body>
 
 <div class="panel no-print">
-    <form method="GET" style="display:flex; flex-wrap:wrap; gap:15px; align-items:center;">
-        <div>Sede: <select name="sede" onchange="this.form.submit()">
-            <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
-            <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
-        </select></div>
-        <div>Fecha: <input type="date" name="fecha" value="<?= $fecha_input ?>"></div>
-        <div>Facturador: <select name="nit">
-            <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
-                <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
-            <?php else: ?>
-                <option value="">-- Seleccione Usuario --</option>
-                <?php if($factList): while($f=$factList->fetch_assoc()): ?>
-                    <option value="<?= $f['FACTURADOR_NIT'] ?>" <?= ($f['FACTURADOR_NIT']===$UsuarioFact)?'selected':'' ?>><?= $f['FACTURADOR'] ?></option>
-                <?php endwhile; endif; ?>
-            <?php endif; ?>
-        </select></div>
+    <form method="GET" class="form-grid">
+        <div class="form-group">
+            <label>Sede:</label>
+            <select name="sede" onchange="this.form.submit()">
+                <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
+                <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Fecha:</label>
+            <input type="date" name="fecha" value="<?= $fecha_input ?>">
+        </div>
+        <div class="form-group">
+            <label>Facturador:</label>
+            <select name="nit">
+                <?php if($permiso9999 !== 'SI' && $permiso0003 !== 'SI'): ?>
+                    <option value="<?= $UsuarioSesion ?>"><?= $UsuarioSesion ?> (Yo)</option>
+                <?php else: ?>
+                    <option value="">-- Seleccione Usuario --</option>
+                    <?php if($factList): while($f=$factList->fetch_assoc()): ?>
+                        <option value="<?= $f['FACTURADOR_NIT'] ?>" <?= ($f['FACTURADOR_NIT']===$UsuarioFact)?'selected':'' ?>><?= $f['FACTURADOR'] ?></option>
+                    <?php endwhile; endif; ?>
+                <?php endif; ?>
+            </select>
+        </div>
         <button class="button" type="submit">Consultar</button>
     </form>
 </div>
 
 <?php if($UsuarioFact !== ''): ?>
-    <div class="panel no-print" style="display: flex; justify-content: space-between; align-items: stretch; gap: 20px;">
-        <div style="flex: 1; max-width: 500px;">
+    <div class="row-grid no-print">
+        <div class="panel" style="margin-bottom: 0;">
             <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
-            <table class="table">
-                <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
-                <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
-                <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
-                    <td><b>TOTAL FÍSICO:</b></td>
-                    <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
-                </tr>
-            </table>
+            <div class="table-responsive">
+                <table class="table">
+                    <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
+                    <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
+                    <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                    <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
+                        <td><b>TOTAL FÍSICO:</b></td>
+                        <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
+                    </tr>
+                </table>
+            </div>
         </div>
 
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+        <div class="panel status-container" style="margin-bottom: 0;">
             <?php if($cierreRealizado): ?>
                 <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center;">
                     <div style="font-size: 3em;">🔒</div>
@@ -239,22 +280,24 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
 
     <div class="panel no-print">
         <h3>💸 Egresos de Caja</h3>
-        <table class="table">
-            <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
-            <tbody>
-                <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
-                <tr>
-                    <td><?= $idE ?></td>
-                    <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
-                    <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
-                    <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
+                <tbody>
+                    <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
+                    <tr>
+                        <td><?= $idE ?></td>
+                        <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                        <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                        <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="panel no-print" style="text-align:center;">
+    <div class="panel no-print actions-container">
         <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
         <?php if($cierreRealizado): ?>
             <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
@@ -263,7 +306,9 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
         <?php endif; ?>
     </div>
 
-    <div id="modalVoucher" class="modal"><div class="modal-content" id="printArea"></div></div>
+    <div id="modalVoucher" class="modal">
+        <div class="modal-content" id="printArea"></div>
+    </div>
 <?php endif; ?>
 
 <script>
