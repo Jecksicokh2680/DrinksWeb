@@ -20,7 +20,8 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
-$puedeBorrar = ($Usuario == '9999' || $Usuario == '0003'); 
+// Permiso administrativo para borrar cualquier solicitud
+$puedeBorrarGlobal = ($Usuario == '9999' || $Usuario == '0003'); 
 
 /* ============================================================
     FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
@@ -94,9 +95,28 @@ if (isset($_GET['setSede'])) {
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-if (isset($_GET['accion']) && $_GET['accion'] == 'borrar' && $puedeBorrar) {
+// Acción de borrar modificada para validar también si es el creador propio y no está autorizada
+if (isset($_GET['accion']) && $_GET['accion'] == 'borrar') {
+    $facturaAEliminar = $_GET['factura'];
+    $fechaAEliminar   = $_GET['f'];
+    $sedeAEliminar    = $_GET['s'];
+
+    // Si no es administrador, verificamos detalladamente en la base de datos que sea suya y esté limpia
+    if (!$puedeBorrarGlobal) {
+        $stmtCheck = $mysqli->prepare("SELECT NitCajero, JefeBodCheck, GerenteCheck FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
+        $stmtCheck->bind_param("sss", $facturaAEliminar, $fechaAEliminar, $sedeAEliminar);
+        $stmtCheck->execute();
+        $resCheck = $stmtCheck->get_result()->fetch_assoc();
+
+        $anuladoEnPOS = VerificarAnulacion($facturaAEliminar, $sedeAEliminar);
+
+        if (!$resCheck || $resCheck['NitCajero'] !== $Usuario || $resCheck['JefeBodCheck'] == '1' || $resCheck['GerenteCheck'] == '1' || $anuladoEnPOS == 1) {
+            die("Error: No tienes permisos para eliminar esta solicitud o ya ha sido procesada.");
+        }
+    }
+
     $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
-    $stmt->bind_param("sss", $_GET['factura'], $_GET['f'], $_GET['s']);
+    $stmt->bind_param("sss", $facturaAEliminar, $fechaAEliminar, $sedeAEliminar);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
@@ -254,12 +274,11 @@ if ($dbSede) {
                     <tr>
                         <th>HORA</th><th>SEDE</th><th>CAJERO</th><th>TIPO</th><th>DOC. ANULAR</th><th>VALOR</th><th>REEMPLAZO</th>
                         <th style="width: 20%;">MOTIVO</th><th>BODEGA</th><th>GERENCIA</th><th>ESTADO POS</th>
-                        <?php if($puedeBorrar): ?><th></th><?php endif; ?>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
                     <?php
-                    // Se modificó la cláusula ORDER BY para ordenar por sede (Nit_Empresa) y luego por hora (FH_CajeroCheck)
                     $sql = "SELECT s.*, t.Nombre as NombreCajero FROM solicitud_anulacion s 
                             LEFT JOIN terceros t ON s.NitCajero COLLATE utf8mb4_unicode_ci = t.CedulaNit 
                             WHERE s.F_Creacion = ? AND s.Estado = '1' 
@@ -278,6 +297,11 @@ if ($dbSede) {
                             
                             $tipoBadgeColor = ($r['Tipo'] === 'P') ? 'bg-info text-dark' : 'bg-primary';
                             $tipoTexto      = ($r['Tipo'] === 'P') ? 'PEDIDO' : 'FACTURA';
+
+                            // CONDICIÓN NUEVA: El creador puede borrarla sólo si Bodega, Gerencia y POS están limpios/pendientes
+                            $esCreador = ($r['NitCajero'] === $Usuario);
+                            $estaLimpio = ($r['JefeBodCheck'] !== '1' && $r['GerenteCheck'] !== '1' && $anuladoPOS == 0);
+                            $puedeBorrarPropio = ($esCreador && $estaLimpio);
                         ?>
                         <tr>
                             <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
@@ -306,9 +330,12 @@ if ($dbSede) {
                             </td>
 
                             <td><span class="badge <?= $badgeEstado ?> rounded-pill"><?= $textoEstado ?></span></td>
-                            <?php if($puedeBorrar): ?>
-                            <td><button class="btn-delete" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button></td>
-                            <?php endif; ?>
+                            
+                            <td>
+                                <?php if($puedeBorrarGlobal || $puedeBorrarPropio): ?>
+                                    <button class="btn-delete" title="Eliminar Solicitud" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                         <?php 
                         endwhile; 
