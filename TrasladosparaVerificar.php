@@ -185,7 +185,7 @@ function nombreSede($nit) {
 <body>
 
 <div class="card">
-    <h2 style="margin: 0 0 20px 0; color: #212529;">📦 Auditoría de Traslados de Inventario</h2>
+    <h2 style="margin: 0 0 20px 0; color: #212529;">📦 Aprobacion de Traslados de Mercancia Jefe de Bodega</h2>
     
     <?php if(isset($msg)) echo $msg; ?>
 

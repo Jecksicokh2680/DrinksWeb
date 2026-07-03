@@ -104,10 +104,22 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
             $idO = $origDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
             $idD = $destDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
 
-            $origDb->query("UPDATE inventario SET cantidad=cantidad+$cant WHERE idproducto=$idO");
-            $destDb->query("UPDATE inventario SET cantidad=cantidad-$cant WHERE idproducto=$idD");
-            $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0 WHERE idMov=$id");
-            $msg = "<div class='alert ok'>✅ Movimiento reversado</div>";
+            try {
+                $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
+
+                // Devolver inventarios a sus estados originales
+                $origDb->query("UPDATE inventario SET cantidad=cantidad+$cant WHERE idproducto=$idO");
+                $destDb->query("UPDATE inventario SET cantidad=cantidad-$cant WHERE idproducto=$idD");
+                
+                // Corrección: Cambiar tanto Aprobado como Estado a 0 al reversar
+                $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0, Estado=0 WHERE idMov=$id");
+
+                $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
+                $msg = "<div class='alert ok'>✅ Movimiento reversado (Aprobado y Estado fijados en 0)</div>";
+            } catch (Exception $e) {
+                $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
+                $msg = "<div class='alert err'>❌ Error al procesar reverso: ".$e->getMessage()."</div>";
+            }
         }
     }
 }
@@ -166,7 +178,7 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
 <body>
 
 <div class="card">
-    <h2>📦 Traslados Central ⟷ Drinks</h2>
+    <h2>📦 Grabacion de Traslados de Mercancia</h2>
     <?php if(isset($msg)) echo $msg; ?>
 
     <form method="GET" style="display:flex; gap:10px; margin-bottom:20px;">
@@ -227,7 +239,7 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         <table id="tableHistory">
             <thead>
                 <tr>
-                    <th>Fecha / Hora</th><th>Usuario</th><th>Barcode</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Obs</th><th>Estado</th>
+                    <th>Fecha / Hora</th><th>Usuario</th><th>Producto / Barcode</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Obs</th><th>Estado</th>
                 </tr>
             </thead>
             <tbody>
@@ -239,7 +251,10 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                 <tr style="<?= $r['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
                     <td><?= $r['fecha'] ?></td>
                     <td><?= $r['usuario_Orig'] ?></td>
-                    <td data-nombre="<?= htmlspecialchars($nomProd) ?>"><code><?= $r['barcode'] ?></code></td>
+                    <td data-nombre="<?= htmlspecialchars($nomProd) ?>" style="text-align:left; max-width:250px;">
+                        <div style="font-weight:bold; color:#2c3e50;"><?= htmlspecialchars($nomProd) ?></div>
+                        <small style="font-family:monospace; color:#666;">[<?= $r['barcode'] ?>]</small>
+                    </td>
                     <td style="font-weight:bold;"><?= number_format($r['cant'], 1) ?></td>
                     <td style="font-weight:bold;"><?= $origName ?></td> <td style="font-weight:bold;"><?= $destName ?></td> <td style="font-size:11px;"><?= $r['Observacion'] ?></td>
                     <td>
@@ -280,10 +295,9 @@ function printMovimientos(){
         const nombreProd = celdaBarcode.getAttribute('data-nombre');
         celdaBarcode.innerHTML = `
             <div style="font-size:11px; font-weight:900; line-height:1; word-wrap: break-word;">${nombreProd}</div>
-            <div style="font-size:9px; font-family:monospace;">[${celdaBarcode.innerText}]</div>
+            <div style="font-size:9px; font-family:monospace;">[${celdaBarcode.querySelector('small').innerText.replace('[','').replace(']','').trim()}]</div>
         `;
 
-        // AJUSTE: Sedes en negrilla para la impresión
         row.cells[4].innerHTML = `<b>${nombresSedes[row.cells[4].innerText.trim()] || row.cells[4].innerText}</b>`;
         row.cells[5].innerHTML = `<b>${nombresSedes[row.cells[5].innerText.trim()] || row.cells[5].innerText}</b>`;
 
