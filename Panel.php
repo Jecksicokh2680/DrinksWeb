@@ -56,6 +56,7 @@ body {
     flex-direction: column; 
     flex-shrink: 0; 
     box-shadow: 4px 0 15px rgba(0,0,0,0.1);
+    overflow-y: auto; /* Permite scroll interno si el menú es largo */
 }
 
 .navbar-brand { 
@@ -82,7 +83,7 @@ body {
 .sidebar .nav-link:hover { 
     background: rgba(255, 255, 255, 0.15); 
     color: #fff; 
-    padding-left: 20px; /* Efecto sutil de desplazamiento lateral */
+    padding-left: 20px; 
 }
 
 /* Ajustes de Acordeones */
@@ -109,7 +110,7 @@ body {
 }
 
 .accordion-button::after {
-    filter: brightness(0) invert(1); /* Hace que la flecha de Bootstrap sea blanca */
+    filter: brightness(0) invert(1); 
 }
 
 /* Sub-acordeones internos */
@@ -132,8 +133,20 @@ body {
 }
 
 @media (max-width:768px) { 
-    .sidebar { position: fixed; left: -270px; top: 0; height: 100%; z-index: 999; transition: left .3s; } 
+    .sidebar { 
+        position: fixed; 
+        left: -270px; 
+        top: 0; 
+        height: 100%; 
+        z-index: 1040; /* Por debajo del botón pero encima del contenido */
+        transition: left .3s ease; 
+    } 
     .sidebar.show { left: 0; } 
+    
+    /* Evita que el botón tape el contenido superior en el iframe en móviles */
+    .content-frame {
+        padding-top: 50px; 
+    }
 }
 
 /* Estilos Agente IA preservados */
@@ -151,6 +164,8 @@ body {
 </style>
 </head>
 <body>
+
+<button id="toggleMenu" class="btn btn-primary d-md-none" style="position:fixed;top:10px;left:10px;z-index:1050;">☰ Módulos</button>
 
 <div class="sidebar" id="sidebar">
     <div class="navbar-brand">SISTEMA DRINKS</div>
@@ -204,7 +219,7 @@ body {
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
-                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                             
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                             
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
@@ -320,8 +335,6 @@ body {
 
 <iframe name="contentFrame" class="content-frame"></iframe>
 
-<button id="toggleMenu" class="btn btn-primary d-md-none" style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
-
 <?php if ($EsAgenteAdmin): ?>
 <div class="ai-agent-wrap" id="aiAgentWrap">
     <div class="ai-agent-panel" id="aiAgentPanel" role="region" aria-label="Asistente Drinks">
@@ -360,9 +373,20 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
+// Toggle de apertura y cierre manual
 document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
 };
+
+// NUEVO: Cierra automáticamente el menú en celular al elegir una opción del menú
+document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+    link.addEventListener('click', () => {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar.classList.contains('show')) {
+            sidebar.classList.remove('show');
+        }
+    });
+});
 
 <?php if ($EsAgenteAdmin): ?>
 (function () {

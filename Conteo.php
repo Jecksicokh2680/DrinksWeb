@@ -30,7 +30,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     while($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
 
     // Ajuste responsive en el HTML de retorno
-    $html = "<div style='overflow-x:auto;'>
+    $html = "<div class='table-responsive'>
             <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
             <thead><tr style='background:#f4f4f4;'>
                 <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
@@ -180,7 +180,7 @@ if (isset($_POST['guardar_conteo'])) {
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
     $diferencia    = $stockFisico - $stockSistema;
 
-    // --- VALIDACIÓN DE DUPLICADOS (MISMO USUARIO, MISMA CATEGORÍA, HOY) ---
+    // --- VALIDACIÓN DE DUPLICADOS ---
     $checkDuplicado = $mysqli->prepare("
         SELECT id 
         FROM conteoweb 
@@ -198,7 +198,6 @@ if (isset($_POST['guardar_conteo'])) {
     if ($resDuplicado->num_rows > 0) {
         $mensaje = "⚠️ Error: Ya registraste un conteo para esta categoría el día de hoy.";
     } else {
-        // Proceder con el insert si no hay duplicado
         $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
         $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
         
@@ -208,6 +207,7 @@ if (isset($_POST['guardar_conteo'])) {
         }
     }
 }
+
 // Historial del día
 $conteos = [];
 $resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE c.NitEmpresa=? AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
@@ -216,78 +216,96 @@ $resH->execute();
 $resultConteos = $resH->get_result();
 while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 ?>
-
-DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIA | Inventario <?= $nombreSede ?></title>
     <style>
-        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px; color:#333;}
-        .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
+        * { box-sizing: border-box; }
+        body{font-family:'Segoe UI', system-ui, -apple-system, sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
         
-        /* Ajuste Responsive para Sede Selector */
-        .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; flex-wrap: wrap; }
-        .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
+        .card{max-width:800px; margin:10px auto; background:#fff; padding:20px; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.05);}
+        
+        /* Selectores Superiores Flex/Responsive */
+        .sede-selector { display:flex; gap:8px; margin-bottom:20px; background:#e9ecef; padding:8px; border-radius:10px; align-items:center; flex-wrap: wrap; }
+        .sede-label { font-size:11px; font-weight:bold; color:#777; flex-basis: 100%; margin-bottom: 4px; }
+        .sede-btn { text-decoration:none; padding:10px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex: 1; text-align: center; min-width: 100px; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
-        .btn-refresh { text-decoration:none; padding:8px; border-radius:8px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:16px; margin-left: auto; }
+        .btn-refresh { text-decoration:none; padding:10px; border-radius:8px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:14px; display: flex; align-items: center; justify-content: center; }
         
-        .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
+        /* Formulario de selección */
+        .select-categoria{ width:100%; padding:14px; font-size:16px; border-radius:8px; border:1px solid #ccc; margin-bottom:15px; background:#fff; appearance: none; -webkit-appearance: none;}
         
-        /* Ajuste Grid para móviles */
-        .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
-        @media (max-width: 600px) {
-            .grid { grid-template-columns: 1fr; }
-            .card { padding: 15px; }
-            input[type="number"] { font-size: 24px !important; }
-        }
-
-        label{display:block; font-weight:bold; margin-bottom:5px; font-size: 14px;}
-        input[type="number"] { width:100%; padding:15px; font-size:28px; border-radius:10px; border:2px solid #eee; text-align:center; box-sizing:border-box;}
+        /* Grid de Ingreso Numérico */
+        .grid{display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:20px;}
+        label{display:block; font-weight:bold; margin-bottom:8px; font-size: 14px; color:#444;}
         
-        .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:20px; cursor:pointer; font-weight:bold;}
-        .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
+        /* Inputs masivos estilo POS/Móvil */
+        input[type="number"] { width:100%; padding:15px; font-size:24px; border-radius:10px; border:2px solid #ddd; text-align:center; background: #fafafa; transition: border-color 0.2s;}
+        input[type="number"]:focus { border-color: #28a745; outline: none; background: #fff; }
         
-        /* Tablas Responsive */
-        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table{width:100%; border-collapse:collapse; margin-top:20px; min-width: 600px;}
-        th,td{padding:10px; border-bottom:1px solid #f0f0f0; text-align:left;}
-        th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
+        /* Botones principales */
+        .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:10px; font-size:18px; cursor:pointer; font-weight:bold; transition: background 0.2s;}
+        .btn-save:hover { background: #218838; }
+        .btn-info { background:#17a2b8; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-size:14px; margin-bottom:15px; display:block; width: 100%; font-weight: bold; text-align: center; transition: background 0.2s;}
+        .btn-info:hover { background: #138496; }
         
+        /* Contenedores de Información de Stock */
+        .stock-teorico-box { display:flex; justify-content:space-between; align-items: center; margin-bottom:20px; background:#fff; padding:15px; border-radius:10px; border:1px solid #eee; }
+        
+        /* Tablas Totalmente Responsive via Scroll horizontal suave */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top:15px; border: 1px solid #eee; border-radius: 8px; }
+        table{width:100%; border-collapse:collapse; min-width: 550px;}
+        th,td{padding:12px 10px; border-bottom:1px solid #f0f0f0; text-align:left; font-size: 13px;}
+        th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase; letter-spacing: 0.5px;}
+        
+        /* Indicadores visuales */
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
         .verde{background:#28a745;} .rojo{background:#dc3545;}
-        
-        .badge-sede { padding:4px 6px; border-radius:4px; font-size:9px; font-weight:bold; color:#fff; text-transform:uppercase; }
+        .badge-sede { padding:4px 6px; border-radius:4px; font-size:10px; font-weight:bold; color:#fff; display: inline-block; }
         .bg-central { background:#34495e; }
         .bg-drinks { background:#e67e22; }
         
-        .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
-        .modal-content { background:#fff; margin:5% auto; padding:25px; width:95%; max-width:700px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
-        .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
+        /* Capa Modal Adaptable */
+        .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(3px); padding: 10px; }
+        .modal-content { background:#fff; margin:5% auto; padding:20px; width:100%; max-width:650px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
+        .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#aaa; }
+
+        /* Media Queries para teléfonos compactos */
+        @media (max-width: 576px) {
+            body { padding: 5px; }
+            .card { padding: 15px; border-radius: 10px; }
+            .grid { grid-template-columns: 1fr; gap: 10px; }
+            .sede-label { display: block; }
+            .stock-teorico-box { flex-direction: column; align-items: flex-start; gap: 5px; }
+            input[type="number"] { font-size: 22px; padding: 12px; }
+            .modal-content { margin: 15% auto; padding: 15px; }
+        }
     </style>
 </head>
 <body>
 
 <div class="card">
     <div class="sede-selector">
-        <span style="font-size:11px; font-weight:bold; color:#777;">📍 SEDE:</span>
+        <div class="sede-label">📍 SEDE ACTUAL:</div>
         <a href="?cambiar_nit=<?= NIT_CENTRAL ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
         <a href="?cambiar_nit=<?= NIT_DRINKS ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
         <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄</button>
     </div>
 
-    <h3 style="margin:0 0 20px 0;">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
+    <h3 style="margin:0 0 20px 0; font-size: 20px;">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
     
     <?php if($mensaje): ?>
-        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #28a745;">
+        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #28a745; font-size:14px;">
             <?= $mensaje ?>
         </div>
     <?php endif; ?>
 
     <form method="POST" id="form-main">
-        <label>Seleccionar Categoría:</label>
-        <select name="categoria" class="select-categoria" onchange="this.form.submit()">
+        <label for="categoria">Seleccionar Categoría:</label>
+        <select name="categoria" id="categoria" class="select-categoria" onchange="this.form.submit()">
             <option value="">-- Buscar Categoría --</option>
             <?php foreach($categorias as $c): 
                 $ya = in_array($c['CodCat'], $contados);
@@ -300,13 +318,13 @@ DOCTYPE html>
     </form>
 
     <?php if($categoriaSel): ?>
-        <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
+        <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver SKU's vinculados a (<?= $categoriaSel ?>)</button>
 
-        <div style="background:#f8f9fa; padding:25px; border-radius:15px; border:1px solid #e9ecef;">
+        <div style="background:#f8f9fa; padding:20px; border-radius:12px; border:1px solid #e9ecef;">
             <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?>
-                <div style="display:flex; justify-content:space-between; margin-bottom:20px; background:#fff; padding:15px; border-radius:10px; border:1px solid #eee;">
-                    <span>📖 Stock Teórico (Sistema):</span>
-                    <strong style="font-size:18px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
+                <div class="stock-teorico-box">
+                    <span style="font-size: 14px; color: #555;">📖 Stock Teórico (Sistema):</span>
+                    <strong style="font-size:20px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
                 </div>
             <?php endif; ?>
 
@@ -331,8 +349,8 @@ DOCTYPE html>
     <?php endif; ?>
 
     <?php if($conteos): ?>
-        <div style="margin-top:40px;">
-            <h4 style="margin-bottom:15px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
+        <div style="margin-top:35px;">
+            <h4 style="margin-bottom:10px; color:#555; border-bottom:2px solid #eee; padding-bottom:6px; font-size:14px;">HISTORIAL DE HOY</h4>
             <div class="table-responsive">
                 <table>
                     <thead>
@@ -347,7 +365,7 @@ DOCTYPE html>
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
                                 <th>Dif.</th>
                             <?php endif; ?>
-                            <th>Edo.</th>
+                            <th style="text-align: center;">Edo.</th>
                             <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
                         </tr>
                     </thead>
@@ -360,17 +378,17 @@ DOCTYPE html>
                         ?>
                         <tr>
                             <td><span class="badge-sede <?= $sedeClass ?>"><?= $sedeTag ?></span></td>
-                            <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
-                            <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= strtoupper($c['Nombre']) ?></small></td>
+                            <td style="color:#888; font-size:11px;"><?= $c['hora'] ?></td>
+                            <td><strong><?= $c['CodCat'] ?></strong><br><span style="font-size: 11px; color:#666;"><?= strtoupper($c['Nombre']) ?></span></td>
                             
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
+                                <td style="color:#555;"><?= number_format($c['stock_sistema'],2) ?></td>
                             <?php endif; ?>
 
-                            <td style="font-size:15px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
+                            <td><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
 
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
+                                <td style="font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
                                     <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
                                 </td>
                             <?php endif; ?>
@@ -378,10 +396,10 @@ DOCTYPE html>
                             <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
                             
                             <?php if($AUT_BORRAR==='SI'): ?>
-                            <td>
-                                <form method="POST" onsubmit="return confirm('¿Anular registro?')">
+                            <td align="center">
+                                <form method="POST" onsubmit="return confirm('¿Seguro que desea anular este registro?')">
                                     <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
-                                    <button name="borrar_conteo" style="background:none; border:none; cursor:pointer; font-size:16px;">🗑️</button>
+                                    <button name="borrar_conteo" style="background:none; border:none; cursor:pointer; font-size:16px; padding:4px;">🗑️</button>
                                 </form>
                             </td>
                             <?php endif; ?>
@@ -397,7 +415,7 @@ DOCTYPE html>
 <div id="modalProductos" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="cerrarModal()">&times;</span>
-        <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px;">Detalle de Productos</h3>
+        <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px; margin-top:0; font-size: 18px;">Detalle de Productos</h3>
         <div id="tabla-productos">Cargando...</div>
     </div>
 </div>
@@ -407,14 +425,16 @@ function verDetalleProductos(codCat) {
     const modal = document.getElementById('modalProductos');
     const contenedor = document.getElementById('tabla-productos');
     modal.style.display = 'block';
-    contenedor.innerHTML = '<div style="text-align:center; padding:30px;">⏳ Consultando...</div>';
+    contenedor.innerHTML = '<div style="text-align:center; padding:30px;">⏳ Consultando catálogo...</div>';
+    
     const formData = new FormData();
     formData.append('action', 'ver_productos');
     formData.append('cod_cat', codCat);
     formData.append('nit', '<?= $nitSesion ?>');
+    
     fetch(window.location.href, { method: 'POST', body: formData })
     .then(r => r.text()).then(html => { contenedor.innerHTML = html; })
-    .catch(() => { contenedor.innerHTML = 'Error de conexión'; });
+    .catch(() => { contenedor.innerHTML = '<div style="color:red; text-align:center; padding:10px;">Error al cargar productos.</div>'; });
 }
 function cerrarModal() { document.getElementById('modalProductos').style.display = 'none'; }
 window.onclick = e => { if (e.target.className === 'modal') cerrarModal(); }
