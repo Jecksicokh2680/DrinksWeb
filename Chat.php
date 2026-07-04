@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mensaje'])) {
     $mensaje = htmlspecialchars(trim($_POST['mensaje']));
 
     if ($mensaje !== '') {
-        // BUSQUEDA CORREGIDA: Usa 'CedulaNit' que es el campo real de tu tabla terceros
+        // BUSQUEDA EN TABLA TERCEROS: Usa 'CedulaNit' que es tu campo real
         $stmtUser = $mysqli->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? LIMIT 1");
         if ($stmtUser === false) {
             echo json_encode(['status' => 'error', 'msg' => 'Error en la consulta de terceros: ' . $mysqli->error]);
@@ -310,7 +310,42 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         return div.innerHTML;
     }
 
-    // Polling dinámico al mismo archivo
+    // Generar bip electrónico sin cargar archivos
+    function playNotificationSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Primer tono
+            const osc1 = audioCtx.createOscillator();
+            const gain1 = audioCtx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Tono inicial
+            gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc1.connect(gain1);
+            gain1.connect(audioCtx.destination);
+            osc1.start();
+            osc1.stop(audioCtx.currentTime + 0.15);
+
+            // Segundo tono complementario
+            setTimeout(() => {
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono alto continuo
+                gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.start();
+                osc2.stop(audioCtx.currentTime + 0.2);
+            }, 80);
+        } catch (error) {
+            console.warn("Audio bloqueado por directiva de privacidad del navegador:", error);
+        }
+    }
+
+    // Polling dinámico recurrente
     async function fetchNewMessages() {
         try {
             const resp = await fetch('?action=fetch&last_id=' + lastId);
@@ -318,10 +353,21 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             const json = await resp.json();
 
             if (json.status === 'success' && json.mensajes.length > 0) {
+                let incorporarSonido = false;
+
                 json.mensajes.forEach(msg => {
                     appendMessage(msg);
                     lastId = msg.id;
+
+                    // Si el mensaje es de otra persona, activamos la alerta sonora
+                    if (msg.cedula != miCedula) {
+                        incorporarSonido = true;
+                    }
                 });
+
+                if (incorporarSonido) {
+                    playNotificationSound();
+                }
             }
             document.getElementById('statusDot').className = 'status-dot status-online';
         } catch (e) {
@@ -332,7 +378,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
 
     setInterval(fetchNewMessages, 3000);
 
-    // Enviar mensaje de manera asíncrona
+    // Enviar mensaje asíncronamente
     document.getElementById('form-chat').addEventListener('submit', async function(e) {
         e.preventDefault();
         const input   = document.getElementById('input-mensaje');
@@ -356,7 +402,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
                 alert('Error: ' + json.msg);
             }
         } catch (e) {
-            console.error('Error al enviar mensaje:', e);
+            console.error('Error al enviar el mensaje:', e);
             alert('No se pudo enviar el mensaje. Intenta de nuevo.');
         }
     });
