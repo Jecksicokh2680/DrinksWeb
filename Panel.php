@@ -96,6 +96,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     <?php endif; ?>
                     
                     <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>
+                    <a class="nav-link" href="minequi.php" target="contentFrame">🧮 Nequi</a>
                 </div>
             </div>
         </div>

@@ -154,19 +154,21 @@ function nombreSede($nit) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historial de Traslados | Drinks Depot & Central</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; padding: 20px; color: #333; margin: 0; }
         .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 1300px; margin: auto; }
         
         .filtros-bar { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #dee2e6; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
-        .f-group { display: flex; flex-direction: column; gap: 6px; }
+        .f-group { display: flex; flex-direction: column; gap: 6px; flex: 1 1 200px; }
         .f-group label { font-size: 13px; font-weight: 700; color: #495057; }
         
-        select, input { padding: 9px; border: 1px solid #ced4da; border-radius: 5px; outline: none; }
-        .input-buscar { width: 250px; }
-        .btn-filter { background: #0d6efd; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        select, input { padding: 9px; border: 1px solid #ced4da; border-radius: 5px; outline: none; width: 100%; box-sizing: border-box; }
+        .btn-filter { background: #0d6efd; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; flex: 1 1 auto; height: 40px; }
         .btn-filter:hover { background: #0b5ed7; }
 
-        table { width: 100%; border-collapse: collapse; background: white; }
+        /* Contenedor responsivo para la tabla */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+        table { width: 100%; border-collapse: collapse; background: white; min-width: 800px; }
         th { background: #212529; color: #fff; padding: 14px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         td { padding: 14px; border-bottom: 1px solid #e9ecef; text-align: center; vertical-align: middle; }
         tr:hover { background-color: #fcfcfc; }
@@ -175,17 +177,25 @@ function nombreSede($nit) {
         .ok { background: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
         .err { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
 
-        .btn-check { background: #ffc107; color: #000; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.3s; }
+        .btn-check { background: #ffc107; color: #000; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.3s; white-space: nowrap; }
         .btn-check:hover { background: #e0a800; transform: translateY(-1px); }
-        .revisado { color: #198754; font-weight: bold; font-size: 13px; }
+        .revisado { color: #198754; font-weight: bold; font-size: 13px; white-space: nowrap; }
         
-        .badge-sede { font-weight: bold; color: #212529; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 11px; border: 1px solid #ced4da; }
+        .badge-sede { font-weight: bold; color: #212529; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 11px; border: 1px solid #ced4da; white-space: nowrap; }
+
+        /* Media Queries para pantallas pequeñas */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .card { padding: 15px; }
+            .filtros-bar { gap: 15px; padding: 15px; }
+            .btn-filter { width: 100%; }
+        }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 style="margin: 0 0 20px 0; color: #212529;">📦 Aprobacion de Traslados de Mercancia Jefe de Bodega</h2>
+    <h2 style="margin: 0 0 20px 0; color: #212529; font-size: 1.5rem;">📦 Aprobacion de Traslados de Mercancia Jefe de Bodega</h2>
     
     <?php if(isset($msg)) echo $msg; ?>
 
@@ -208,58 +218,60 @@ function nombreSede($nit) {
         </div>
         <div class="f-group">
             <label>Producto / Barcode:</label>
-            <input type="text" name="buscar" class="input-buscar" placeholder="Ej: Aguardiente o 770..." value="<?= htmlspecialchars($buscar) ?>">
+            <input type="text" name="buscar" placeholder="Ej: Aguardiente o 770..." value="<?= htmlspecialchars($buscar) ?>">
         </div>
         <button type="submit" class="btn-filter">🔍 Aplicar Filtros</button>
     </form>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Fecha / Hora</th>
-                <th>Producto / Barcode</th>
-                <th>Cant.</th>
-                <th>Flujo (Origen ➔ Destino)</th>
-                <th>Observaciones</th>
-                <th>Visto Bueno Bodega</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if(empty($movimientos)): ?>
-                <tr><td colspan="6" style="padding: 40px; color: #6c757d;">No hay registros activos para este filtro.</td></tr>
-            <?php else: ?>
-                <?php foreach($movimientos as $r): 
-                    $nom = $nombresGlobales[$r['barcode']] ?? 'Producto Desconocido';
-                    $revisado = (strpos($r['Observacion'], '[REVISADO POR BODEGA]') !== false);
-                ?>
+    <div class="table-responsive">
+        <table>
+            <thead>
                 <tr>
-                    <td style="font-size: 13px; color: #6c757d;"><?= date("d/m/Y H:i", strtotime($r['fecha'])) ?></td>
-                    <td style="text-align: left;">
-                        <div style="font-weight: bold;"><?= $nom ?></div>
-                        <small style="color: #dc3545; font-family: monospace;"><?= $r['barcode'] ?></small>
-                    </td>
-                    <td><span style="font-size: 17px; font-weight: 800;"><?= number_format($r['cant'], 1) ?></span></td>
-                    <td>
-                        <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Orig']) ?></span>
-                        <span style="color: #adb5bd; margin: 0 5px;">➔</span>
-                        <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Dest']) ?></span>
-                    </td>
-                    <td style="font-size: 13px; font-style: italic; color: #495057;"><?= $r['Observacion'] ?></td>
-                    <td>
-                        <?php if(!$revisado): ?>
-                            <form method="POST">
-                                <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
-                                <button type="submit" name="marcar_revisado" class="btn-check">Confirmar Recibo</button>
-                            </form>
-                        <?php else: ?>
-                            <span class="revisado">✅ REVISADO</span>
-                        <?php endif; ?>
-                    </td>
+                    <th>Fecha / Hora</th>
+                    <th>Producto / Barcode</th>
+                    <th>Cant.</th>
+                    <th>Flujo (Origen ➔ Destino)</th>
+                    <th>Observaciones</th>
+                    <th>Visto Bueno Bodega</th>
                 </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                <?php if(empty($movimientos)): ?>
+                    <tr><td colspan="6" style="padding: 40px; color: #6c757d;">No hay registros activos para este filtro.</td></tr>
+                <?php else: ?>
+                    <?php foreach($movimientos as $r): 
+                        $nom = $nombresGlobales[$r['barcode']] ?? 'Producto Desconocido';
+                        $revisado = (strpos($r['Observacion'], '[REVISADO POR BODEGA]') !== false);
+                    ?>
+                    <tr>
+                        <td style="font-size: 13px; color: #6c757d; white-space: nowrap;"><?= date("d/m/Y H:i", strtotime($r['fecha'])) ?></td>
+                        <td style="text-align: left;">
+                            <div style="font-weight: bold;"><?= $nom ?></div>
+                            <small style="color: #dc3545; font-family: monospace;"><?= $r['barcode'] ?></small>
+                        </td>
+                        <td><span style="font-size: 17px; font-weight: 800;"><?= number_format($r['cant'], 1) ?></span></td>
+                        <td>
+                            <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Orig']) ?></span>
+                            <span style="color: #adb5bd; margin: 0 5px;">➔</span>
+                            <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Dest']) ?></span>
+                        </td>
+                        <td style="font-size: 13px; font-style: italic; color: #495057;"><?= $r['Observacion'] ?></td>
+                        <td>
+                            <?php if(!$revisado): ?>
+                                <form method="POST" style="margin:0;">
+                                    <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
+                                    <button type="submit" name="marcar_revisado" class="btn-check">Confirmar Recibo</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="revisado">✅ REVISADO</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 </body>
