@@ -168,7 +168,7 @@ body {
 <button id="toggleMenu" class="btn btn-primary d-md-none" style="position:fixed;top:10px;left:10px;z-index:1050;">☰ Módulos</button>
 
 <div class="sidebar" id="sidebar">
-    <div class="navbar-brand">SISTEMA DRINKS</div>
+    <div class="navbar-brand">SISTEMA BNMA</div>
     <div class="accordion accordion-flush px-2" id="menuPrincipal">
 
         <div class="accordion-item">
