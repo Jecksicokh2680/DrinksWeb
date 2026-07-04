@@ -33,10 +33,11 @@ $PuedeVerUtil = (Autorizacion($User,'9999')==='SI');
 function fmoneda($v){ return number_format($v,0,',','.'); }
 
 /* =========================
-   VARIABLES DE FILTRO
+   VARIABLES DE FILTRO (RANGO DE FECHAS)
 ========================= */
-$MesSel = $_GET['Mes'] ?? date('m');
-$AnioSel = $_GET['Anio'] ?? date('Y');
+// Por defecto el rango es el mes actual (desde el día 1 hasta hoy)
+$FechaIniSel = $_GET['FechaIni'] ?? date('Y-m-01');
+$FechaFinSel = $_GET['FechaFin'] ?? date('Y-m-d');
 $Sucursal = $_GET['Sucursal'] ?? 'AMBAS';
 $ProveedorSel = $_GET['Proveedor'] ?? '';
 $ProductoSel = trim($_GET['FiltroProd'] ?? '');
@@ -46,7 +47,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compras Gerenciales - Reporte Mensual</title>
+    <title>Compras Gerenciales - Reporte por Fechas</title>
     <style>
         /* Ajustes base responsive */
         body{ font-family:Segoe UI,Arial; margin:10px; background:#f4f6f8; font-size:14px; color: #333; }
@@ -128,21 +129,16 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
 <body>
 
 <div class="card">
-    <h2>📊 Compras Gerenciales por Mes</h2>
+    <h2>📊 Compras Gerenciales por Rango de Fechas</h2>
 
     <form method="GET" class="filters">
-        <div><label>Año</label>
-            <select name="Anio">
-                <?php for($i=date('Y'); $i>=2023; $i--) echo "<option value='$i' ".($AnioSel==$i?'selected':'').">$i</option>"; ?>
-            </select>
+        <div>
+            <label>Fecha Inicial</label>
+            <input type="date" name="FechaIni" value="<?=$FechaIniSel?>">
         </div>
-        <div><label>Mes</label>
-            <select name="Mes">
-                <?php 
-                $meses = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
-                foreach($meses as $num=>$nom) echo "<option value='$num' ".($MesSel==$num?'selected':'').">$nom</option>";
-                ?>
-            </select>
+        <div>
+            <label>Fecha Final</label>
+            <input type="date" name="FechaFin" value="<?=$FechaFinSel?>">
         </div>
         <div><label>Sucursal</label>
             <select name="Sucursal">
@@ -155,15 +151,17 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
             <select name="Proveedor">
                 <option value="">-- Todos --</option>
                 <?php
-                function listarProv($mysqli, $m, $a){
+                function listarProv($mysqli, $fIni, $fFin){
+                    $fIniClean = $mysqli->real_escape_string($fIni);
+                    $fFinClean = $mysqli->real_escape_string($fFin);
                     return $mysqli->query("SELECT DISTINCT T.NIT, CONCAT(T.nombres,' ',T.apellidos) as prov 
                                            FROM compras C JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO 
-                                           WHERE MONTH(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$m' 
-                                           AND YEAR(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$a' AND C.ESTADO='0'");
+                                           WHERE STR_TO_DATE(C.FECHA,'%Y%m%d') BETWEEN '$fIniClean' AND '$fFinClean' 
+                                           AND C.ESTADO='0'");
                 }
                 $provList=[];
-                if($Sucursal!='DRINKS'){ $r=listarProv($mysqliCentral, $MesSel, $AnioSel); while($r && $p=$r->fetch_assoc()) $provList[$p['NIT']]=$p['prov']; }
-                if($Sucursal!='CENTRAL'){ $r=listarProv($mysqliDrinks, $MesSel, $AnioSel); while($r && $p=$r->fetch_assoc()) $provList[$p['NIT']]=$p['prov']; }
+                if($Sucursal!='DRINKS'){ $r=listarProv($mysqliCentral, $FechaIniSel, $FechaFinSel); while($r && $p=$r->fetch_assoc()) $provList[$p['NIT']]=$p['prov']; }
+                if($Sucursal!='CENTRAL'){ $r=listarProv($mysqliDrinks, $FechaIniSel, $FechaFinSel); while($r && $p=$r->fetch_assoc()) $provList[$p['NIT']]=$p['prov']; }
                 asort($provList);
                 foreach($provList as $nit=>$nom) echo "<option value='$nit' ".($ProveedorSel==$nit?'selected':'').">$nom</option>";
                 ?>
@@ -181,7 +179,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
     </div>
 
     <?php
-    if ($MesSel) {
+    if ($FechaIniSel && $FechaFinSel) {
         function precioProm($mysqli){
             $sql="SELECT Q.Barcode, SUM(Q.CANTIDAD*Q.VALORPROD)/NULLIF(SUM(Q.CANTIDAD),0) pv
                   FROM(SELECT P.Barcode,D.CANTIDAD,D.VALORPROD FROM DETPEDIDOS D JOIN PEDIDOS PE ON PE.IDPEDIDO=D.IDPEDIDO JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO WHERE PE.ESTADO='0' AND STR_TO_DATE(PE.FECHA,'%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
@@ -193,34 +191,36 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
 
         $pvC=precioProm($mysqliCentral); $pvD=precioProm($mysqliDrinks);
 
-        function comprasMes($mysqli, $suc, $m, $a, $nitProv, $busqProd){
+        function comprasMes($mysqli, $suc, $fIni, $fFin, $nitProv, $busqProd){
             $cond = $nitProv ? " AND T.NIT='$nitProv' " : "";
             if($busqProd != ""){
                 $busqProd = $mysqli->real_escape_string($busqProd);
                 $cond .= " AND (P.descripcion LIKE '%$busqProd%' OR P.Barcode LIKE '%$busqProd%') ";
             }
+            $fIniClean = $mysqli->real_escape_string($fIni);
+            $fFinClean = $mysqli->real_escape_string($fFin);
 
             return $mysqli->query("
                 SELECT '$suc' sucursal, C.FECHA, C.idcompra, CONCAT(T.nombres,' ',T.apellidos) prov,
-                        P.Barcode, P.descripcion, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni
+                       P.Barcode, P.descripcion, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni
                 FROM compras C
                 JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
                 JOIN DETCOMPRAS D ON D.idcompra=C.idcompra
                 JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
-                WHERE MONTH(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$m' AND YEAR(STR_TO_DATE(C.FECHA,'%Y%m%d'))='$a' AND C.ESTADO='0' $cond
+                WHERE STR_TO_DATE(C.FECHA,'%Y%m%d') BETWEEN '$fIniClean' AND '$fFinClean' AND C.ESTADO='0' $cond
                 ORDER BY prov, C.FECHA ASC");
         }
 
         $resultados = [];
-        if($Sucursal!='DRINKS') { $res=comprasMes($mysqliCentral,'Central',$MesSel,$AnioSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
-        if($Sucursal!='CENTRAL') { $res=comprasMes($mysqliDrinks,'Drinks',$MesSel,$AnioSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
+        if($Sucursal!='DRINKS') { $res=comprasMes($mysqliCentral,'Central',$FechaIniSel,$FechaFinSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
+        if($Sucursal!='CENTRAL') { $res=comprasMes($mysqliDrinks,'Drinks',$FechaIniSel,$FechaFinSel,$ProveedorSel, $ProductoSel); while($row=$res->fetch_assoc()) $resultados[]=$row; }
 
         usort($resultados, function($a, $b) { return strcmp($a['prov'], $b['prov']); });
 
         echo "<div class='table-container'><table id='tablaCompras'><thead><tr>
               <th>Suc</th><th>Fecha</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
               <th>Cant</th><th>Costo</th><th>Total</th>";
-        if($PuedeVerUtil) echo "<th>P.Venta</th><th>Utilidad</th><th>%</th>";
+        if($RefuerzoUtil = $PuedeVerUtil) echo "<th>P.Venta</th><th>Utilidad</th><th>%</th>";
         echo "</tr></thead><tbody>";
 
         $provAnt=''; $subTotal=0; $granTotal=0;
@@ -258,7 +258,7 @@ $ProductoSel = trim($_GET['FiltroProd'] ?? '');
         }
 
         if($provAnt != '') echo "<tr class='subtotal prov-row'><td colspan='8'>SUBTOTAL: $provAnt</td><td class='monto-grande'>".fmoneda($subTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
-        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL MES</td><td class='monto-grande'>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
+        echo "<tr class='total' id='rowTotal'><td colspan='8'>TOTAL RANGO</td><td class='monto-grande'>".fmoneda($granTotal)."</td>".($PuedeVerUtil?"<td colspan='3'></td>":"")."</tr>";
         echo "</tbody></table></div>";
     }
     ?>
