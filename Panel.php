@@ -95,8 +95,8 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
                     <?php endif; ?>
                     
-                    <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>
-                    <a class="nav-link" href="minequi.php" target="contentFrame">🧮 Nequi</a>
+                    <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                   
+                    <a class="nav-link" href="Chat.php" target="contentFrame">🧮 Chat Interno Comunicaciones</a>   
                 </div>
             </div>
         </div>
