@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mensaje'])) {
     $mensaje = htmlspecialchars(trim($_POST['mensaje']));
 
     if ($mensaje !== '') {
-        // BUSQUEDA EN TABLA TERCEROS: Usa 'CedulaNit' que es tu campo real
+        // BUSQUEDA EN TABLA TERCEROS
         $stmtUser = $mysqli->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? LIMIT 1");
         if ($stmtUser === false) {
             echo json_encode(['status' => 'error', 'msg' => 'Error en la consulta de terceros: ' . $mysqli->error]);
@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mensaje'])) {
         }
         $stmtUser->close();
 
-        // Guardar mensaje en la tabla del chat
+        // Guardar mensaje
         $stmtChat = $mysqli->prepare("INSERT INTO chat_mensajes (cedula, nombre_usuario, mensaje) VALUES (?, ?, ?)");
         if ($stmtChat === false) {
             echo json_encode(['status' => 'error', 'msg' => 'Error al preparar inserción: ' . $mysqli->error]);
@@ -100,126 +100,172 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chat Interno</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="icon" href="data:,">
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: #f0f2f5; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
-
-        .chat-container {
-            max-width: 720px;
-            margin: 20px auto;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 2px 12px rgba(0,0,0,.08);
+        body { 
+            margin: 0; 
+            background: #f0f2f5; 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            height: 100vh;
             display: flex;
-            flex-direction: column;
-            height: calc(100vh - 40px);
-            overflow: hidden;
+            align-items: center;
+            justify-content: center;
         }
 
+        /* Contenedor Principal Adaptable */
+        .chat-container {
+            width: 100%;
+            max-width: 750px;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 100vh; /* Ocupa todo el alto en móviles */
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Cabecera */
         .chat-header {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             color: #fff;
-            padding: 14px 20px;
+            padding: 12px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .chat-header h6 { margin: 0; font-size: 16px; font-weight: 600; }
-        .chat-header .badge { background: rgba(255,255,255,.15); font-size: 12px; padding: 4px 10px; border-radius: 20px; }
+        .chat-header h6 { margin: 0; font-size: 15px; font-weight: 600; }
+        .chat-header .badge { background: rgba(255,255,255,.15); font-size: 11px; padding: 5px 10px; border-radius: 20px; }
 
+        /* Área de Mensajes */
         #chat-box {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 20px;
+            padding: 14px 16px;
             background: #f0f2f5;
-        }
-        #chat-box::after {
-            content: '';
-            display: block;
-            clear: both;
+            display: flex;
+            flex-direction: column;
         }
 
+        /* Burbujas de Mensaje */
         .mensaje {
             margin-bottom: 10px;
-            padding: 10px 14px;
-            border-radius: 12px;
-            max-width: 75%;
+            padding: 9px 13px;
+            border-radius: 14px;
+            max-width: 82%; /* Un poco más amplio en pantallas chicas */
             word-wrap: break-word;
             position: relative;
             clear: both;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
         }
         .recibido {
             background: #fff;
+            align-self: flex-start;
             float: left;
             border: 1px solid #e5e7eb;
-            border-radius: 4px 12px 12px 12px;
+            border-radius: 4px 14px 14px 14px;
         }
         .enviado {
             background: linear-gradient(135deg, #0d6efd, #0b5ed7);
             color: #fff;
+            align-self: flex-end;
             float: right;
-            border-radius: 12px 4px 12px 12px;
+            border-radius: 14px 4px 14px 14px;
         }
+        
         .meta-info {
             font-size: 11px;
             color: #6b7280;
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 2px;
             font-weight: 600;
         }
-        .enviado .meta-info { color: rgba(255,255,255,.75); }
+        .enviado .meta-info { color: rgba(255,255,255,.8); }
+        
         .msg-time {
             font-size: 10px;
             color: #9ca3af;
             text-align: right;
-            margin-top: 4px;
+            margin-top: 3px;
         }
-        .enviado .msg-time { color: rgba(255,255,255,.6); }
+        .enviado .msg-time { color: rgba(255,255,255,.65); }
 
+        /* Barra Inferior / Formulario */
         .chat-footer {
-            padding: 14px 20px;
+            padding: 10px 14px;
             border-top: 1px solid #e5e7eb;
             background: #fff;
             flex-shrink: 0;
         }
         .chat-footer form {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            align-items: center;
         }
         .chat-footer input {
             flex: 1;
             padding: 10px 16px;
             border: 1px solid #d1d5db;
-            border-radius: 24px;
-            font-size: 14px;
+            border-radius: 22px;
+            font-size: 15px;
             outline: none;
             transition: border-color .2s;
+            background: #f8f9fa;
         }
-        .chat-footer input:focus { border-color: #0d6efd; box-shadow: 0 0 0 3px rgba(13,110,253,.15); }
+        .chat-footer input:focus { 
+            border-color: #0d6efd; 
+            background: #fff;
+            box-shadow: 0 0 0 2px rgba(13,110,253,.1); 
+        }
         .chat-footer button {
-            padding: 10px 20px;
+            padding: 10px 18px;
             background: linear-gradient(135deg, #0d6efd, #0b5ed7);
             color: #fff;
             border: none;
-            border-radius: 24px;
+            border-radius: 22px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform .1s, box-shadow .2s;
+            transition: transform .1s, opacity .2s;
+            flex-shrink: 0;
         }
-        .chat-footer button:hover { transform: scale(1.03); box-shadow: 0 4px 12px rgba(13,110,253,.3); }
-        .chat-footer button:active { transform: scale(.97); }
+        .chat-footer button:active { transform: scale(.96); }
 
         .clearfix::after { content: ''; display: block; clear: both; }
 
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
         .status-online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.5); }
         .status-offline { background: #ef4444; }
+
+        /* ==========================================
+           MEDIA QUERIES PARA PANTALLAS GRANDES (PC)
+           ========================================== */
+        @media (min-width: 768px) {
+            .chat-container {
+                height: calc(100vh - 40px); /* Deja margen arriba y abajo en PC */
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,.08);
+                border: 1px solid #e5e7eb;
+            }
+            .chat-header {
+                padding: 14px 20px;
+            }
+            #chat-box {
+                padding: 18px 20px;
+            }
+            .chat-footer {
+                padding: 14px 20px;
+            }
+            .mensaje {
+                max-width: 72%; /* Burbujas ligeramente más angostas en monitores */
+            }
+        }
     </style>
 </head>
 <body>
@@ -310,16 +356,15 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         return div.innerHTML;
     }
 
-    // Generar bip electrónico sin cargar archivos
+    // Alerta de sonido sintetizado
     function playNotificationSound() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Primer tono
             const osc1 = audioCtx.createOscillator();
             const gain1 = audioCtx.createGain();
             osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Tono inicial
+            osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime);
             gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
             gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
             osc1.connect(gain1);
@@ -327,12 +372,11 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             osc1.start();
             osc1.stop(audioCtx.currentTime + 0.15);
 
-            // Segundo tono complementario
             setTimeout(() => {
                 const osc2 = audioCtx.createOscillator();
                 const gain2 = audioCtx.createGain();
                 osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono alto continuo
+                osc2.frequency.setValueAtTime(880, audioCtx.currentTime);
                 gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
                 gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
                 osc2.connect(gain2);
@@ -341,11 +385,11 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
                 osc2.stop(audioCtx.currentTime + 0.2);
             }, 80);
         } catch (error) {
-            console.warn("Audio bloqueado por directiva de privacidad del navegador:", error);
+            console.warn("Audio bloqueado o no soportado:", error);
         }
     }
 
-    // Polling dinámico recurrente
+    // Polling asíncrono
     async function fetchNewMessages() {
         try {
             const resp = await fetch('?action=fetch&last_id=' + lastId);
@@ -359,7 +403,6 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
                     appendMessage(msg);
                     lastId = msg.id;
 
-                    // Si el mensaje es de otra persona, activamos la alerta sonora
                     if (msg.cedula != miCedula) {
                         incorporarSonido = true;
                     }
@@ -378,7 +421,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
 
     setInterval(fetchNewMessages, 3000);
 
-    // Enviar mensaje asíncronamente
+    // Formulario de Envío
     document.getElementById('form-chat').addEventListener('submit', async function(e) {
         e.preventDefault();
         const input   = document.getElementById('input-mensaje');
