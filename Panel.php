@@ -37,20 +37,105 @@ $EsJefeBodega = (Autorizacion($UsuarioSesion, '0004') === 'SI');
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-/* Estilos originales preservados */
-body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
-.sidebar{ width:260px; background:#0d6efd; color:#fff; display:flex; flex-direction:column; flex-shrink: 0; }
-.sidebar .nav-link{ color:#fff; padding:6px 14px; font-size:14px; }
-.sidebar .nav-link:hover{ background:#084298; }
-.navbar-brand{ padding:1rem; font-weight:bold; text-align:center; }
-.content-frame{ flex-grow:1; border:none; width:100%; height:100vh; }
-.accordion-button{ padding:6px 14px; font-size:14px; background:#0d6efd; color:#fff; }
-.accordion-button:not(.collapsed){ background:#084298; color:#fff; }
-.accordion-item{ background:transparent; border:none; }
-.accordion-body{ padding:0; }
-.sub-accordion .accordion-button{ background:#0b5ed7; font-size:13px; padding:6px 18px; }
-.sub-accordion .accordion-button:not(.collapsed){ background:#063f99; }
-@media (max-width:768px){ .sidebar{ position:fixed; left:-270px; top:0; height:100%; z-index:999; transition:left .3s; } .sidebar.show{left:0;} }
+/* ============================================
+   ESTILO DEGRADADO DINÁMICO
+============================================ */
+body { 
+    margin: 0; 
+    display: flex; 
+    min-height: 100vh; 
+    font-family: 'Segoe UI', Arial, sans-serif; 
+    background: #f8fafc;
+}
+
+.sidebar { 
+    width: 260px; 
+    background: linear-gradient(180deg, #0d6efd 0%, #063f99 100%); 
+    color: #fff; 
+    display: flex; 
+    flex-direction: column; 
+    flex-shrink: 0; 
+    box-shadow: 4px 0 15px rgba(0,0,0,0.1);
+}
+
+.navbar-brand { 
+    padding: 1.5rem 1rem; 
+    font-weight: 800; 
+    text-align: center; 
+    letter-spacing: 1px;
+    font-size: 1.2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar .nav-link { 
+    color: rgba(255, 255, 255, 0.85); 
+    padding: 8px 14px; 
+    font-size: 14px; 
+    margin: 3px 10px;
+    border-radius: 8px;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.sidebar .nav-link:hover { 
+    background: rgba(255, 255, 255, 0.15); 
+    color: #fff; 
+    padding-left: 20px; /* Efecto sutil de desplazamiento lateral */
+}
+
+/* Ajustes de Acordeones */
+.accordion-item { 
+    background: transparent; 
+    border: none; 
+}
+
+.accordion-body { 
+    padding: 4px 0; 
+}
+
+.accordion-button { 
+    padding: 12px 14px; 
+    font-size: 14px; 
+    background: transparent; 
+    color: #fff; 
+    box-shadow: none !important;
+}
+
+.accordion-button:not(.collapsed) { 
+    background: rgba(255, 255, 255, 0.1); 
+    color: #fff; 
+}
+
+.accordion-button::after {
+    filter: brightness(0) invert(1); /* Hace que la flecha de Bootstrap sea blanca */
+}
+
+/* Sub-acordeones internos */
+.sub-accordion .accordion-button { 
+    background: transparent; 
+    font-size: 13px; 
+    padding: 8px 18px; 
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.sub-accordion .accordion-button:not(.collapsed) { 
+    background: rgba(255, 255, 255, 0.05); 
+}
+
+.content-frame { 
+    flex-grow: 1; 
+    border: none; 
+    width: 100%; 
+    height: 100vh; 
+}
+
+@media (max-width:768px) { 
+    .sidebar { position: fixed; left: -270px; top: 0; height: 100%; z-index: 999; transition: left .3s; } 
+    .sidebar.show { left: 0; } 
+}
+
 /* Estilos Agente IA preservados */
 .ai-agent-wrap{ position:fixed; right:16px; bottom:16px; z-index:10050; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
 .ai-agent-toggle{ width:56px; height:56px; border-radius:50%; border:none; background:#0d6efd; color:#fff; font-size:22px; cursor:pointer; box-shadow:0 4px 20px rgba(13,110,253,.45); display:flex; align-items:center; justify-content:center; transition:transform .15s, background .15s; }
@@ -71,7 +156,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
     <div class="navbar-brand">SISTEMA DRINKS</div>
     <div class="accordion accordion-flush px-2" id="menuPrincipal">
 
-        <!-- OPCIONES BÁSICAS -->
         <div class="accordion-item">
             <h2 class="accordion-header">
                 <button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#basico">
@@ -91,17 +175,16 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                     
                     <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>
                     <?php if ($EsJefeBodega): ?>
-                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación Solicitud Anulación</a>
+                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación  Anulación</a>
                     <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
                     <?php endif; ?>
                     
                     <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                   
-                    <a class="nav-link" href="Chat.php" target="contentFrame">🧮 Chat Interno Comunicaciones</a>   
+                    <a class="nav-link" href="Chat.php" target="contentFrame">🧮 Chat Interno </a>   
                 </div>
             </div>
         </div>
 
-        <!-- ADMINISTRACIÓN -->
         <?php if ($EsAdmin): ?>
         <div class="accordion-item">
             <h2 class="accordion-header">
@@ -113,7 +196,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                 <div class="accordion-body">
                     <div class="accordion sub-accordion">
 
-                        <!-- Sub-Operación -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminOp">
                                 📊 Operación
@@ -122,7 +204,7 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
-                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                              
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                             
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
@@ -142,7 +224,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </div>
                         </div>
 
-                        <!-- Sub-Inventario -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminInv">
                                 📦 Inventario
@@ -161,7 +242,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </div>
                         </div>
 
-                        <!-- Sub-Finanzas -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminFin">
                                 💰 Finanzas
@@ -177,7 +257,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </div>
                         </div>
 
-                        <!-- Sub-Estadísticas (NUEVA UBICACIÓN) -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminEstad">
                                 📈 Estadísticas
@@ -194,7 +273,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </div>
                         </div>
 
-                        <!-- Sub-Nómina -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminNomina">
                                 💼 Nómina
@@ -208,7 +286,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
                             </div>
                         </div>
 
-                        <!-- Sub-Configuración -->
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminConf">
                                 ⚙️ Configuración
@@ -234,9 +311,10 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
 
     </div>
 
-    <div class="mt-auto p-3 border-top text-center">
-        <div>Bienvenido<br><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
-        <a href="Logout.php" target="_top" class="btn btn-outline-light btn-sm mt-2 w-100">Cerrar sesión</a>
+    <div class="mt-auto p-3 text-center" style="border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.1);">
+        <div class="text-white-50" style="font-size: 13px;">Bienvenido</div>
+        <div class="text-white font-weight-bold"><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
+        <a href="Logout.php" target="_top" class="btn btn-outline-light btn-sm mt-2 w-100" style="border-color: rgba(255,255,255,0.4);">Cerrar sesión</a>
     </div>
 </div>
 
@@ -244,7 +322,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
 
 <button id="toggleMenu" class="btn btn-primary d-md-none" style="position:fixed;top:10px;left:10px;z-index:1000;">☰</button>
 
-<!-- SCRIPT Y AGENTE IA (Sin cambios) -->
 <?php if ($EsAgenteAdmin): ?>
 <div class="ai-agent-wrap" id="aiAgentWrap">
     <div class="ai-agent-panel" id="aiAgentPanel" role="region" aria-label="Asistente Drinks">
@@ -283,7 +360,6 @@ body{ margin:0; display:flex; min-height:100vh; font-family:Arial,sans-serif; }
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
-// Scripts de funcionalidad del menú y Agente IA (preservados del original)
 document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
 };
@@ -298,7 +374,6 @@ document.getElementById('toggleMenu').onclick = () => {
     var form = document.getElementById('aiAgentForm');
     var input = document.getElementById('aiAgentInput');
     var sendBtn = document.getElementById('aiAgentSend');
-    var history = [];
 
     function setOpen(open) {
         panel.classList.toggle('open', open);
@@ -314,7 +389,6 @@ document.getElementById('toggleMenu').onclick = () => {
         var text = (input.value || '').trim();
         if (!text) return;
         input.value = '';
-        // Lógica de envío omitida por brevedad, se mantiene igual a tu original
     });
 })();
 <?php endif; ?>

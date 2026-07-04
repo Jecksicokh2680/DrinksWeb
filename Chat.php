@@ -7,7 +7,7 @@ if (!isset($_SESSION['Usuario'])) {
     exit();
 }
 
-// 2. Incluir conexión (nombre correcto del archivo)
+// 2. Incluir conexión
 require_once 'Conexion.php';
 if (isset($conn_error)) {
     die("Error en la conexión de base de datos: " . $conn_error);
@@ -16,17 +16,38 @@ if (isset($conn_error)) {
 $cedula = $_SESSION['Usuario'];
 
 // ==========================================
-// API: Obtener mensajes nuevos (AJAX GET)
+// LÓGICA: Registrar o actualizar mi actividad activa
+// ==========================================
+$stmtUser = $mysqli->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? LIMIT 1");
+$stmtUser->bind_param("s", $cedula);
+$stmtUser->execute();
+$resultadoUser = $stmtUser->get_result();
+$nombre_actual = ($rowUser = $resultadoUser->fetch_assoc()) ? $rowUser['Nombre'] : "Usuario (" . $cedula . ")";
+$stmtUser->close();
+
+// Insertar o actualizar la marca de tiempo de presencia
+$stmtPresencia = $mysqli->prepare("INSERT INTO chat_usuarios_activos (cedula, nombre_usuario, ultima_actividad) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE nombre_usuario = ?, ultima_actividad = CURRENT_TIMESTAMP");
+$stmtPresencia->bind_param("sss", $cedula, $nombre_actual, $nombre_actual);
+$stmtPresencia->execute();
+$stmtPresencia->close();
+
+
+// ==========================================
+// API: Obtener mensajes y lista de usuarios en tiempo real (AJAX GET)
 // ==========================================
 if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     header('Content-Type: application/json; charset=utf-8');
+    
+    // Volver a actualizar actividad en la petición de Polling
+    $mysqli->query("UPDATE chat_usuarios_activos SET ultima_actividad = CURRENT_TIMESTAMP WHERE cedula = '$cedula'");
+
     $lastId = isset($_GET['last_id']) ? intval($_GET['last_id']) : 0;
 
+    // 1. Traer mensajes nuevos
     $stmt = $mysqli->prepare("SELECT id, cedula, nombre_usuario, mensaje, fecha_hora FROM chat_mensajes WHERE id > ? ORDER BY id ASC LIMIT 50");
     $stmt->bind_param("i", $lastId);
     $stmt->execute();
     $result = $stmt->get_result();
-
     $mensajes = [];
     while ($row = $result->fetch_assoc()) {
         $mensajes[] = [
@@ -38,7 +59,23 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
         ];
     }
     $stmt->close();
-    echo json_encode(['status' => 'success', 'mensajes' => $mensajes]);
+
+    // 2. Traer todos los usuarios registrados con su estado (Conectado si interactuó hace < 12 segundos)
+    $resUsers = $mysqli->query("SELECT cedula, nombre_usuario, (CASE WHEN ultima_actividad >= NOW() - INTERVAL 12 SECOND THEN 1 ELSE 0 END) as en_linea FROM chat_usuarios_activos ORDER BY en_linea DESC, nombre_usuario ASC");
+    $listaUsuarios = [];
+    while($u = $resUsers->fetch_assoc()) {
+        $listaUsuarios[] = [
+            'cedula' => $u['cedula'],
+            'nombre' => $u['nombre_usuario'],
+            'online' => (int)$u['en_linea']
+        ];
+    }
+
+    echo json_encode([
+        'status' => 'success', 
+        'mensajes' => $mensajes,
+        'usuarios' => $listaUsuarios
+    ]);
     exit();
 }
 
@@ -50,49 +87,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mensaje'])) {
     $mensaje = htmlspecialchars(trim($_POST['mensaje']));
 
     if ($mensaje !== '') {
-        // BUSQUEDA EN TABLA TERCEROS
-        $stmtUser = $mysqli->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? LIMIT 1");
-        if ($stmtUser === false) {
-            echo json_encode(['status' => 'error', 'msg' => 'Error en la consulta de terceros: ' . $mysqli->error]);
-            exit();
-        }
-        
-        $stmtUser->bind_param("s", $cedula);
-        $stmtUser->execute();
-        $resultadoUser = $stmtUser->get_result();
-
-        if ($rowUser = $resultadoUser->fetch_assoc()) {
-            $nombre_usuario = $rowUser['Nombre'];
-        } else {
-            $nombre_usuario = "Usuario (" . $cedula . ")";
-        }
-        $stmtUser->close();
-
-        // Guardar mensaje
         $stmtChat = $mysqli->prepare("INSERT INTO chat_mensajes (cedula, nombre_usuario, mensaje) VALUES (?, ?, ?)");
-        if ($stmtChat === false) {
-            echo json_encode(['status' => 'error', 'msg' => 'Error al preparar inserción: ' . $mysqli->error]);
-            exit();
-        }
-        
-        $stmtChat->bind_param("sss", $cedula, $nombre_usuario, $mensaje);
+        $stmtChat->bind_param("sss", $cedula, $nombre_actual, $mensaje);
         $stmtChat->execute();
         $insertId = $mysqli->insert_id;
         $stmtChat->close();
 
-        echo json_encode([
-            'status' => 'success',
-            'id'     => $insertId
-        ]);
+        echo json_encode(['status' => 'success', 'id' => $insertId]);
     } else {
         echo json_encode(['status' => 'error', 'msg' => 'Mensaje vacío']);
     }
     exit();
 }
 
-// ==========================================
-// VISTA: Cargar historial inicial (últimos 50)
-// ==========================================
+// Cargar historial inicial de mensajes (últimos 50)
 $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, mensaje, fecha_hora FROM chat_mensajes ORDER BY id DESC LIMIT 50) sub ORDER BY id ASC");
 ?>
 
@@ -106,214 +114,220 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
     <link rel="icon" href="data:,">
     <style>
         * { box-sizing: border-box; }
-        body { 
-            margin: 0; 
-            background: #f0f2f5; 
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        body { margin: 0; background: #e3e7e9; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+        /* Contenedor Principal Estilo WhatsApp Web */
+        .app-container {
+            width: 100%;
+            max-width: 1200px;
             height: 100vh;
+            background: #fff;
+            display: flex;
+            overflow: hidden;
+            box-shadow: 0 2px 24px rgba(0,0,0,0.1);
+        }
+
+        /* BARRA LATERAL (Usuarios) */
+        .sidebar {
+            width: 30%;
+            min-width: 260px;
+            background: #fff;
+            border-right: 1px solid #e9edef;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            background: #f0f2f5;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e9edef;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .user-list {
+            flex: 1;
+            overflow-y: auto;
+            background: #fff;
+        }
+        .user-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f2f5;
+            transition: background 0.2s;
+        }
+        .user-item:hover { background: #f0f2f5; }
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: #e9edef;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-
-        /* Contenedor Principal Adaptable */
-        .chat-container {
-            width: 100%;
-            max-width: 750px;
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-            height: 100vh; /* Ocupa todo el alto en móviles */
-            overflow: hidden;
+            font-weight: bold;
+            color: #54656f;
+            margin-right: 12px;
             position: relative;
         }
+        .user-info { flex: 1; min-width: 0; }
+        .user-name { font-size: 14px; font-weight: 500; color: #111b21; white-space: nowrap; overflow: text-overflow; text-overflow: ellipsis; }
+        .user-status { font-size: 12px; color: #667781; }
 
-        /* Cabecera */
-        .chat-header {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
-            padding: 12px 16px;
+        /* AREA DE CHAT */
+        .chat-area {
+            width: 70%;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
-            z-index: 10;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex-direction: column;
+            background: #efeae2; /* Fondo clásico beige de WhatsApp */
+            height: 100%;
         }
-        .chat-header h6 { margin: 0; font-size: 15px; font-weight: 600; }
-        .chat-header .badge { background: rgba(255,255,255,.15); font-size: 11px; padding: 5px 10px; border-radius: 20px; }
+        .chat-header {
+            background: #f0f2f5;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #e9edef;
+            flex-shrink: 0;
+        }
+        .chat-header h6 { margin: 0; font-size: 15px; font-weight: 600; color: #111b21; }
 
-        /* Área de Mensajes */
         #chat-box {
             flex: 1;
             overflow-y: auto;
-            padding: 14px 16px;
-            background: #f0f2f5;
-            display: flex;
-            flex-direction: column;
+            padding: 16px 24px;
         }
 
-        /* Burbujas de Mensaje */
+        /* Burbujas */
         .mensaje {
-            margin-bottom: 10px;
-            padding: 9px 13px;
-            border-radius: 14px;
-            max-width: 82%; /* Un poco más amplio en pantallas chicas */
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 65%;
             word-wrap: break-word;
-            position: relative;
             clear: both;
-            box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
+            position: relative;
         }
         .recibido {
             background: #fff;
-            align-self: flex-start;
             float: left;
-            border: 1px solid #e5e7eb;
-            border-radius: 4px 14px 14px 14px;
+            border-radius: 0px 8px 8px 8px;
         }
         .enviado {
-            background: linear-gradient(135deg, #0d6efd, #0b5ed7);
-            color: #fff;
-            align-self: flex-end;
+            background: #d9fdd3; /* Verde claro de WhatsApp */
+            color: #111b21;
             float: right;
-            border-radius: 14px 4px 14px 14px;
+            border-radius: 8px 0px 8px 8px;
         }
-        
-        .meta-info {
-            font-size: 11px;
-            color: #6b7280;
-            display: block;
-            margin-bottom: 2px;
-            font-weight: 600;
-        }
-        .enviado .meta-info { color: rgba(255,255,255,.8); }
-        
-        .msg-time {
-            font-size: 10px;
-            color: #9ca3af;
-            text-align: right;
-            margin-top: 3px;
-        }
-        .enviado .msg-time { color: rgba(255,255,255,.65); }
+        .meta-info { font-size: 11px; color: #008069; display: block; font-weight: 600; margin-bottom: 2px; }
+        .enviado .meta-info { color: #0b5ed7; display: none; } /* Ocultar mi propio nombre arriba del mensaje */
+        .msg-time { font-size: 10px; color: #667781; text-align: right; margin-top: 4px; }
 
-        /* Barra Inferior / Formulario */
+        /* Footer */
         .chat-footer {
-            padding: 10px 14px;
-            border-top: 1px solid #e5e7eb;
-            background: #fff;
+            padding: 10px 16px;
+            background: #f0f2f5;
+            border-top: 1px solid #e9edef;
             flex-shrink: 0;
         }
-        .chat-footer form {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
+        .chat-footer form { display: flex; gap: 12px; }
         .chat-footer input {
             flex: 1;
-            padding: 10px 16px;
-            border: 1px solid #d1d5db;
-            border-radius: 22px;
+            padding: 9px 12px;
+            border: none;
+            border-radius: 8px;
             font-size: 15px;
             outline: none;
-            transition: border-color .2s;
-            background: #f8f9fa;
-        }
-        .chat-footer input:focus { 
-            border-color: #0d6efd; 
             background: #fff;
-            box-shadow: 0 0 0 2px rgba(13,110,253,.1); 
         }
         .chat-footer button {
-            padding: 10px 18px;
-            background: linear-gradient(135deg, #0d6efd, #0b5ed7);
-            color: #fff;
+            background: none;
             border: none;
-            border-radius: 22px;
-            font-size: 14px;
-            font-weight: 600;
+            color: #00a884;
+            font-weight: bold;
+            font-size: 15px;
             cursor: pointer;
-            transition: transform .1s, opacity .2s;
-            flex-shrink: 0;
+            padding: 0 10px;
         }
-        .chat-footer button:active { transform: scale(.96); }
 
         .clearfix::after { content: ''; display: block; clear: both; }
 
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-        .status-online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.5); }
-        .status-offline { background: #ef4444; }
+        /* Puntos de estado */
+        .badge-status { width: 10px; height: 10px; border-radius: 50%; position: absolute; bottom: 0; right: 0; border: 2px solid #fff; }
+        .status-online { background: #1fa952; }
+        .status-offline { background: #8696a0; }
 
-        /* ==========================================
-           MEDIA QUERIES PARA PANTALLAS GRANDES (PC)
-           ========================================== */
-        @media (min-width: 768px) {
-            .chat-container {
-                height: calc(100vh - 40px); /* Deja margen arriba y abajo en PC */
-                border-radius: 12px;
-                box-shadow: 0 4px 20px rgba(0,0,0,.08);
-                border: 1px solid #e5e7eb;
-            }
-            .chat-header {
-                padding: 14px 20px;
-            }
-            #chat-box {
-                padding: 18px 20px;
-            }
-            .chat-footer {
-                padding: 14px 20px;
-            }
-            .mensaje {
-                max-width: 72%; /* Burbujas ligeramente más angostas en monitores */
-            }
+        /* Responsividad Móvil */
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column; height: 100vh; }
+            .sidebar { width: 100%; height: 25%; min-height: 120px; border-right: none; border-bottom: 1px solid #e9edef; }
+            .chat-area { width: 100%; height: 75%; }
+            .mensaje { max-width: 85%; }
+        }
+        @media (min-width: 769px) {
+            .app-container { height: calc(100vh - 38px); border-radius: 3px; }
         }
     </style>
 </head>
 <body>
 
-<div class="chat-container">
-    <div class="chat-header">
-        <h6><span class="status-dot status-online" id="statusDot"></span> 💬 Chat Interno</h6>
-        <span class="badge">👤 <?php echo htmlspecialchars($cedula); ?></span>
+<div class="app-container">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span>👥 Personal / Usuarios</span>
+            <span class="text-muted" style="font-size:11px;">Mi ID: <?php echo htmlspecialchars($cedula); ?></span>
+        </div>
+        <div class="user-list" id="lista-usuarios">
+            <div class="p-3 text-center text-muted small">Cargando personal...</div>
+        </div>
     </div>
 
-    <div id="chat-box">
-        <?php
-        $lastId = 0;
-        if ($resultado):
-            while ($row = $resultado->fetch_assoc()):
-                $esMio = ($row['cedula'] == $cedula);
-                $clase = $esMio ? 'enviado' : 'recibido';
-                $lastId = (int)$row['id'];
-                $hora = !empty($row['fecha_hora']) ? date('h:i a', strtotime($row['fecha_hora'])) : '';
-        ?>
-                <div class="mensaje <?php echo $clase; ?>">
-                    <span class="meta-info"><?php echo htmlspecialchars($row['nombre_usuario']); ?></span>
-                    <div><?php echo htmlspecialchars($row['mensaje']); ?></div>
-                    <?php if ($hora): ?><div class="msg-time"><?php echo $hora; ?></div><?php endif; ?>
-                </div>
-        <?php
-            endwhile;
-        endif;
-        ?>
-        <div class="clearfix"></div>
-    </div>
+    <div class="chat-area">
+        <div class="chat-header">
+            <h6>💬 Sala de Conversación General</h6>
+        </div>
 
-    <div class="chat-footer">
-        <form id="form-chat">
-            <input type="text" id="input-mensaje" placeholder="Escribe un mensaje..." required autocomplete="off">
-            <button type="submit">Enviar</button>
-        </form>
+        <div id="chat-box">
+            <?php
+            $lastId = 0;
+            if ($resultado):
+                while ($row = $resultado->fetch_assoc()):
+                    $esMio = ($row['cedula'] == $cedula);
+                    $clase = $esMio ? 'enviado' : 'recibido';
+                    $lastId = (int)$row['id'];
+                    $hora = !empty($row['fecha_hora']) ? date('h:i a', strtotime($row['fecha_hora'])) : '';
+            ?>
+                    <div class="mensaje <?php echo $clase; ?>">
+                        <span class="meta-info"><?php echo htmlspecialchars($row['nombre_usuario']); ?></span>
+                        <div><?php echo htmlspecialchars($row['mensaje']); ?></div>
+                        <?php if ($hora): ?><div class="msg-time"><?php echo $hora; ?></div><?php endif; ?>
+                    </div>
+            <?php
+                endwhile;
+            endif;
+            ?>
+            <div class="clearfix"></div>
+        </div>
+
+        <div class="chat-footer">
+            <form id="form-chat">
+                <input type="text" id="input-mensaje" placeholder="Escribe un mensaje..." required autocomplete="off">
+                <button type="submit">Enviar</button>
+            </form>
+        </div>
     </div>
 </div>
 
 <script>
     const miCedula = "<?php echo htmlspecialchars($cedula, ENT_QUOTES); ?>";
     const chatBox  = document.getElementById('chat-box');
+    const containerUsuarios = document.getElementById('lista-usuarios');
     let lastId     = <?php echo $lastId; ?>;
 
-    function scrollToBottom() {
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
+    function scrollToBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
     scrollToBottom();
 
     function formatTime(fechaStr) {
@@ -351,80 +365,83 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
     }
 
     function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        const div = document.createElement('div'); div.textContent = text; return div.innerHTML;
     }
 
-    // Alerta de sonido sintetizado
+    function renderUsuarios(usuarios) {
+        containerUsuarios.innerHTML = '';
+        if(usuarios.length === 0) {
+            containerUsuarios.innerHTML = '<div class="p-3 text-center text-muted small">Sin usuarios registrados</div>';
+            return;
+        }
+
+        usuarios.forEach(u => {
+            const inicial = u.nombre.charAt(0).toUpperCase();
+            const statusClass = u.online === 1 ? 'status-online' : 'status-offline';
+            const statusText = u.online === 1 ? 'En línea' : 'Ausente';
+
+            const item = document.createElement('div');
+            item.className = 'user-item';
+            item.innerHTML = `
+                <div class="user-avatar">
+                    ${inicial}
+                    <span class="badge-status ${statusClass}"></span>
+                </div>
+                <div class="user-info">
+                    <div class="user-name">${escapeHtml(u.nombre)}</div>
+                    <div class="user-status">${statusText}</div>
+                </div>
+            `;
+            containerUsuarios.appendChild(item);
+        });
+    }
+
     function playNotificationSound() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            const osc1 = audioCtx.createOscillator();
-            const gain1 = audioCtx.createGain();
-            osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-            gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-            osc1.connect(gain1);
-            gain1.connect(audioCtx.destination);
-            osc1.start();
-            osc1.stop(audioCtx.currentTime + 0.15);
-
-            setTimeout(() => {
-                const osc2 = audioCtx.createOscillator();
-                const gain2 = audioCtx.createGain();
-                osc2.type = 'sine';
-                osc2.frequency.setValueAtTime(880, audioCtx.currentTime);
-                gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-                osc2.connect(gain2);
-                gain2.connect(audioCtx.destination);
-                osc2.start();
-                osc2.stop(audioCtx.currentTime + 0.2);
-            }, 80);
-        } catch (error) {
-            console.warn("Audio bloqueado o no soportado:", error);
-        }
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+        } catch (e) {}
     }
 
-    // Polling asíncrono
-    async function fetchNewMessages() {
+    // Polling Unificado (Trae mensajes y actualiza el panel lateral cada 3 segundos)
+    async function fetchUpdates() {
         try {
             const resp = await fetch('?action=fetch&last_id=' + lastId);
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const json = await resp.json();
 
-            if (json.status === 'success' && json.mensajes.length > 0) {
-                let incorporarSonido = false;
+            if (json.status === 'success') {
+                // 1. Renderizar usuarios activos
+                if(json.usuarios) renderUsuarios(json.usuarios);
 
-                json.mensajes.forEach(msg => {
-                    appendMessage(msg);
-                    lastId = msg.id;
-
-                    if (msg.cedula != miCedula) {
-                        incorporarSonido = true;
-                    }
-                });
-
-                if (incorporarSonido) {
-                    playNotificationSound();
+                // 2. Procesar mensajes nuevos
+                if (json.mensajes && json.mensajes.length > 0) {
+                    let sonar = false;
+                    json.mensajes.forEach(msg => {
+                        appendMessage(msg);
+                        lastId = msg.id;
+                        if (msg.cedula != miCedula) sonar = true;
+                    });
+                    if (sonar) playNotificationSound();
                 }
             }
-            document.getElementById('statusDot').className = 'status-dot status-online';
         } catch (e) {
-            console.warn('Error al obtener mensajes:', e);
-            document.getElementById('statusDot').className = 'status-dot status-offline';
+            console.warn('Error en comunicación remota:', e);
         }
     }
 
-    setInterval(fetchNewMessages, 3000);
+    // Primera carga e intervalo recurrente
+    fetchUpdates();
+    setInterval(fetchUpdates, 3000);
 
-    // Formulario de Envío
+    // Enviar formulario
     document.getElementById('form-chat').addEventListener('submit', async function(e) {
         e.preventDefault();
-        const input   = document.getElementById('input-mensaje');
+        const input = document.getElementById('input-mensaje');
         const mensaje = input.value.trim();
         if (!mensaje) return;
 
@@ -438,15 +455,11 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
                 body: 'mensaje=' + encodeURIComponent(mensaje)
             });
             const json = await resp.json();
-
             if (json.status === 'success') {
-                await fetchNewMessages();
-            } else if (json.status === 'error') {
-                alert('Error: ' + json.msg);
+                await fetchUpdates();
             }
         } catch (e) {
-            console.error('Error al enviar el mensaje:', e);
-            alert('No se pudo enviar el mensaje. Intenta de nuevo.');
+            alert('Error de red al enviar.');
         }
     });
 
