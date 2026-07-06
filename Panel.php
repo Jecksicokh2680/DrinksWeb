@@ -179,20 +179,38 @@ body {
             </h2>
             <div id="basico" class="accordion-collapse collapse show">
                 <div class="accordion-body">
-                    <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
-                    <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
-                    <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>                    
-                   
-                    <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
-                    <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-                    <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
-                    <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    <?php if ($EsJefeBodega): ?>
-                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación  Anulación JB</a>
-                    <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
+                    
+                    <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                        💰 Módulo Cajeros
+                    </h6>
+                    <div class="menu-seccion ps-2 mb-3">
+                        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
+                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>                  
+                        <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
+                        <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
+                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
+                        <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
+                    </div>
+
+                    <?php if ($EsJefeBodega): ?>
+                    <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                        📦 Jefes de Bodega (JB)
+                    </h6>
+                    <div class="menu-seccion ps-2 mb-3">
+                        <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación Anulación JB</a>
+                        <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
+                    </div>
                     <?php endif; ?>
                     
-                    <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                   
-                    <a class="nav-link" href="Chat.php" target="contentFrame">🧮 Chat Interno </a>   
+                    <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                        ⚙️ General / Compartido
+                    </h6>
+                    <div class="menu-seccion ps-2">
+                        <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
+                        <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                    
+                        <a class="nav-link" href="Chat.php" target="contentFrame">🧮 Chat Interno </a>   
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -217,8 +235,8 @@ body {
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
-                                   <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
-                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                             
+                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                                                                
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
@@ -227,7 +245,6 @@ body {
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
-                                    
                                     <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
@@ -369,12 +386,12 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
-// Toggle de apertura y cierre manual
+// Toggle de apertura y cierre manual del sidebar (Móviles)
 document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
 };
 
-// NUEVO: Cierra automáticamente el menú en celular al elegir una opción del menú
+// Cierra automáticamente el menú en celular al elegir una opción del menú
 document.querySelectorAll('.sidebar .nav-link').forEach(link => {
     link.addEventListener('click', () => {
         const sidebar = document.getElementById('sidebar');
