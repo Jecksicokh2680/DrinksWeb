@@ -20,10 +20,10 @@ try:
     mail.login(GMAIL_USER, GMAIL_PASS)
     mail.select("INBOX")
 
-    # Obtener la fecha de hoy en Bogotá en formato IMAP (ej: 06-Jul-2026)
+    # Obtener la fecha de hoy en Bogotá en formato IMAP
     fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
-    # Buscamos ambos tipos de correo recibidos el día de hoy
+    # Buscar correos del día con los asuntos clave
     criterio_busqueda = f'(OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta" ON {fecha_hoy})'
     status, messages = mail.uid('search', None, criterio_busqueda)
     mail_ids = messages[0].split()
@@ -42,7 +42,7 @@ try:
             if isinstance(subject, bytes):
                 subject = subject.decode(encoding if encoding else 'utf-8', errors='ignore')
 
-            # Fecha interna del servidor de correo convertida a Bogotá
+            # Fecha interna del servidor de correo
             date_str = msg["Date"]
             try:
                 fecha_parsed = email.utils.parsedate_to_datetime(date_str)
@@ -67,51 +67,73 @@ try:
                 if payload:
                     body = payload.decode('utf-8', errors='ignore')
 
-            # -------------------------------------------------------------
-            # NUEVO: EXTRAER EL CELULAR DIRECTAMENTE DESDE EL HTML EN BRUTO
-            # -------------------------------------------------------------
-            origen = "No detectado"
-            
-            # Buscamos la secuencia numérica oculta en todo el código fuente del correo antes de limpiarlo
-            match_cadena_larga = re.search(r'\b\d{10,}[A-Z0-9]*3\d{9}\b', body)
-            
-            if match_cadena_larga:
-                cadena_completa = match_cadena_larga.group(0)
-                origen = cadena_completa[-10:]  # Tomamos los últimos 10 dígitos (el celular)
-            else:
-                # Si no está la cadena larga, limpiamos el texto y aplicamos los planes de respaldo
-                texto_plano_temp = re.sub('<[^<]+?>', ' ', body)
-                texto_plano_limpio_temp = " ".join(texto_plano_temp.split())
-                
-                # Respaldo 1: Buscar un número de celular normal (3XXXXXXXXX) suelto en el texto
-                match_cel_tradicional = re.search(r'\b3\d{9}\b', texto_plano_limpio_temp)
-                if match_cel_tradicional:
-                    origen = match_cel_tradicional.group(0)
-                else:
-                    # Respaldo 2: Traer el nombre si definitivamente no hay ningún número celular
-                    match_remitente = re.search(r'\bde\b\s+([\s\S]*?)\s+\bel\b', texto_plano_limpio_temp, re.IGNORECASE)
-                    if match_remitente:
-                        origen = " ".join(match_remitente.group(1).strip().split())
-                        if len(origen) > 40:
-                            origen = origen[:40]
-
-            # Limpieza estándar para el Monto
+            # Limpieza estándar para procesamiento de texto
             texto_plano = re.sub('<[^<]+?>', ' ', body)
             texto_plano_limpio = " ".join(texto_plano.split())
 
-            # Extraer Monto
+            # ==========================================
+            #      EXTRACCIÓN DE TODOS LOS DATOS
+            # ==========================================
+            
+            # 1. MONTO
             monto = 0.00
-            match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
+            match_monto = re.search(r'Monto\s*:\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            if not match_monto:
+                match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Texto
             if not match_monto:
                 match_monto = re.search(r'\$[\s\d.,]+', texto_plano_limpio)
-
+                
             if match_monto:
                 monto_sucio = match_monto.group(1 if len(match_monto.groups()) > 0 else 0)
                 monto_limpio = re.sub(r'[^\d]', '', monto_sucio)
                 if monto_limpio:
                     monto = float(monto_limpio)
 
-            # --- CONTROL DE DUPLICADOS ---
+            # 2. PAGADOR / REMITENTE
+            pagador = "No detectado"
+            match_pagador = re.search(r'Pagador\s*:\s*([\s\S]*?)(?:Banco|Referencia|$)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            if not match_pagador:
+                match_pagador = re.search(r'\bde\b\s+([\s\S]*?)\s+\bel\b', texto_plano_limpio, re.IGNORECASE) # Formato Texto
+                
+            if match_pagador:
+                pagador = " ".join(match_pagador.group(1).strip().split())
+                if len(pagador) > 40:
+                    pagador = pagador[:40]
+
+            # 3. NÚMERO DE TRANSACCIÓN LARGO Y CELULAR
+            num_transaccion = "No detectado"
+            celular = "No detectado"
+            
+            match_transaccion = re.search(r'N[uú]mero\s+de\s+transacci[oó]n\s*:\s*([A-Z0-9]{10,})', texto_plano_limpio, re.IGNORECASE)
+            if match_transaccion:
+                num_transaccion = match_transaccion.group(1).strip()
+                # Extraer celular si termina con el patrón de 10 dígitos que inicia en 3
+                if len(num_transaccion) >= 10 and num_transaccion[-10].startswith('3'):
+                    celular = num_transaccion[-10:]
+            
+            # Si no vino en la transacción larga, buscamos un celular común de 10 dígitos suelto
+            if celular == "No detectado":
+                match_cel_comun = re.search(r'\b3\d{9}\b', texto_plano_limpio)
+                if match_cel_comun:
+                    celular = match_cel_comun.group(0)
+
+            # 4. BANCO ORIGEN
+            banco = "Nequi"  # Por defecto
+            match_banco = re.search(r'Banco\s*:\s*([\w\s]+?)(?:Referencia|N[uú]mero|$)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            if not match_banco:
+                match_banco = re.search(r'desde\s+el\s+banco\s+([\w\s]+?)\.', texto_plano_limpio, re.IGNORECASE) # Formato Texto
+            if match_banco:
+                banco = match_banco.group(1).strip()
+
+            # 5. REFERENCIA CORTA
+            referencia = "No detectado"
+            match_ref = re.search(r'Referencia\s*:\s*([A-Z0-9]+)', texto_plano_limpio, re.IGNORECASE)
+            if match_ref:
+                referencia = match_ref.group(1).strip()
+
+            # ==========================================
+            #         CONTROL DE DUPLICADOS
+            # ==========================================
             id_transferencia = f"{monto}_{tiempo_llave}"
             ya_existe = any(t['id_unico'] == id_transferencia for t in lista_transferencias)
 
@@ -119,8 +141,12 @@ try:
                 lista_transferencias.append({
                     'id_unico': id_transferencia,
                     'uid_correo': uid_correo,
-                    'celular_o_remitente': origen,
                     'monto': monto,
+                    'celular': celular,
+                    'pagador': pagador,
+                    'banco_origen': banco,
+                    'referencia': referencia,
+                    'numero_transaccion_largo': num_transaccion,
                     'fecha_correo': fecha_correo,
                     'asunto': subject
                 })
@@ -131,5 +157,5 @@ try:
 except Exception as e:
     lista_transferencias = [{"error": str(e)}]
 
-# Imprimir el resultado en JSON para que PHP lo capture
+# Retornar el objeto JSON mapeado para PHP
 print(json.dumps(lista_transferencias))
