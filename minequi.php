@@ -207,7 +207,7 @@ if ($resultado && $resultado->num_rows > 0) {
                                 <?php if (strcasecmp($row['estado_sesion'], 'pendiente') === 0): ?>
                                     <span class="badge bg-warning text-dark">Pendiente</span>
                                 <?php else: ?>
-                                    <span class="badge bg-success">Procesado</span>
+                                    <span class="badge bg-success">Recibido</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
