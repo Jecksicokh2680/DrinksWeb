@@ -141,7 +141,7 @@ if ($resultado && $resultado->num_rows > 0) {
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
         <h2 class="text-primary m-0 fs-3 fs-md-2">📥 Control de Transferencias Nequi & Bre-B</h2>
-        <button onclick="location.reload();" class="btn btn-success w-100 w-sm-auto text-nowrap">🔄 Sincronizar Caja</button>
+        <button onclick="location.reload();" class="btn btn-success w-100 w-sm-auto text-nowrap">🔄 Sincronizar con el Banco</button>
     </div>
 
     <?php if ($error_python): ?>
