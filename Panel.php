@@ -218,14 +218,13 @@ body {
                             <div id="adminOp" class="accordion-collapse collapse">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
-                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                             
+                                    <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
+                                   <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                             
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
-
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
-                                    <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
                                     <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
                                     <a class="nav-link" href="ComprasXProveedorXmeses.php" target="contentFrame">Compras Graficas</a>    
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
