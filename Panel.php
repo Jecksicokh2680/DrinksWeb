@@ -192,6 +192,7 @@ body {
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>   
                         <a class="nav-link" href="minequi.php" target="contentFrame">🧮 Ver Transferencias Bre-B desde el Banco</a>   
+                        <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>   
                                          
                     </div>
 
