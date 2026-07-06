@@ -234,7 +234,7 @@ body {
                             <div id="adminOp" class="accordion-collapse collapse">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="Compras.php" target="contentFrame">Compras BNMA</a>
+                                    <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                                                                
