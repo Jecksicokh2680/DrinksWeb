@@ -181,13 +181,13 @@ body {
                 <div class="accordion-body">
                     <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
                     <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
-                    <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Lista Solicitud Anulación</a>                    
+                    <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>                    
+                   
                     <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
                     <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-                    <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>
                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
                     <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    <?php if ($EsJefeBodega): ?>
-                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación  Anulación</a>
+                    <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación  Anulación JB</a>
                     <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
                     <?php endif; ?>
                     
