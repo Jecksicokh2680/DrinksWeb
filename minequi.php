@@ -108,6 +108,9 @@ if ($resultado && $resultado->num_rows > 0) {
         $filas[] = $row;
     }
 }
+
+// Detectar si la página YA está abierta dentro del popup
+$es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 ?>
 
 <!DOCTYPE html>
@@ -118,54 +121,80 @@ if ($resultado && $resultado->num_rows > 0) {
     <title>Control de Transferencias Nequi & Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        /* Ajustes responsivos personalizados para pantallas móviles */
-        @media (max-width: 576px) {
+        /* Optimización total para entornos Popup y pantallas muy pequeñas */
+        @media (max-width: 768px) {
+            body {
+                padding: 4px !important;
+            }
             .container-main {
-                padding: 10px !important;
+                padding: 12px !important;
+                border-radius: 4px !important;
             }
             .table th, .table td {
-                font-size: 0.85rem !important;
-                padding: 8px 4px !important;
+                font-size: 0.78rem !important;
+                padding: 6px 4px !important;
             }
             .fs-5 {
-                font-size: 1rem !important;
+                font-size: 0.95rem !important;
+            }
+            .fs-3 {
+                font-size: 1.25rem !important;
             }
             .badge {
-                font-size: 0.75rem !important;
+                font-size: 0.7rem !important;
+                padding: 4px 6px !important;
+            }
+            /* Ocultar el ID largo de transacción en pantallas diminutas para priorizar espacio */
+            .id-transaccion-larga {
+                display: none !important;
             }
         }
-        /* Forzar que el texto largo no rompa el layout responsivo */
+
+        /* Romper texto largo de forma limpia para evitar scroll horizontal innecesario */
         .text-break-custom {
             word-break: break-all;
             white-space: normal;
+        }
+
+        /* Permitir que los nombres de pagadores fluyan correctamente en espacios reducidos */
+        .pagador-texto {
+            max-width: 150px;
+            white-space: normal;
+            word-wrap: break-word;
+            display: inline-block;
         }
     </style>
 </head>
 <body class="bg-light p-2 p-md-4">
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
-        <h2 class="text-primary m-0 fs-3 fs-md-2">📥 Control de Transferencias Bre-B</h2>
-        <div class="d-flex flex-column align-items-sm-end gap-1 w-100 w-sm-auto">
-            <button onclick="location.reload();" class="btn btn-success w-100 text-nowrap">🔄 Sincronizar con el Banco</button>
-            <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.75rem;">
-                ⏱️ Próxima actualización en: <span id="timer" class="text-danger fw-bold">03:00</span>
-            </small>
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
+        <h2 class="text-primary m-0 fs-3 fw-bold">📥 Control Bre-B</h2>
+        
+        <div class="d-flex flex-column flex-sm-row align-items-center gap-2 w-100 w-md-auto">
+            
+            
+            <div class="d-flex flex-column align-items-center align-items-sm-end gap-1 w-100 w-md-auto">
+                <button onclick="location.reload();" class="btn btn-success btn-sm w-100 text-nowrap">🔄 Sincronizar Banco</button>
+                <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.72rem;">
+                    ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+                </small>
+            </div>
         </div>
     </div>
 
     <?php if ($error_python): ?>
-        <div class="alert alert-warning alert-dismissible fade show small" role="alert">
+        <div class="alert alert-warning alert-dismissible fade show small py-2 px-3 mb-3" role="alert" style="font-size:0.8rem;">
             <strong>Atención:</strong> <?php echo htmlspecialchars($error_python); ?>
         </div>
     <?php endif; ?>
 
-    <div class="row mb-4">
+    <div class="row mb-3">
         <div class="col-12 col-sm-6 col-md-4">
             <div class="card bg-success text-white shadow-sm">
-                <div class="card-body p-3 p-md-4">
-                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Recibido Hoy (<?php echo date('d/m/Y'); ?>)</h6>
-                    <h2 class="card-text fw-bold m-0 fs-2">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h2>
+                <div class="card-body p-2 p-md-3">
+                    <h6 class="card-title text-uppercase opacity-75 mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">Total Recibido Hoy</h6>
+                    <h3 class="card-text fw-bold m-0 fs-3">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h3>
                 </div>
             </div>
         </div>
@@ -175,10 +204,10 @@ if ($resultado && $resultado->num_rows > 0) {
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
-                    <th>Fecha / Hora (Bogotá)</th>
-                    <th>Identificación Remitente</th>
-                    <th>Monto Recibido</th>
-                    <th>Canal / Detalles de Referencia</th>
+                    <th>Fecha / Hora</th>
+                    <th>Remitente</th>
+                    <th>Monto</th>
+                    <th>Detalles / Ref</th>
                     <th>Estado</th>
                 </tr>
             </thead>
@@ -187,29 +216,29 @@ if ($resultado && $resultado->num_rows > 0) {
                     <?php foreach ($filas as $row): ?>
                         <tr>
                             <td class="text-nowrap">
-                                <strong><?php echo date("d/m/Y", strtotime($row['fecha_correo'])); ?></strong><br>
-                                <span class="text-muted small"><?php echo date("h:i A", strtotime($row['fecha_correo'])); ?></span>
+                                <strong><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong><br>
+                                <span class="text-muted small" style="font-size:0.75rem;"><?php echo date("h:i A", strtotime($row['fecha_correo'])); ?></span>
                             </td>
                             <td>
                                 <?php if ($row['celular_origen'] !== 'No detectado'): ?>
-                                    <span class="badge bg-secondary fs-6 mb-1"><?php echo htmlspecialchars($row['celular_origen']); ?></span>
+                                    <span class="badge bg-secondary mb-1 d-inline-block"><?php echo htmlspecialchars($row['celular_origen']); ?></span><br>
                                 <?php endif; ?>
                                 
                                 <?php if ($row['pagador'] !== 'No detectado'): ?>
-                                    <small class="text-dark fw-semibold d-block text-wrap" style="max-width: 200px;"><?php echo htmlspecialchars($row['pagador']); ?></small>
+                                    <small class="text-dark fw-semibold pagador-texto"><?php echo htmlspecialchars($row['pagador']); ?></small>
                                 <?php endif; ?>
 
                                 <?php if ($row['celular_origen'] === 'No detectado' && $row['pagador'] === 'No detectado'): ?>
-                                    <span class="badge bg-danger fs-6">No detectado</span>
+                                    <span class="badge bg-danger">No detectado</span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-success fw-bold fs-5 text-nowrap">$<?php echo number_format($row['monto'], 0, ',', '.'); ?></td>
                             <td>
-                                <div class="mb-1 d-flex flex-wrap gap-1 align-items-center">
-                                    <span class="badge bg-info text-dark text-uppercase"><?php echo htmlspecialchars($row['banco_origen']); ?></span>
-                                    <span class="text-muted font-monospace small">Ref: <?php echo htmlspecialchars($row['referencia']); ?></span>
+                                <div class="mb-0 d-flex flex-wrap gap-1 align-items-center">
+                                    <span class="badge bg-info text-dark text-uppercase" style="font-size:0.65rem;"><?php echo htmlspecialchars($row['banco_origen']); ?></span>
+                                    <span class="text-muted font-monospace text-break-custom" style="font-size:0.7rem;">Ref:<?php echo htmlspecialchars($row['referencia']); ?></span>
                                 </div>
-                                <div class="text-muted text-break-custom small font-monospace opacity-75" style="max-width: 250px; font-size: 0.72rem;">
+                                <div class="text-muted text-break-custom font-monospace opacity-75 id-transaccion-larga" style="max-width: 200px; font-size: 0.68rem;">
                                     ID: <?php echo htmlspecialchars($row['numero_transaccion_largo']); ?>
                                 </div>
                             </td>
@@ -224,8 +253,8 @@ if ($resultado && $resultado->num_rows > 0) {
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-4">
-                            No hay transferencias registradas el día de hoy.
+                        <td colspan="5" class="text-center text-muted py-4" style="font-size:0.85rem;">
+                            No hay transferencias registradas hoy.
                         </td>
                     </tr>
                 <?php endif; ?>
@@ -235,30 +264,40 @@ if ($resultado && $resultado->num_rows > 0) {
 </div>
 
 <script>
-    // Tiempo en segundos (3 minutos = 180 segundos)
+    // 1. Lógica de Cuenta Regresiva en Tiempo Real
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
     const cuentaRegresiva = setInterval(function() {
         tiempoRestante--;
-
-        // Calcular minutos y segundos faltantes
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        // Formatear añadiendo un cero a la izquierda si es menor de 10
-        minutos = minutos < 10 ? '0' + minutos : minutos;
+        minutos = minutos < 10 ? '0' + minutos : minutes;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
-        // Renderizar el texto en pantalla
-        contenedorTimer.textContent = minutos + ':' + segundos;
+        if(contenedorTimer) {
+            contenedorTimer.textContent = minutos + ':' + segundos;
+        }
 
-        // Al llegar a cero, frenar intervalo y recargar
         if (tiempoRestante <= 0) {
             clearInterval(cuentaRegresiva);
             location.reload();
         }
-    }, 1000); // Se ejecuta cada 1 segundo (1000ms)
+    }, 1000);
+
+    // 2. Función para abrir la página actual en un popup centrado
+    function abrirComoPopup() {
+        const ancho = 640; // Ajustado ideal para vista tipo barra lateral/widget
+        const alto = 680;
+        const izquierda = (screen.width - ancho) / 2;
+        const arriba = (screen.height - alto) / 2;
+        
+        const urlActual = window.location.origin + window.location.pathname + '?popup=1';
+        const caracteristicas = `width=${ancho},height=${alto},left=${izquierda},top=${arriba},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`;
+        
+        window.open(urlActual, 'ControlTransferenciasPopup', caracteristicas);
+    }
 </script>
 
 </body>
