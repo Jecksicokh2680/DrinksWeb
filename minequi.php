@@ -2,6 +2,11 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Iniciar sesión si no se ha iniciado antes
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 // Establecer la zona horaria de Bogotá para PHP
 date_default_timezone_set('America/Bogota');
 
@@ -20,6 +25,28 @@ if (!isset($mysqliWeb)) {
 
 // Configurar la zona horaria en la sesión de la Base de Datos usando tu objeto global
 $mysqliWeb->query("SET time_zone = '-05:00'");
+
+// --- FUNCIÓN DE AUTORIZACIÓN CORREGIDA Y REFORZADA ---
+function Autorizacion($User, $Solicitud) {
+    global $mysqliWeb; 
+    
+    // Si el usuario es "01" o está vacío, y la solicitud es 9999, denegar inmediatamente sin ir a la BD si es necesario
+    if (empty($User) || trim($User) === '' || $User === '01') {
+        return 'NO';
+    }
+    
+    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
+    if ($stmt) {
+        $stmt->bind_param("ss", $User, $Solicitud);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $row = $res->fetch_assoc();
+        $stmt->close();
+        
+        return ($row && isset($row['Swich'])) ? strtoupper(trim($row['Swich'])) : 'NO';
+    }
+    return 'NO';
+}
 
 // 2. Ejecutar el script nativo de Python para leer Gmail
 $command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
@@ -42,13 +69,10 @@ if ($output === null) {
 if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
     
     $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
-    
-    // Se usa INSERT IGNORE para que si choca con el uid_correo_unico no rompa el script
     $stmt_insert = $mysqliWeb->prepare("INSERT IGNORE INTO notificaciones_nequi 
         (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
 
-    // Array en memoria para evitar procesar id_unico duplicados en la misma ráfaga del JSON
     $ids_procesados_en_lote = [];
 
     foreach ($nuevos_correos as $correo) {
@@ -56,7 +80,6 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
 
         $id_unico = $correo['id_unico'];
 
-        // Si ya procesamos este ID en este ciclo foreach, nos saltamos el duplicado
         if (in_array($id_unico, $ids_procesados_en_lote)) {
             continue;
         }
@@ -96,7 +119,6 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
             );
             $stmt_insert->execute();
 
-            // Registrar que ya fue analizado en este lote
             $ids_procesados_en_lote[] = $id_unico;
         }
     }
@@ -115,14 +137,12 @@ $resultado = $mysqliWeb->query($sql_select);
 
 $monto_total = 0;
 $filas = [];
-// Array para evitar repetir transacciones en la vista visual e impedir sumas dobles en el recuadro verde
 $transacciones_procesadas = [];
 
 if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
 
-        // Si el ID de transacción ya fue incluido, ignoramos la fila repetida de la base de datos
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) {
             continue;
         }
@@ -138,6 +158,16 @@ if ($resultado && $resultado->num_rows > 0) {
 
 // Detectar si la página YA está abierta dentro del popup
 $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
+
+// --- VALIDACIÓN ESTRICTA ---
+$usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
+
+// Asegurar que si es '01' o está vacío sea FALSE, de lo contrario evalúa la base de datos
+if ($usuario_actual === '01' || $usuario_actual === '') {
+    $esAdminStock = false;
+} else {
+    $esAdminStock = (Autorizacion($usuario_actual, '9999') === 'SI');
+}
 ?>
 
 <!DOCTYPE html>
@@ -148,48 +178,17 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
     <title>Control de Transferencias Nequi & Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        /* Optimización total para entornos Popup y pantallas muy pequeñas */
         @media (max-width: 768px) {
-            body {
-                padding: 4px !important;
-            }
-            .container-main {
-                padding: 12px !important;
-                border-radius: 4px !important;
-            }
-            .table th, .table td {
-                font-size: 0.78rem !important;
-                padding: 6px 4px !important;
-            }
-            .fs-5 {
-                font-size: 0.95rem !important;
-            }
-            .fs-3 {
-                font-size: 1.25rem !important;
-            }
-            .badge {
-                font-size: 0.7rem !important;
-                padding: 4px 6px !important;
-            }
-            /* Ocultar el ID largo de transacción en pantallas diminutas para priorizar espacio */
-            .id-transaccion-larga {
-                display: none !important;
-            }
+            body { padding: 4px !important; }
+            .container-main { padding: 12px !important; border-radius: 4px !important; }
+            .table th, .table td { font-size: 0.78rem !important; padding: 6px 4px !important; }
+            .fs-5 { font-size: 0.95rem !important; }
+            .fs-3 { font-size: 1.25rem !important; }
+            .badge { font-size: 0.7rem !important; padding: 4px 6px !important; }
+            .id-transaccion-larga { display: none !important; }
         }
-
-        /* Romper texto largo de forma limpia para evitar scroll horizontal innecesario */
-        .text-break-custom {
-            word-break: break-all;
-            white-space: normal;
-        }
-
-        /* Permitir que los nombres de pagadores fluyan correctamente en espacios reducidos */
-        .pagador-texto {
-            max-width: 150px;
-            white-space: normal;
-            word-wrap: break-word;
-            display: inline-block;
-        }
+        .text-break-custom { word-break: break-all; white-space: normal; }
+        .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
     </style>
 </head>
 <body class="bg-light p-2 p-md-4">
@@ -214,16 +213,18 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         </div>
     <?php endif; ?>
 
-    <div class="row mb-3">
-        <div class="col-12 col-sm-6 col-md-4">
-            <div class="card bg-success text-white shadow-sm">
-                <div class="card-body p-2 p-md-3">
-                    <h6 class="card-title text-uppercase opacity-75 mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">Total Recibido Hoy</h6>
-                    <h3 class="card-text fw-bold m-0 fs-3">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h3>
+    <?php if ($esAdminStock === true): ?>
+        <div class="row mb-3">
+            <div class="col-12 col-sm-6 col-md-4">
+                <div class="card bg-success text-white shadow-sm">
+                    <div class="card-body p-2 p-md-3">
+                        <h6 class="card-title text-uppercase opacity-75 mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">Total Recibido Hoy</h6>
+                        <h3 class="card-text fw-bold m-0 fs-3">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h3>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    <?php endif; ?>
 
     <div class="table-responsive border rounded">
         <table class="table table-striped table-hover align-middle mb-0">
@@ -289,7 +290,6 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 </div>
 
 <script>
-    // 1. Lógica de Cuenta Regresiva en Tiempo Real (Corregido 'minutos')
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
@@ -298,7 +298,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutos < 10 ? '0' + minutos : minutos;
+        minutos = minutes < 10 ? '0' + minutes : minutes;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
@@ -310,19 +310,6 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
             location.reload();
         }
     }, 1000);
-
-    // 2. Función para abrir la página actual en un popup centrado
-    function abrirComoPopup() {
-        const ancho = 640; 
-        const alto = 680;
-        const izquierda = (screen.width - ancho) / 2;
-        const arriba = (screen.height - alto) / 2;
-        
-        const urlActual = window.location.origin + window.location.pathname + '?popup=1';
-        const caracteristicas = `width=${ancho},height=${alto},left=${izquierda},top=${arriba},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no`;
-        
-        window.open(urlActual, 'ControlTransferenciasPopup', caracteristicas);
-    }
 </script>
 
 </body>
