@@ -136,6 +136,8 @@ $sql_select = "SELECT id, celular_origen, pagador, banco_origen, referencia, num
 $resultado = $mysqliWeb->query($sql_select);
 
 $monto_total = 0;
+$total_transferencias = 0;
+$promedio_transferencias = 0;
 $filas = [];
 $transacciones_procesadas = [];
 
@@ -153,6 +155,12 @@ if ($resultado && $resultado->num_rows > 0) {
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
+    }
+    
+    // Calcular el conteo total de las transferencias filtradas y su promedio
+    $total_transferencias = count($filas);
+    if ($total_transferencias > 0) {
+        $promedio_transferencias = $monto_total / $total_transferencias;
     }
 }
 
@@ -194,7 +202,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-        <h2 class="text-primary m-0 fs-3 fw-bold">📥 Control Bre-B</h2>
+        <h2 class="text-primary m-0 fs-3 fw-bold">📥 Transferencias Bre-B</h2>
         
         <div class="d-flex flex-column flex-sm-row align-items-center gap-2 w-100 w-md-auto">
             <div class="d-flex flex-column align-items-center align-items-sm-end gap-1 w-100 w-md-auto">
@@ -213,12 +221,20 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
     <?php endif; ?>
 
     <?php if ($esAdminStock === true): ?>
-        <div class="row mb-3">
-            <div class="col-12 col-sm-6 col-md-4">
-                <div class="card bg-success text-white shadow-sm">
-                    <div class="card-body p-2 p-md-3">
-                        <h6 class="card-title text-uppercase opacity-75 mb-1" style="font-size: 0.7rem; letter-spacing: 0.5px;">Total Recibido Hoy</h6>
-                        <h3 class="card-text fw-bold m-0 fs-3">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h3>
+        <div class="card bg-dark text-white shadow-sm mb-3">
+            <div class="card-body p-2 p-md-3">
+                <div class="row text-center align-items-center">
+                    <div class="col-4 border-end border-secondary">
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Recibido Hoy</h6>
+                        <span class="fw-bold fs-4">$<?php echo number_format($monto_total, 0, ',', '.'); ?></span>
+                    </div>
+                    <div class="col-4 border-end border-secondary">
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Transferencias</h6>
+                        <span class="fw-bold fs-4"><?php echo $total_transferencias; ?></span>
+                    </div>
+                    <div class="col-4">
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Promedio</h6>
+                        <span class="fw-bold fs-4">$<?php echo number_format($promedio_transferencias, 0, ',', '.'); ?></span>
                     </div>
                 </div>
             </div>
@@ -289,12 +305,10 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 </div>
 
 <script>
-    // Función centralizada para refrescar la página de manera limpia sin atascar la caché
     function forzarRefresco() {
         window.location.href = window.location.origin + window.location.pathname + (window.location.search || '');
     }
 
-    // Lógica de Cuenta Regresiva en Tiempo Real
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
@@ -312,7 +326,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 
         if (tiempoRestante <= 0) {
             clearInterval(cuentaRegresiva);
-            forzarRefresco(); // Llama al refresco automático cuando el tiempo llega a cero
+            forzarRefresco(); 
         }
     }, 1000);
 </script>
