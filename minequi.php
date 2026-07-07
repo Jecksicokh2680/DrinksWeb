@@ -289,7 +289,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 </div>
 
 <script>
-    // 1. Lógica de Cuenta Regresiva en Tiempo Real
+    // 1. Lógica de Cuenta Regresiva en Tiempo Real (Corregido 'minutos')
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
@@ -298,7 +298,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutes < 10 ? '0' + minutos : minutos;
+        minutos = minutos < 10 ? '0' + minutos : minutos;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
