@@ -150,6 +150,7 @@ if ($resultado && $resultado->num_rows > 0) {
         }
 
         if ($id_largo !== 'No detectado') {
+            $transacciones_processed[] = $id_largo; // Manteniendo consistencia interna
             $transacciones_procesadas[] = $id_largo;
         }
 
@@ -185,32 +186,38 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
     <title>Control de Transferencias Nequi & Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
+        /* Estilos base responsivos */
+        .text-break-custom { word-break: break-all; white-space: normal; }
+        .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
+        
+        /* Ajustes específicos para móviles */
         @media (max-width: 768px) {
             body { padding: 4px !important; }
             .container-main { padding: 12px !important; border-radius: 4px !important; }
-            .table th, .table td { font-size: 0.78rem !important; padding: 6px 4px !important; }
+            .table th, .table td { font-size: 0.8rem !important; padding: 8px 4px !important; }
             .fs-5 { font-size: 0.95rem !important; }
+            .fs-4 { font-size: 1.1rem !important; }
             .fs-3 { font-size: 1.25rem !important; }
             .badge { font-size: 0.7rem !important; padding: 4px 6px !important; }
-            .id-transaccion-larga { display: none !important; }
+            
+            /* En móviles muy pequeños, transformamos las celdas críticas para que se apilen sutilmente */
+            .celda-remitente { min-width: 110px; }
+            .celda-detalles { min-width: 130px; }
         }
-        .text-break-custom { word-break: break-all; white-space: normal; }
-        .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
     </style>
 </head>
 <body class="bg-light p-2 p-md-4">
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 mb-3">
-        <h2 class="text-primary m-0 fs-3 fw-bold">📥 Transferencias Bre-B</h2>
+    
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-3 mb-3">
+        <h2 class="text-primary m-0 fs-3 fw-bold text-center text-md-start">📥 Transferencias Bre-B</h2>
         
-        <div class="d-flex flex-column flex-sm-row align-items-center gap-2 w-100 w-md-auto">
-            <div class="d-flex flex-column align-items-center align-items-sm-end gap-1 w-100 w-md-auto">
-                <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 text-nowrap">🔄 Sincronizar Banco</button>
-                <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.72rem;">
-                    ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
-                </small>
-            </div>
+        <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-md-center gap-2">
+            <button onclick="forzarRefresco();" class="btn btn-success btn-sm text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
+            <small class="text-muted text-center text-md-end fw-medium align-self-center" style="font-size: 0.75rem;">
+                ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+            </small>
         </div>
     </div>
 
@@ -223,17 +230,17 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
     <?php if ($esAdminStock === true): ?>
         <div class="card bg-dark text-white shadow-sm mb-3">
             <div class="card-body p-2 p-md-3">
-                <div class="row text-center align-items-center">
+                <div class="row g-1 text-center align-items-center">
                     <div class="col-4 border-end border-secondary">
-                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Recibido Hoy</h6>
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Recibido Hoy</h6>
                         <span class="fw-bold fs-4">$<?php echo number_format($monto_total, 0, ',', '.'); ?></span>
                     </div>
                     <div class="col-4 border-end border-secondary">
-                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Transferencias</h6>
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Transferencias</h6>
                         <span class="fw-bold fs-4"><?php echo $total_transferencias; ?></span>
                     </div>
                     <div class="col-4">
-                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.68rem; letter-spacing: 0.5px;">Promedio</h6>
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Promedio</h6>
                         <span class="fw-bold fs-4">$<?php echo number_format($promedio_transferencias, 0, ',', '.'); ?></span>
                     </div>
                 </div>
@@ -241,7 +248,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
         </div>
     <?php endif; ?>
 
-    <div class="table-responsive border rounded">
+    <div class="table-responsive border rounded bg-white">
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
@@ -260,7 +267,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
                                 <strong><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong><br>
                                 <span class="text-muted small" style="font-size:0.75rem;"><?php echo date("h:i A", strtotime($row['fecha_correo'])); ?></span>
                             </td>
-                            <td>
+                            <td class="celda-remitente">
                                 <?php if ($row['celular_origen'] !== 'No detectado'): ?>
                                     <span class="badge bg-secondary mb-1 d-inline-block"><?php echo htmlspecialchars($row['celular_origen']); ?></span><br>
                                 <?php endif; ?>
@@ -274,12 +281,12 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
                                 <?php endif; ?>
                             </td>
                             <td class="text-success fw-bold fs-5 text-nowrap">$<?php echo number_format($row['monto'], 0, ',', '.'); ?></td>
-                            <td>
-                                <div class="mb-0 d-flex flex-wrap gap-1 align-items-center">
+                            <td class="celda-detalles">
+                                <div class="mb-1 d-flex flex-wrap gap-1 align-items-center">
                                     <span class="badge bg-info text-dark text-uppercase" style="font-size:0.65rem;"><?php echo htmlspecialchars($row['banco_origen']); ?></span>
-                                    <span class="text-muted font-monospace text-break-custom" style="font-size:0.7rem;">Ref:<?php echo htmlspecialchars($row['referencia']); ?></span>
+                                    <span class="text-muted font-monospace text-break-custom" style="font-size:0.72rem;">Ref:<?php echo htmlspecialchars($row['referencia']); ?></span>
                                 </div>
-                                <div class="text-muted text-break-custom font-monospace opacity-75 id-transaccion-larga" style="max-width: 200px; font-size: 0.68rem;">
+                                <div class="text-muted text-break-custom font-monospace opacity-75" style="max-width: 220px; font-size: 0.68rem; line-height: 1.1;">
                                     ID: <?php echo htmlspecialchars($row['numero_transaccion_largo']); ?>
                                 </div>
                             </td>
