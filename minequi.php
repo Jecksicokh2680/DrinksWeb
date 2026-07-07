@@ -30,7 +30,7 @@ $mysqliWeb->query("SET time_zone = '-05:00'");
 function Autorizacion($User, $Solicitud) {
     global $mysqliWeb; 
     
-    // Si el usuario es "01" o está vacío, y la solicitud es 9999, denegar inmediatamente sin ir a la BD si es necesario
+    // Si el usuario es "01" o está vacío, y la solicitud es 9999, denegar inmediatamente
     if (empty($User) || trim($User) === '' || $User === '01') {
         return 'NO';
     }
@@ -162,7 +162,6 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 // --- VALIDACIÓN ESTRICTA ---
 $usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
 
-// Asegurar que si es '01' o está vacío sea FALSE, de lo contrario evalúa la base de datos
 if ($usuario_actual === '01' || $usuario_actual === '') {
     $esAdminStock = false;
 } else {
@@ -199,7 +198,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
         
         <div class="d-flex flex-column flex-sm-row align-items-center gap-2 w-100 w-md-auto">
             <div class="d-flex flex-column align-items-center align-items-sm-end gap-1 w-100 w-md-auto">
-                <button onclick="location.reload();" class="btn btn-success btn-sm w-100 text-nowrap">🔄 Sincronizar Banco</button>
+                <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 text-nowrap">🔄 Sincronizar Banco</button>
                 <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.72rem;">
                     ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
                 </small>
@@ -290,6 +289,12 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 </div>
 
 <script>
+    // Función centralizada para refrescar la página de manera limpia sin atascar la caché
+    function forzarRefresco() {
+        window.location.href = window.location.origin + window.location.pathname + (window.location.search || '');
+    }
+
+    // Lógica de Cuenta Regresiva en Tiempo Real
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
@@ -298,7 +303,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutes < 10 ? '0' + minutes : minutes;
+        minutos = minutos < 10 ? '0' + minutos : minutos;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
@@ -307,7 +312,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 
         if (tiempoRestante <= 0) {
             clearInterval(cuentaRegresiva);
-            location.reload();
+            forzarRefresco(); // Llama al refresco automático cuando el tiempo llega a cero
         }
     }, 1000);
 </script>
