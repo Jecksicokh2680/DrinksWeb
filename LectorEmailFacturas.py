@@ -107,11 +107,12 @@ for cuenta in CUENTAS_GMAIL:
                 if match_prov:
                     proveedor = " ".join(match_prov.group(1).strip().split())
                 else:
-                    match_prov_siesa = re.search(r'([A-Z0-9\s.]+?\s+(?:S\.A\.S\.|SAS))\s+informa\s+que', texto_plano_limpio, re.IGNORECASE)
+                    # Ajuste Siesa: Captura "FOOD AND DRINKS INCORPORATED S. A. S" antes de "informa que"
+                    match_prov_siesa = re.search(r'([\w\s.]+?\s+(?:S\.?\s*A\.?\s*S\.?|SAS))\s+informa\s+que', texto_plano_limpio, re.IGNORECASE)
                     if match_prov_siesa:
-                        proveedor = match_prov_siesa.group(1).strip()
+                        proveedor = " ".join(match_prov_siesa.group(1).strip().split())
                     else:
-                        # Ajuste específico para Ramo: captura el texto antes de "identificado con Nit"
+                        # Ajuste específico para Ramo
                         match_prov_ramo = re.search(r'([\w\s.]+?\s+SAS)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
                         if match_prov_ramo:
                             proveedor = match_prov_ramo.group(1).strip()
@@ -124,11 +125,12 @@ for cuenta in CUENTAS_GMAIL:
                 if match_doc:
                     num_documento = match_doc.group(1).strip()
                 else:
-                    match_doc_siesa = re.search(r'Factura\s+N[oº°]\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
+                    # Ajuste Siesa: Busca "Factura Nº: DCRB7632" tolerando variantes del símbolo No
+                    match_doc_siesa = re.search(r'Factura\s+N[oº°]*\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
                     if match_doc_siesa:
                         num_documento = match_doc_siesa.group(1).strip()
                     else:
-                        # Ajuste para Ramo: busca "NÓMICA DE VENTA) número MA1199111 mediante" o similar
+                        # Ajuste para Ramo
                         match_doc_ramo = re.search(r'n[uú]mero\s+([A-Z0-9_-]+)\s+mediante', texto_plano_limpio, re.IGNORECASE)
                         if match_doc_ramo:
                             num_documento = match_doc_ramo.group(1).strip()
@@ -147,7 +149,6 @@ for cuenta in CUENTAS_GMAIL:
                 if match_emision:
                     fecha_emision = match_emision.group(1).strip()
                 else:
-                    # Ajuste estricto para Ramo: extrae la fecha que viene inmediatamente después de "fecha de emisión"
                     match_emision_ramo = re.search(r'fecha\s+de\s+emisi[oó]n\s+(\d{4}-\d{2}-\d{2})', texto_plano_limpio, re.IGNORECASE)
                     if match_emision_ramo:
                         fecha_emision = match_emision_ramo.group(1).strip()
@@ -160,32 +161,27 @@ for cuenta in CUENTAS_GMAIL:
                 if not match_valor:
                     match_valor = re.search(r'Valor\s+total\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
                 if not match_valor:
-                    # Ajuste preciso para Ramo: captura los dígitos, comas o puntos después de "valor total de"
                     match_valor = re.search(r'valor\s+total\s+de\s+([\d,.]+)', texto_plano_limpio, re.IGNORECASE)
                 
                 if match_valor:
                     valor_sucio = match_valor.group(1).rstrip('.')
-                    # Quitamos los separadores de miles (comas o puntos que no sean decimales)
-                    # En formato Ramo '1,758,486' -> '1758486'
-                    if ',' in valor_sucio and '.' not in valor_sucio:
-                        # Si solo hay comas, asumimos que son separadores de miles o enteros limpios
-                        valor_limpio = valor_sucio.replace(',', '')
-                    else:
-                        # Limpieza genérica conservando la estructura numérica pura
-                        valor_limpio = re.sub(r'[^\d]', '', valor_sucio)
-                    
-                    if valor_limpio:
-                        try:
-                            # Manejo preventivo si existieran centavos explícitos al final (.00 o ,00)
+                    try:
+                        # Ajuste Siesa: Si viene en formato 12479984,64 (con coma decimal y sin puntos)
+                        if ',' in valor_sucio and '.' not in valor_sucio:
+                            valor_limpio = valor_sucio.replace(',', '.')
+                            valor = float(valor_limpio)
+                        else:
+                            # Lógica preventiva para formatos con terminación explícita (.00 o ,00)
                             if valor_sucio.endswith(',00') or valor_sucio.endswith('.00'):
                                 valor = float(re.sub(r'[^\d]', '', valor_sucio)) / 100
                             else:
+                                valor_limpio = re.sub(r'[^\d]', '', valor_sucio)
                                 valor = float(valor_limpio)
-                        except:
-                            valor = 0.00
+                    except:
+                        valor = 0.00
 
                 # ==========================================
-                #        CONTROL DE DUPLICADOS Y AGREGADO
+                #         CONTROL DE DUPLICADOS Y AGREGADO
                 # ==========================================
                 id_unico_factura = f"{num_documento}_{int(round(valor))}"
                 ya_existe = any(f['id_unico'] == id_unico_factura for f in lista_facturas)

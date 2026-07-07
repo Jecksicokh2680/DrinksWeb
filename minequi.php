@@ -255,7 +255,7 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
-                    <th>Detalles / Ref</th>
+                    <th>Viene de / Ref</th>
                     <th>Estado</th>
                 </tr>
             </thead>
