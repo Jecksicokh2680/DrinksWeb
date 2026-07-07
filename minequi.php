@@ -146,7 +146,12 @@ if ($resultado && $resultado->num_rows > 0) {
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
         <h2 class="text-primary m-0 fs-3 fs-md-2">📥 Control de Transferencias Bre-B</h2>
-        <button onclick="location.reload();" class="btn btn-success w-100 w-sm-auto text-nowrap">🔄 Sincronizar con el Banco</button>
+        <div class="d-flex flex-column align-items-sm-end gap-1 w-100 w-sm-auto">
+            <button onclick="location.reload();" class="btn btn-success w-100 text-nowrap">🔄 Sincronizar con el Banco</button>
+            <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.75rem;">
+                ⏱️ Próxima actualización en: <span id="timer" class="text-danger fw-bold">03:00</span>
+            </small>
+        </div>
     </div>
 
     <?php if ($error_python): ?>
@@ -228,6 +233,33 @@ if ($resultado && $resultado->num_rows > 0) {
         </table>
     </div>
 </div>
+
+<script>
+    // Tiempo en segundos (3 minutos = 180 segundos)
+    let tiempoRestante = 180; 
+    const contenedorTimer = document.getElementById('timer');
+
+    const cuentaRegresiva = setInterval(function() {
+        tiempoRestante--;
+
+        // Calcular minutos y segundos faltantes
+        let minutos = Math.floor(tiempoRestante / 60);
+        let segundos = tiempoRestante % 60;
+
+        // Formatear añadiendo un cero a la izquierda si es menor de 10
+        minutos = minutos < 10 ? '0' + minutos : minutos;
+        segundos = segundos < 10 ? '0' + segundos : segundos;
+
+        // Renderizar el texto en pantalla
+        contenedorTimer.textContent = minutos + ':' + segundos;
+
+        // Al llegar a cero, frenar intervalo y recargar
+        if (tiempoRestante <= 0) {
+            clearInterval(cuentaRegresiva);
+            location.reload();
+        }
+    }, 1000); // Se ejecuta cada 1 segundo (1000ms)
+</script>
 
 </body>
 </html>
