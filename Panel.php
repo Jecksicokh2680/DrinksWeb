@@ -191,7 +191,10 @@ body {
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>   
-                        <a class="nav-link" href="minequi.php" onclick="window.open(this.href, 'PopupBanco', 'width=900,height=700,scrollbars=yes,resizable=yes,top=100,left=200'); return false;">🧮 Ver Transferencias Bre-B desde el Banco</a>
+                        <a class="nav-link" href="minequi.php" 
+                        onclick="const w = 350; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
+                        🧮 Ver Transferencias Bre-B desde el Banco
+                        </a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>   
                                          
                     </div>
