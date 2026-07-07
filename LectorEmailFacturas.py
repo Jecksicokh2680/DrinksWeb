@@ -100,24 +100,24 @@ for cuenta in CUENTAS_GMAIL:
                 
                 # 1. PROVEEDOR
                 proveedor = "No detectado"
-                # Formato Tabla
                 match_prov = re.search(r'Proveedor\s*:\s*([\s\S]*?)(?:N[uú]mero|Tipo|Fecha|$)', texto_plano_limpio, re.IGNORECASE)
                 if match_prov:
                     proveedor = " ".join(match_prov.group(1).strip().split())
                 else:
-                    # Formato Corrido (Ramo)
-                    match_prov_corrido = re.search(r'([\w\s]+?)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
+                    # Ajuste Ramo: toma todo lo que está antes de "identificado con Nit"
+                    match_prov_corrido = re.search(r'^([\s\S]+?)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
                     if match_prov_corrido:
                         proveedor = match_prov_corrido.group(1).strip()
+                    elif "RAMO" in texto_plano_limpio.upper():
+                        proveedor = "PRODUCTOS RAMO SAS"
 
                 # 2. NÚMERO DE DOCUMENTO
                 num_documento = "No detectado"
-                # Formato Tabla
                 match_doc = re.search(r'N[uú]mero\s+de\s+documento\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
                 if match_doc:
                     num_documento = match_doc.group(1).strip()
                 else:
-                    # Formato Corrido (Ramo)
+                    # Ajuste Ramo: busca "número MA1199110 mediante"
                     match_doc_corrido = re.search(r'n[uú]mero\s+([A-Z0-9_-]+)\s+mediante', texto_plano_limpio, re.IGNORECASE)
                     if match_doc_corrido:
                         num_documento = match_doc_corrido.group(1).strip()
@@ -136,7 +136,7 @@ for cuenta in CUENTAS_GMAIL:
                 if match_emision:
                     fecha_emision = match_emision.group(1).strip()
                 else:
-                    # Formato Corrido (Ramo)
+                    # Ajuste Ramo: extrae los 10 primeros caracteres de la fecha limpia (ignora la hora)
                     match_emision_corrido = re.search(r'fecha\s+de\s+emisi[oó]n\s+(\d{4}-\d{2}-\d{2})', texto_plano_limpio, re.IGNORECASE)
                     if match_emision_corrido:
                         fecha_emision = match_emision_corrido.group(1).strip()
@@ -145,7 +145,8 @@ for cuenta in CUENTAS_GMAIL:
                 valor = 0.00
                 match_valor = re.search(r'Valor\s*:\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
                 if not match_valor:
-                    match_valor = re.search(r'valor\s+total\s+de\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
+                    # Ajuste Ramo: busca "valor total de 2,381,725" deteniéndose antes de la coma de texto
+                    match_valor = re.search(r'valor\s+total\s+de\s+([\d,.]+?)(?=\s*,|\s+la\s+cual)', texto_plano_limpio, re.IGNORECASE)
                 
                 if match_valor:
                     valor_sucio = match_valor.group(1)
@@ -162,7 +163,7 @@ for cuenta in CUENTAS_GMAIL:
                 # ==========================================
                 #        CONTROL DE DUPLICADOS Y AGREGADO
                 # ==========================================
-                id_unico_factura = f"{num_documento}_{int(valor)}"
+                id_unico_factura = f"{num_documento}_{int(round(valor))}"
                 ya_existe = any(f['id_unico'] == id_unico_factura for f in lista_facturas)
 
                 if not ya_existe and valor > 0:

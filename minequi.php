@@ -5,21 +5,21 @@ ini_set('display_errors', 1);
 // Establecer la zona horaria de Bogotá para PHP
 date_default_timezone_set('America/Bogota');
 
-// 1. Configuración de la conexión remota a MySQL
-$host    = "52.15.192.69";
-$usuario = "root";
-$pass    = "root";
-$db      = "BnmaWeb";
-$puerto  = 32768;
+// 1. Incluir e implementar el archivo de conexión existente
+require_once __DIR__ . '/Conexion.php';
 
-$mysqli = new mysqli($host, $usuario, $pass, $db, $puerto);
-
-if ($mysqli->connect_error) {
-    die("<div class='alert alert-danger text-center m-3'>La conexión a MySQL falló: " . $mysqli->connect_error . "</div>");
+// Validar si la conexión del archivo externo falló
+if (isset($conn_error)) {
+    die("<div class='alert alert-danger text-center m-3'>" . htmlspecialchars($conn_error) . "</div>");
 }
 
-// Configurar la zona horaria en la sesión de la Base de Datos
-$mysqli->query("SET time_zone = '-05:00'");
+// Usar la variable global definida en tu Conexion.php
+if (!isset($mysqliWeb)) {
+    die("<div class='alert alert-danger text-center m-3'>❌ Error: La variable de conexión \$mysqliWeb no está definida.</div>");
+}
+
+// Configurar la zona horaria en la sesión de la Base de Datos usando tu objeto global
+$mysqliWeb->query("SET time_zone = '-05:00'");
 
 // 2. Ejecutar el script nativo de Python para leer Gmail
 $command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
@@ -41,8 +41,8 @@ if ($output === null) {
 // 3. Procesar e insertar registros nuevos si no hay errores
 if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
     
-    $stmt_check = $mysqli->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
-    $stmt_insert = $mysqli->prepare("INSERT INTO notificaciones_nequi 
+    $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
+    $stmt_insert = $mysqliWeb->prepare("INSERT INTO notificaciones_nequi 
         (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
 
@@ -90,9 +90,14 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
     $stmt_insert->close();
 }
 
-// 4. Consultar las últimas 50 transferencias
-$sql_select = "SELECT id, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, monto, fecha_correo, asunto, estado_sesion FROM notificaciones_nequi ORDER BY fecha_correo DESC LIMIT 50";
-$resultado = $mysqli->query($sql_select);
+// 4. Consultar SOLO las transferencias del día (Fecha Bogotá)
+$hoy = date('Y-m-d');
+$sql_select = "SELECT id, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, monto, fecha_correo, asunto, estado_sesion 
+               FROM notificaciones_nequi 
+               WHERE DATE(fecha_correo) = '$hoy' 
+               ORDER BY fecha_correo DESC";
+
+$resultado = $mysqliWeb->query($sql_select);
 
 $monto_total = 0;
 $filas = [];
@@ -154,7 +159,7 @@ if ($resultado && $resultado->num_rows > 0) {
         <div class="col-12 col-sm-6 col-md-4">
             <div class="card bg-success text-white shadow-sm">
                 <div class="card-body p-3 p-md-4">
-                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Recibido (Últimos 50)</h6>
+                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Recibido Hoy (<?php echo date('d/m/Y'); ?>)</h6>
                     <h2 class="card-text fw-bold m-0 fs-2">$<?php echo number_format($monto_total, 0, ',', '.'); ?></h2>
                 </div>
             </div>
@@ -215,7 +220,7 @@ if ($resultado && $resultado->num_rows > 0) {
                 <?php else: ?>
                     <tr>
                         <td colspan="5" class="text-center text-muted py-4">
-                            No hay transferencias registradas aún en el sistema.
+                            No hay transferencias registradas el día de hoy.
                         </td>
                     </tr>
                 <?php endif; ?>

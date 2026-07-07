@@ -5,24 +5,23 @@ ini_set('display_errors', 1);
 // Establecer la zona horaria de Bogotá para PHP
 date_default_timezone_set('America/Bogota');
 
-// 1. Configuración de la conexión remota a MySQL
-$host    = "52.15.192.69";
-$usuario = "root";
-$pass    = "root";
-$db      = "BnmaWeb";
-$puerto  = 32768;
+// 1. Incluir el archivo de conexión que proporcionaste
+require_once __DIR__ . '/Conexion.php';
 
-$mysqli = new mysqli($host, $usuario, $pass, $db, $puerto);
-
-if ($mysqli->connect_error) {
-    die("<div class='alert alert-danger text-center m-3'>La conexión a MySQL falló: " . $mysqli->connect_error . "</div>");
+// Verificar si hubo un error en la conexión externa
+if (isset($conn_error) && !empty($conn_error)) {
+    die("<div class='alert alert-danger text-center m-3'>" . htmlspecialchars($conn_error) . "</div>");
 }
 
-// Configurar la zona horaria en la sesión de la Base de Datos
-$mysqli->query("SET time_zone = '-05:00'");
+// Asegurarnos de usar la conexión global asignada en tu archivo
+if (!isset($mysqliWeb) || $mysqliWeb->connect_error) {
+    die("<div class='alert alert-danger text-center m-3'>❌ La conexión remota ($mysqliWeb) no está disponible o falló.</div>");
+}
+
+// Configurar la zona horaria en la sesión de la Base de Datos usando tu variable global
+$mysqliWeb->query("SET time_zone = '-05:00'");
 
 // 2. Ejecutar el script nativo de Python para leer las facturas de Gmail
-// Asegúrate de mapear aquí el nombre correcto de tu script (ej: minfacturas.py)
 $command = 'python3 ' . __DIR__ . '/LectorEmailFacturas.py 2>&1';
 $output = shell_exec($command);
 
@@ -42,9 +41,8 @@ if ($output === null) {
 // 3. Procesar e insertar registros nuevos si no hay errores
 if (empty($error_python) && !empty($nuevas_facturas) && is_array($nuevas_facturas)) {
     
-    // Cambiado a la tabla y campos de facturas_recibidas
-    $stmt_check = $mysqli->prepare("SELECT id FROM facturas_recibidas WHERE id_unico = ?");
-    $stmt_insert = $mysqli->prepare("INSERT INTO facturas_recibidas 
+    $stmt_check = $mysqliWeb->prepare("SELECT id FROM facturas_recibidas WHERE id_unico = ?");
+    $stmt_insert = $mysqliWeb->prepare("INSERT INTO facturas_recibidas 
         (id_unico, uid_correo, cuenta_receptora, remitente_correo, proveedor, numero_documento, tipo_documento, fecha_emision, valor, fecha_recepcion_correo, asunto_correo, estado_procesado) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
 
@@ -74,7 +72,6 @@ if (empty($error_python) && !empty($nuevas_facturas) && is_array($nuevas_factura
             $valor            = isset($factura['valor']) ? (float)$factura['valor'] : 0.00;
             $asunto           = $factura['asunto'] ?? 'Sin Asunto';
 
-            // Vincular los parámetros correspondientes
             $stmt_insert->bind_param("ssssssssdss", 
                 $id_unico, 
                 $uid, 
@@ -95,9 +92,20 @@ if (empty($error_python) && !empty($nuevas_facturas) && is_array($nuevas_factura
     $stmt_insert->close();
 }
 
-// 4. Consultar las últimas 50 facturas recibidas
-$sql_select = "SELECT id, id_unico, cuenta_receptora, remitente_correo, proveedor, numero_documento, tipo_documento, fecha_emision, valor, fecha_recepcion_correo, estado_procesado FROM facturas_recibidas ORDER BY fecha_recepcion_correo DESC LIMIT 50";
-$resultado = $mysqli->query($sql_select);
+// 4. Filtrar por el día actual en Bogotá
+$hoy = date('Y-m-d');
+$inicio_dia = $hoy . ' 00:00:00';
+$fin_dia    = $hoy . ' 23:59:59';
+
+$sql_select = "SELECT id, id_unico, cuenta_receptora, remitente_correo, proveedor, numero_documento, tipo_documento, fecha_emision, valor, fecha_recepcion_correo, estado_procesado 
+               FROM facturas_recibidas 
+               WHERE fecha_recepcion_correo >= ? AND fecha_recepcion_correo <= ? 
+               ORDER BY fecha_recepcion_correo DESC";
+
+$stmt_select = $mysqliWeb->prepare($sql_select);
+$stmt_select->bind_param("ss", $inicio_dia, $fin_dia);
+$stmt_select->execute();
+$resultado = $stmt_select->get_result();
 
 $valor_total = 0;
 $filas = [];
@@ -108,6 +116,7 @@ if ($resultado && $resultado->num_rows > 0) {
         $filas[] = $row;
     }
 }
+$stmt_select->close();
 ?>
 
 <!DOCTYPE html>
@@ -115,7 +124,7 @@ if ($resultado && $resultado->num_rows > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Facturas Electrónicas</title>
+    <title>Control de Facturas Electrónicas - Hoy</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         @media (max-width: 576px) {
@@ -131,7 +140,10 @@ if ($resultado && $resultado->num_rows > 0) {
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
-        <h2 class="text-primary m-0 fs-3 fs-md-2">📋 Control de Facturas Electrónicas</h2>
+        <div>
+            <h2 class="text-primary m-0 fs-3 fs-md-2">📋 Facturas Recibidas Hoy</h2>
+            <small class="text-muted">Mostrando registros de Bogotá: <?php echo date('d/m/Y'); ?></small>
+        </div>
         <button onclick="location.reload();" class="btn btn-success w-100 w-sm-auto text-nowrap">🔄 Sincronizar Facturas</button>
     </div>
 
@@ -145,7 +157,7 @@ if ($resultado && $resultado->num_rows > 0) {
         <div class="col-12 col-sm-6 col-md-4">
             <div class="card bg-success text-white shadow-sm">
                 <div class="card-body p-3 p-md-4">
-                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Facturado (Últimos 50)</h6>
+                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Facturado Hoy</h6>
                     <h2 class="card-text fw-bold m-0 fs-2">$<?php echo number_format($valor_total, 0, ',', '.'); ?></h2>
                 </div>
             </div>
@@ -212,7 +224,7 @@ if ($resultado && $resultado->num_rows > 0) {
                 <?php else: ?>
                     <tr>
                         <td colspan="5" class="text-center text-muted py-4">
-                            No hay facturas registradas aún en el sistema.
+                            No se encontraron facturas registradas el día de hoy.
                         </td>
                     </tr>
                 <?php endif; ?>
