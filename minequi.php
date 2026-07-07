@@ -42,14 +42,26 @@ if ($output === null) {
 if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
     
     $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
-    $stmt_insert = $mysqliWeb->prepare("INSERT INTO notificaciones_nequi 
+    
+    // Se usa INSERT IGNORE para que si choca con el uid_correo_unico no rompa el script
+    $stmt_insert = $mysqliWeb->prepare("INSERT IGNORE INTO notificaciones_nequi 
         (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
+
+    // Array en memoria para evitar procesar id_unico duplicados en la misma ráfaga del JSON
+    $ids_procesados_en_lote = [];
 
     foreach ($nuevos_correos as $correo) {
         if (!isset($correo['id_unico'])) continue;
 
-        $stmt_check->bind_param("s", $correo['id_unico']);
+        $id_unico = $correo['id_unico'];
+
+        // Si ya procesamos este ID en este ciclo foreach, nos saltamos el duplicado
+        if (in_array($id_unico, $ids_procesados_en_lote)) {
+            continue;
+        }
+
+        $stmt_check->bind_param("s", $id_unico);
         $stmt_check->execute();
         $stmt_check->store_result();
         
@@ -61,7 +73,6 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
                 $fecha_bogota = date('Y-m-d H:i:s'); 
             }
 
-            $id_unico     = $correo['id_unico'];
             $uid          = $correo['uid_correo'] ?? '0';
             $monto        = isset($correo['monto']) ? (float)$correo['monto'] : 0.00;
             $celular      = $correo['celular'] ?? 'No detectado';
@@ -84,6 +95,9 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
                 $fecha_bogota
             );
             $stmt_insert->execute();
+
+            // Registrar que ya fue analizado en este lote
+            $ids_procesados_en_lote[] = $id_unico;
         }
     }
     $stmt_check->close();
@@ -101,9 +115,22 @@ $resultado = $mysqliWeb->query($sql_select);
 
 $monto_total = 0;
 $filas = [];
+// Array para evitar repetir transacciones en la vista visual e impedir sumas dobles en el recuadro verde
+$transacciones_procesadas = [];
 
 if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
+        $id_largo = $row['numero_transaccion_largo'];
+
+        // Si el ID de transacción ya fue incluido, ignoramos la fila repetida de la base de datos
+        if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) {
+            continue;
+        }
+
+        if ($id_largo !== 'No detectado') {
+            $transacciones_procesadas[] = $id_largo;
+        }
+
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
     }
@@ -172,8 +199,6 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         <h2 class="text-primary m-0 fs-3 fw-bold">📥 Control Bre-B</h2>
         
         <div class="d-flex flex-column flex-sm-row align-items-center gap-2 w-100 w-md-auto">
-            
-            
             <div class="d-flex flex-column align-items-center align-items-sm-end gap-1 w-100 w-md-auto">
                 <button onclick="location.reload();" class="btn btn-success btn-sm w-100 text-nowrap">🔄 Sincronizar Banco</button>
                 <small class="text-muted text-center text-sm-end w-100 fw-medium" style="font-size: 0.72rem;">
@@ -273,7 +298,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutos < 10 ? '0' + minutos : minutes;
+        minutos = minutes < 10 ? '0' + minutos : minutos;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
@@ -288,7 +313,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 
     // 2. Función para abrir la página actual en un popup centrado
     function abrirComoPopup() {
-        const ancho = 640; // Ajustado ideal para vista tipo barra lateral/widget
+        const ancho = 640; 
         const alto = 680;
         const izquierda = (screen.width - ancho) / 2;
         const arriba = (screen.height - alto) / 2;

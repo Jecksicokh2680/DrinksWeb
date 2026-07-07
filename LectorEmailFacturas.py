@@ -20,7 +20,7 @@ CUENTAS_GMAIL = [
     }
 ]
 
-# LISTA DE REMITENTES PERMITIDOS (¡Añadido Siesa!)
+# LISTA DE REMITENTES PERMITIDOS
 REMITENTES_VALIDOS = [
     "facturactscolombia@cen.biz",
     "facturaelectronica@ramo.com.co",
@@ -43,15 +43,12 @@ for cuenta in CUENTAS_GMAIL:
 
         fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
-        # -----------------------------------------------------------------
-        # CONSTRUCCIÓN DINÁMICA DEL CRITERIO DE BÚSQUEDA PARA > 2 REMITENTES
-        # -----------------------------------------------------------------
+        # Construcción dinámica del criterio de búsqueda
         criterio_remitentes = f'FROM "{REMITENTES_VALIDOS[0]}"'
         for remitente in REMITENTES_VALIDOS[1:]:
             criterio_remitentes = f'OR FROM "{remitente}" ({criterio_remitentes})'
         
         criterio_busqueda = f'({criterio_remitentes}) ON {fecha_hoy}'
-        # -----------------------------------------------------------------
 
         status, messages = mail.uid('search', None, criterio_busqueda)
         mail_ids = messages[0].split()
@@ -101,7 +98,7 @@ for cuenta in CUENTAS_GMAIL:
                 texto_plano_limpio = " ".join(texto_plano.split())
 
                 # =========================================================================
-                #   EXTRACCIÓN DE DATOS COMPATIBLE CON TABLA, RAMO Y SIESA (AJE)
+                #   EXTRACCIÓN DE DATOS OPTIMIZADA (TABLA, SIESA Y CORRIDO DE RAMO)
                 # =========================================================================
                 
                 # 1. PROVEEDOR
@@ -110,15 +107,14 @@ for cuenta in CUENTAS_GMAIL:
                 if match_prov:
                     proveedor = " ".join(match_prov.group(1).strip().split())
                 else:
-                    # Ajuste Siesa/Aje: Busca la estructura "... SAS informa que se ha emitido..."
                     match_prov_siesa = re.search(r'([A-Z0-9\s.]+?\s+(?:S\.A\.S\.|SAS))\s+informa\s+que', texto_plano_limpio, re.IGNORECASE)
                     if match_prov_siesa:
                         proveedor = match_prov_siesa.group(1).strip()
                     else:
-                        # Ajuste Ramo
-                        match_prov_corrido = re.search(r'^([\s\S]+?)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
-                        if match_prov_corrido:
-                            proveedor = match_prov_corrido.group(1).strip()
+                        # Ajuste específico para Ramo: captura el texto antes de "identificado con Nit"
+                        match_prov_ramo = re.search(r'([\w\s.]+?\s+SAS)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
+                        if match_prov_ramo:
+                            proveedor = match_prov_ramo.group(1).strip()
                         elif "RAMO" in texto_plano_limpio.upper():
                             proveedor = "PRODUCTOS RAMO SAS"
 
@@ -128,22 +124,21 @@ for cuenta in CUENTAS_GMAIL:
                 if match_doc:
                     num_documento = match_doc.group(1).strip()
                 else:
-                    # Ajuste Siesa: Busca "Factura Nº: CBPA1392937" o "Factura N° CBPA1392937"
                     match_doc_siesa = re.search(r'Factura\s+N[oº°]\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
                     if match_doc_siesa:
                         num_documento = match_doc_siesa.group(1).strip()
                     else:
-                        # Ajuste Ramo
-                        match_doc_corrido = re.search(r'n[uú]mero\s+([A-Z0-9_-]+)\s+mediante', texto_plano_limpio, re.IGNORECASE)
-                        if match_doc_corrido:
-                            num_documento = match_doc_corrido.group(1).strip()
+                        # Ajuste para Ramo: busca "NÓMICA DE VENTA) número MA1199111 mediante" o similar
+                        match_doc_ramo = re.search(r'n[uú]mero\s+([A-Z0-9_-]+)\s+mediante', texto_plano_limpio, re.IGNORECASE)
+                        if match_doc_ramo:
+                            num_documento = match_doc_ramo.group(1).strip()
 
                 # 3. TIPO DE DOCUMENTO
                 tipo_documento = "Factura de Venta"
                 match_tipo = re.search(r'Tipo\s+de\s+documento\s*:\s*([\s\S]*?)(?:Fecha|Valor|$)', texto_plano_limpio, re.IGNORECASE)
                 if match_tipo:
                     tipo_documento = " ".join(match_tipo.group(1).strip().split())
-                elif "FACTURA ELECTRONICA DE VENTA" in texto_plano_limpio.upper() or "SIESAFE" in remitente_correo_limpio:
+                elif "FACTURA ELECTRONICA DE VENTA" in texto_plano_limpio.upper():
                     tipo_documento = "Factura Electrónica de Venta"
 
                 # 4. FECHA DE EMISIÓN
@@ -152,34 +147,40 @@ for cuenta in CUENTAS_GMAIL:
                 if match_emision:
                     fecha_emision = match_emision.group(1).strip()
                 else:
-                    match_emision_corrido = re.search(r'fecha\s+de\s+emisi[oó]n\s+(\d{4}-\d{2}-\d{2})', texto_plano_limpio, re.IGNORECASE)
-                    if match_emision_corrido:
-                        fecha_emision = match_emision_corrido.group(1).strip()
+                    # Ajuste estricto para Ramo: extrae la fecha que viene inmediatamente después de "fecha de emisión"
+                    match_emision_ramo = re.search(r'fecha\s+de\s+emisi[oó]n\s+(\d{4}-\d{2}-\d{2})', texto_plano_limpio, re.IGNORECASE)
+                    if match_emision_ramo:
+                        fecha_emision = match_emision_ramo.group(1).strip()
                     else:
-                        # Si Siesa no trae fecha explícita en el cuerpo plano, hereda la del correo recibido
                         fecha_emision = fecha_correo.split()[0]
 
                 # 5. VALOR DE LA FACTURA
                 valor = 0.00
                 match_valor = re.search(r'Valor\s*:\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
                 if not match_valor:
-                    # Ajuste Siesa: busca "Valor total $ 4796843,00"
                     match_valor = re.search(r'Valor\s+total\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
                 if not match_valor:
-                    # Ajuste Ramo
-                    match_valor = re.search(r'valor\s+total\s+de\s+([\d,.]+?)(?=\s*,|\s+la\s+cual)', texto_plano_limpio, re.IGNORECASE)
+                    # Ajuste preciso para Ramo: captura los dígitos, comas o puntos después de "valor total de"
+                    match_valor = re.search(r'valor\s+total\s+de\s+([\d,.]+)', texto_plano_limpio, re.IGNORECASE)
                 
                 if match_valor:
-                    valor_sucio = match_valor.group(1)
-                    # Quitar todo lo que no sea número, coma o punto para analizar los decimales
-                    valor_limpiecita = re.sub(r'[^\d]', '', valor_sucio)
-                    if valor_limpiecita:
+                    valor_sucio = match_valor.group(1).rstrip('.')
+                    # Quitamos los separadores de miles (comas o puntos que no sean decimales)
+                    # En formato Ramo '1,758,486' -> '1758486'
+                    if ',' in valor_sucio and '.' not in valor_sucio:
+                        # Si solo hay comas, asumimos que son separadores de miles o enteros limpios
+                        valor_limpio = valor_sucio.replace(',', '')
+                    else:
+                        # Limpieza genérica conservando la estructura numérica pura
+                        valor_limpio = re.sub(r'[^\d]', '', valor_sucio)
+                    
+                    if valor_limpio:
                         try:
-                            # Si termina en ,00 o .00 tratamos adecuadamente los centavos
-                            if (valor_sucio.endswith(',00') or valor_sucio.endswith('.00')):
-                                valor = float(valor_limpiecita) / 100
+                            # Manejo preventivo si existieran centavos explícitos al final (.00 o ,00)
+                            if valor_sucio.endswith(',00') or valor_sucio.endswith('.00'):
+                                valor = float(re.sub(r'[^\d]', '', valor_sucio)) / 100
                             else:
-                                valor = float(valor_limpiecita)
+                                valor = float(valor_limpio)
                         except:
                             valor = 0.00
 
