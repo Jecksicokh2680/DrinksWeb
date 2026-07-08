@@ -273,7 +273,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
                     <th>Remitente</th>
                     <th>Monto</th>
                     <th>Viene de / Ref</th>
-                    <th>Estado</th>
+                    <th>Est</th>
                     <?php if ($esAdminStock): ?>
                         <th class="text-center">Acción</th>
                     <?php endif; ?>
@@ -314,7 +314,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
                                 <?php if (strcasecmp($row['estado_sesion'], 'pendiente') === 0): ?>
                                     <span class="badge bg-warning text-dark">Pendiente</span>
                                 <?php else: ?>
-                                    <span class="badge bg-success">Recibido</span>
+                                    <span class="badge bg-success">Ok</span>
                                 <?php endif; ?>
                             </td>
                             <?php if ($esAdminStock): ?>
