@@ -114,9 +114,9 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
     <link rel="icon" href="data:,">
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: #e3e7e9; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        body { margin: 0; background: #e3e7e9; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; height: 100vh; height: -webkit-fill-available; display: flex; align-items: center; justify-content: center; }
 
-        /* Contenedor Principal Estilo WhatsApp Web */
+        /* Contenedor Principal */
         .app-container {
             width: 100%;
             max-width: 1200px;
@@ -130,11 +130,12 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         /* BARRA LATERAL (Usuarios) */
         .sidebar {
             width: 30%;
-            min-width: 260px;
+            min-width: 280px;
             background: #fff;
             border-right: 1px solid #e9edef;
             display: flex;
             flex-direction: column;
+            transition: all 0.3s ease;
         }
         .sidebar-header {
             background: #f0f2f5;
@@ -157,6 +158,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             padding: 12px 16px;
             border-bottom: 1px solid #f0f2f5;
             transition: background 0.2s;
+            cursor: pointer;
         }
         .user-item:hover { background: #f0f2f5; }
         .user-avatar {
@@ -171,9 +173,10 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             color: #54656f;
             margin-right: 12px;
             position: relative;
+            flex-shrink: 0;
         }
         .user-info { flex: 1; min-width: 0; }
-        .user-name { font-size: 14px; font-weight: 500; color: #111b21; white-space: nowrap; overflow: text-overflow; text-overflow: ellipsis; }
+        .user-name { font-size: 14px; font-weight: 500; color: #111b21; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .user-status { font-size: 12px; color: #667781; }
 
         /* AREA DE CHAT */
@@ -181,8 +184,9 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             width: 70%;
             display: flex;
             flex-direction: column;
-            background: #efeae2; /* Fondo clásico beige de WhatsApp */
+            background: #efeae2; 
             height: 100%;
+            transition: all 0.3s ease;
         }
         .chat-header {
             background: #f0f2f5;
@@ -191,6 +195,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             align-items: center;
             border-bottom: 1px solid #e9edef;
             flex-shrink: 0;
+            gap: 10px;
         }
         .chat-header h6 { margin: 0; font-size: 15px; font-weight: 600; color: #111b21; }
 
@@ -205,7 +210,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             margin-bottom: 8px;
             padding: 8px 12px;
             border-radius: 8px;
-            max-width: 65%;
+            max-width: 75%;
             word-wrap: break-word;
             clear: both;
             box-shadow: 0 1px 0.5px rgba(0,0,0,0.13);
@@ -217,13 +222,13 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             border-radius: 0px 8px 8px 8px;
         }
         .enviado {
-            background: #d9fdd3; /* Verde claro de WhatsApp */
+            background: #d9fdd3; 
             color: #111b21;
             float: right;
             border-radius: 8px 0px 8px 8px;
         }
         .meta-info { font-size: 11px; color: #008069; display: block; font-weight: 600; margin-bottom: 2px; }
-        .enviado .meta-info { color: #0b5ed7; display: none; } /* Ocultar mi propio nombre arriba del mensaje */
+        .enviado .meta-info { color: #0b5ed7; display: none; } 
         .msg-time { font-size: 10px; color: #667781; text-align: right; margin-top: 4px; }
 
         /* Footer */
@@ -244,14 +249,17 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             background: #fff;
         }
         .chat-footer button {
-            background: none;
+            background: #00a884;
             border: none;
-            color: #00a884;
+            color: #fff;
+            border-radius: 8px;
             font-weight: bold;
-            font-size: 15px;
+            font-size: 14px;
             cursor: pointer;
-            padding: 0 10px;
+            padding: 8px 16px;
+            transition: background 0.2s;
         }
+        .chat-footer button:hover { background: #008f70; }
 
         .clearfix::after { content: ''; display: block; clear: both; }
 
@@ -260,21 +268,45 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         .status-online { background: #1fa952; }
         .status-offline { background: #8696a0; }
 
-        /* Responsividad Móvil */
-        @media (max-width: 768px) {
-            .app-container { flex-direction: column; height: 100vh; }
-            .sidebar { width: 100%; height: 25%; min-height: 120px; border-right: none; border-bottom: 1px solid #e9edef; }
-            .chat-area { width: 100%; height: 75%; }
+        /* Botón de regreso para móviles */
+        .btn-back {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #54656f;
+            cursor: pointer;
+            padding: 0 8px;
+            display: none;
+        }
+
+        /* ==========================================
+           RESPONSIVIDAD MÓVIL (MÁXIMO 767px)
+           ========================================== */
+        @media (max-width: 767.98px) {
+            body { height: 100vh; }
+            .app-container { height: 100vh; }
+            
+            /* Vista por defecto: se muestra lista, se oculta chat */
+            .sidebar { width: 100%; display: flex; border-right: none; }
+            .chat-area { width: 100%; display: none; }
+
+            /* Clase activa controlada por JS para cambiar de vista */
+            .show-chat .sidebar { display: none; }
+            .show-chat .chat-area { display: flex; }
+            .show-chat .btn-back { display: block; }
+
+            #chat-box { padding: 12px 16px; }
             .mensaje { max-width: 85%; }
         }
-        @media (min-width: 769px) {
-            .app-container { height: calc(100vh - 38px); border-radius: 3px; }
+
+        @media (min-width: 768px) {
+            .app-container { height: calc(100vh - 40px); border-radius: 8px; }
         }
     </style>
 </head>
 <body>
 
-<div class="app-container">
+<div class="app-container" id="app-wrapper">
     <div class="sidebar">
         <div class="sidebar-header">
             <span>👥 Personal / Usuarios</span>
@@ -287,6 +319,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
 
     <div class="chat-area">
         <div class="chat-header">
+            <button class="btn-back" id="btn-back-to-list" title="Volver a la lista">←</button>
             <h6>💬 Sala de Conversación General</h6>
         </div>
 
@@ -325,7 +358,14 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
     const miCedula = "<?php echo htmlspecialchars($cedula, ENT_QUOTES); ?>";
     const chatBox  = document.getElementById('chat-box');
     const containerUsuarios = document.getElementById('lista-usuarios');
+    const appWrapper = document.getElementById('app-wrapper');
+    const btnBack = document.getElementById('btn-back-to-list');
     let lastId     = <?php echo $lastId; ?>;
+
+    // Manejo de navegación responsiva (clics en lista/regresar)
+    btnBack.addEventListener('click', () => {
+        appWrapper.classList.remove('show-chat');
+    });
 
     function scrollToBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
     scrollToBottom();
@@ -382,6 +422,14 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
 
             const item = document.createElement('div');
             item.className = 'user-item';
+            // Evento para abrir el chat en dispositivos móviles al tocar al usuario
+            item.addEventListener('click', () => {
+                if(window.innerWidth < 768) {
+                    appWrapper.classList.add('show-chat');
+                    scrollToBottom();
+                }
+            });
+
             item.innerHTML = `
                 <div class="user-avatar">
                     ${inicial}
@@ -391,6 +439,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
                     <div class="user-name">${escapeHtml(u.nombre)}</div>
                     <div class="user-status">${statusText}</div>
                 </div>
+                <div class="d-md-none text-muted small px-2">👉 Ver Chat</div>
             `;
             containerUsuarios.appendChild(item);
         });
@@ -407,7 +456,7 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         } catch (e) {}
     }
 
-    // Polling Unificado (Trae mensajes y actualiza el panel lateral cada 3 segundos)
+    // Polling Unificado
     async function fetchUpdates() {
         try {
             const resp = await fetch('?action=fetch&last_id=' + lastId);
@@ -415,10 +464,8 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
             const json = await resp.json();
 
             if (json.status === 'success') {
-                // 1. Renderizar usuarios activos
                 if(json.usuarios) renderUsuarios(json.usuarios);
 
-                // 2. Procesar mensajes nuevos
                 if (json.mensajes && json.mensajes.length > 0) {
                     let sonar = false;
                     json.mensajes.forEach(msg => {
@@ -434,7 +481,6 @@ $resultado = $mysqli->query("SELECT * FROM (SELECT id, cedula, nombre_usuario, m
         }
     }
 
-    // Primera carga e intervalo recurrente
     fetchUpdates();
     setInterval(fetchUpdates, 3000);
 
