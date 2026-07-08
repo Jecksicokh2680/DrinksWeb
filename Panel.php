@@ -353,7 +353,13 @@ body {
     </div>
 </div>
 
-<iframe name="contentFrame" class="content-frame"></iframe>
+<iframe name="contentFrame" class="content-frame" srcdoc="
+    <html style='height:100%;'>
+    <body style='margin:0; display:flex; align-items:center; justify-content:center; height:100%; background:#f8fafc;'>
+        <img src='ment_promo_breb.png' style='max-width:100%; max-height:100vh; object-fit:contain;'>
+    </body>
+    </html>
+"></iframe>
 
 <?php if ($EsAgenteAdmin): ?>
 <div class="ai-agent-wrap" id="aiAgentWrap">
