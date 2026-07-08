@@ -132,26 +132,30 @@ try:
                 referencia = match_ref.group(1).strip()
 
             # ==========================================
-            #         CONTROL DE DUPLICADOS
+            #         CONTROL DE DUPLICADOS (REVISADO)
             # ==========================================
-            # Normalizar asunto actual quitando prefijos de reenvío
-            asunto_normalizado = subject.replace("RV:", "").replace("rv:", "").strip()
+            # Limpiamos el asunto actual quitando "RV:" o "rv:" y espacios extras
+            asunto_normalizado = subject.upper().replace("RV:", "").replace("RV :", "").strip()
+            
             ya_existe = False
             
             for t in lista_transferencias:
-                # Comprobar si coincide el monto y el mismo minuto de llegada
-                if t['monto'] == monto and t['id_unico'].split('_')[1] == tiempo_llave:
-                    # Normalizar el asunto ya guardado para comparar de forma justa
-                    t_asunto_normalizado = t['asunto'].replace("RV:", "").replace("rv:", "").strip()
+                # 1. Comprobar si tienen exactamente el mismo monto y banco origen en el mismo día
+                if t['monto'] == monto and t['banco_origen'].lower() == banco.lower():
                     
-                    # Validar si ambos pertenecen al flujo de Bre-B
-                    if "Bre-B" in asunto_normalizado and "Bre-B" in t_asunto_normalizado:
-                        ya_existe = True
-                        break
+                    # 2. Normalizar el asunto que ya está en la lista para compararlo
+                    t_asunto_normalizado = t['asunto'].upper().replace("RV:", "").replace("RV :", "").strip()
                     
-                    # Control genérico por si el ID exacto ya se encuentra registrado
-                    if t['id_unico'] == f"{monto}_{tiempo_llave}":
+                    # Si los asuntos base coinciden (ej. ambos dicen "¡RECIBISTE PLATA POR BRE-B!")
+                    if asunto_normalizado == t_asunto_normalizado:
                         ya_existe = True
+                        
+                        # MEJORA: Si el registro guardado no detectó el pagador real, pero este correo nuevo SÍ lo tiene,
+                        # actualizamos los datos del registro anterior para no perder la información real.
+                        if t['pagador'] == "No detectado" or "PARA:" in t['pagador'].upper():
+                            if pagador != "No detectado" and "PARA:" not in pagador.upper():
+                                t['pagador'] = pagador
+                                t['celular'] = celular
                         break
 
             id_transferencia = f"{monto}_{tiempo_llave}"
