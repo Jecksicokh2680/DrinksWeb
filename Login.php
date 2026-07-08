@@ -210,18 +210,9 @@ if (isset($_GET['loadSucursales'])) {
             <div class="w-100 px-3 px-sm-4 px-xl-5" style="max-width: 460px;">
 
                 <div class="text-center mb-4">
-                    <div class="mb-3">
-                        <img id="logoDinamico" src="LogoDBC.png" height="75" class="img-fluid object-fit-contain d-none d-md-inline-block" alt="Logo Corporativo">
-                        
-                        <div class="d-flex justify-content-center gap-2 d-md-none">
-                            <img src="LogoDBC.png" height="45" class="rounded border bg-white p-1" alt="Logo DBC">
-                            <img src="logoDrinks.png" height="45" class="rounded border bg-white p-1" alt="Logo Drinks">
-                        </div>
-                    </div>
                     <h4 class="fw-bold text-dark mb-1">¡Bienvenido al Portal!</h4>
                     <p class="text-muted small">Selecciona tu empresa e introduce tus datos de acceso</p>
                 </div>
-
                 <?php if ($msg != ""): ?>
                     <div class="alert alert-danger text-center py-2 small">
                         <?= htmlspecialchars($msg) ?>
