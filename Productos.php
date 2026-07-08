@@ -9,12 +9,12 @@ require_once("Conexion.php");      // $mysqliWeb
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     $bc   = $_POST['barcode'];
-    $sede = $_POST['sede']; // 'Central' o 'Drinks'
+    $sede = $_POST['sede'] ?? ''; 
     $db   = ($sede === 'Central') ? $mysqliCentral : $mysqliDrinks;
 
+    // 1. Actualizar Stock
     if ($_POST['action'] === 'update_stock') {
         $nueva_cant = floatval($_POST['cantidad']);
-        // Buscamos el idproducto para afectar la tabla inventario
         $res = $db->query("SELECT idproducto FROM productos WHERE barcode = '$bc' LIMIT 1");
         if ($r = $res->fetch_assoc()) {
             $idp = $r['idproducto'];
@@ -26,23 +26,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+    // 2. Cambiar Estado
     if ($_POST['action'] === 'toggle_status') {
         $nuevo_estado = intval($_POST['estado']);
         $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
         $stmt->bind_param("is", $nuevo_estado, $bc);
         echo json_encode(['success' => $stmt->execute()]);
     }
+
+    // NUEVO: 3. Actualizar Descripción en ambas sedes
+    if ($_POST['action'] === 'update_description') {
+        $nueva_desc = trim($_POST['descripcion']);
+        if (empty($nueva_desc)) {
+            echo json_encode(['success' => false, 'error' => 'La descripción no puede estar vacía.']);
+            exit;
+        }
+
+        // Actualizamos en Central
+        $stmtC = $mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+        $stmtC->bind_param("ss", $nueva_desc, $bc);
+        $resC = $stmtC->execute();
+
+        // Actualizamos en Drinks
+        $stmtD = $mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+        $stmtD->bind_param("ss", $nueva_desc, $bc);
+        $resD = $stmtD->execute();
+
+        echo json_encode(['success' => ($resC || $resD)]);
+    }
     exit;
 }
 
 /* ============================================================
-   CONSULTA DE DATOS (Mantenemos tu lógica de mapeo)
+   CONSULTA DE DATOS
 ============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term      = $_GET['term'] ?? '';
 $like      = "%$term%";
 
-// 1. Mapeo de Categorías
 $prodCat = [];
 $resPC = $mysqliWeb->query("SELECT sku, CodCat FROM catproductos");
 while ($r = $resPC->fetch_assoc()) { $prodCat[$r['sku']] = $r['CodCat']; }
@@ -51,12 +72,9 @@ $cats = [];
 $resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
 while ($c = $resCat->fetch_assoc()) { $cats[$c['CodCat']] = $c['Nombre']; }
 
-// 2. Consulta a Sedes (Se asume la misma lógica de WHERE del código anterior)
 $sql = "SELECT p.barcode, p.descripcion, p.estado, IFNULL(SUM(i.cantidad),0) cantidad 
         FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
-
-// ... Ejecución de $stmtC y $stmtD para llenar arrays $central y $drinks ...
 
 $stmtC = $mysqliCentral->prepare($sql);
 $stmtC->bind_param("ss", $like, $like);
@@ -88,17 +106,19 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
         th { background: #1a2a6c; color: white; padding: 12px; font-size: 13px; }
         td { border-bottom: 1px solid #eee; padding: 8px; text-align: center; }
         
-        /* Estilos de fila por sede */
         .row-drinks { background: #fffcf5; }
         .row-central { background: #f5f9ff; }
-        .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; }
+        .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; padding: 10px; }
         
-        /* Controles */
+        /* Input inline de descripción */
+        .desc-input { background: transparent; border: 1px solid transparent; font-size: 15px; font-weight: bold; color: #333; width: 75%; padding: 4px 8px; border-radius: 4px; transition: all 0.3s; }
+        .desc-input:hover { background: #fff; border-color: #ccc; }
+        .desc-input:focus { background: #fff; border-color: #2196F3; outline: none; box-shadow: 0 0 5px rgba(33,150,243,0.3); }
+
         .stock-input { width: 70px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; }
         .btn-save { background: #28a745; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
         .btn-save:hover { background: #218838; }
 
-        /* Switch */
         .switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 18px; }
@@ -110,7 +130,6 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
 
-        /* NUEVOS ESTILOS PARA EL BUSCADOR */
         .search-container { margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e3e6f0; }
         .search-form { display: flex; gap: 10px; }
         .search-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
@@ -158,7 +177,12 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
             ?>
             <tr>
                 <td colspan="4" class="product-header">
-                    <span style="color:#666">[<?= $b ?>]</span> <?= htmlspecialchars($desc) ?>
+                    <span style="color:#666; font-family: monospace; font-size: 14px;">[<?= $b ?>]</span>
+                    <input type="text" 
+                           class="desc-input" 
+                           value="<?= htmlspecialchars($desc) ?>" 
+                           onblur="updateDescription('<?= $b ?>', this.value)" 
+                           onkeydown="if(event.key === 'Enter') { this.blur(); }">
                 </td>
             </tr>
 
@@ -203,6 +227,23 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
 </div>
 
 <script>
+// NUEVA FUNCIÓN: Actualizar descripción inline
+function updateDescription(barcode, newDesc) {
+    const formData = new FormData();
+    formData.append('action', 'update_description');
+    formData.append('barcode', barcode);
+    formData.append('descripcion', newDesc);
+
+    fetch('', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        if(!data.success) {
+            alert('Error al actualizar la descripción: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(err => alert('Error de red al actualizar descripción.'));
+}
+
 function saveStock(barcode, sede) {
     const qty = document.getElementById(`input-${sede.toLowerCase()}-${barcode}`).value;
     
