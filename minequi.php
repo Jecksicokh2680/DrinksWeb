@@ -48,6 +48,33 @@ function Autorizacion($User, $Solicitud) {
     return 'NO';
 }
 
+// --- VALIDACIÓN ESTRICTA DE USUARIO ---
+$usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
+
+if ($usuario_actual === '01' || $usuario_actual === '') {
+    $esAdminStock = false;
+} else {
+    $esAdminStock = (Autorizacion($usuario_actual, '9999') === 'SI');
+}
+
+// --- PROCESAR ELIMINACIÓN SEGURA SI ES ADMIN CON AUTORIZACIÓN 9999 ---
+$mensaje_eliminar = "";
+if ($esAdminStock && isset($_POST['action']) && $_POST['action'] === 'eliminar_registro') {
+    $id_eliminar = filter_input(INPUT_POST, 'id_transferencia', FILTER_VALIDATE_INT);
+    if ($id_eliminar) {
+        $stmt_del = $mysqliWeb->prepare("DELETE FROM notificaciones_nequi WHERE id = ?");
+        if ($stmt_del) {
+            $stmt_del->bind_param("i", $id_eliminar);
+            if ($stmt_del->execute()) {
+                $mensaje_eliminar = "<div class='alert alert-success py-2 px-3 mb-3' style='font-size:0.85rem;'>✅ Registro eliminado correctamente.</div>";
+            } else {
+                $mensaje_eliminar = "<div class='alert alert-danger py-2 px-3 mb-3' style='font-size:0.85rem;'>❌ Error al intentar eliminar el registro de la base de datos.</div>";
+            }
+            $stmt_del->close();
+        }
+    }
+}
+
 // 2. Ejecutar el script nativo de Python para leer Gmail
 $command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
 $output = shell_exec($command);
@@ -150,7 +177,7 @@ if ($resultado && $resultado->num_rows > 0) {
         }
 
         if ($id_largo !== 'No detectado') {
-            $transacciones_processed[] = $id_largo; // Manteniendo consistencia interna
+            $transacciones_processed[] = $id_largo; 
             $transacciones_procesadas[] = $id_largo;
         }
 
@@ -158,24 +185,13 @@ if ($resultado && $resultado->num_rows > 0) {
         $filas[] = $row;
     }
     
-    // Calcular el conteo total de las transferencias filtradas y su promedio
     $total_transferencias = count($filas);
     if ($total_transferencias > 0) {
         $promedio_transferencias = $monto_total / $total_transferencias;
     }
 }
 
-// Detectar si la página YA está abierta dentro del popup
 $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
-
-// --- VALIDACIÓN ESTRICTA ---
-$usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
-
-if ($usuario_actual === '01' || $usuario_actual === '') {
-    $esAdminStock = false;
-} else {
-    $esAdminStock = (Autorizacion($usuario_actual, '9999') === 'SI');
-}
 ?>
 
 <!DOCTYPE html>
@@ -186,11 +202,9 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
     <title>Control de Transferencias Nequi & Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        /* Estilos base responsivos */
         .text-break-custom { word-break: break-all; white-space: normal; }
         .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
         
-        /* Ajustes específicos para móviles */
         @media (max-width: 768px) {
             body { padding: 4px !important; }
             .container-main { padding: 12px !important; border-radius: 4px !important; }
@@ -199,8 +213,6 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
             .fs-4 { font-size: 1.1rem !important; }
             .fs-3 { font-size: 1.25rem !important; }
             .badge { font-size: 0.7rem !important; padding: 4px 6px !important; }
-            
-            /* En móviles muy pequeños, transformamos las celdas críticas para que se apilen sutilmente */
             .celda-remitente { min-width: 110px; }
             .celda-detalles { min-width: 130px; }
         }
@@ -220,6 +232,11 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
             </small>
         </div>
     </div>
+
+    <?php 
+    // Mostrar retroalimentación de la eliminación si existe
+    if (!empty($mensaje_eliminar)) { echo $mensaje_eliminar; } 
+    ?>
 
     <?php if ($error_python): ?>
         <div class="alert alert-warning alert-dismissible fade show small py-2 px-3 mb-3" role="alert" style="font-size:0.8rem;">
@@ -257,6 +274,9 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
                     <th>Monto</th>
                     <th>Viene de / Ref</th>
                     <th>Estado</th>
+                    <?php if ($esAdminStock): ?>
+                        <th class="text-center">Acción</th>
+                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -297,11 +317,22 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
                                     <span class="badge bg-success">Recibido</span>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($esAdminStock): ?>
+                                <td class="text-center">
+                                    <form method="POST" action="" onsubmit="return confirmarEliminacion();" style="display:inline;">
+                                        <input type="hidden" name="action" value="eliminar_registro">
+                                        <input type="hidden" name="id_transferencia" value="<?php echo $row['id']; ?>">
+                                        <button type="submit" class="btn btn-danger btn-sm px-2 py-1" style="font-size: 0.75rem;">
+                                            🗑️ Eliminar
+                                        </button>
+                                    </form>
+                                </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-4" style="font-size:0.85rem;">
+                        <td colspan="<?php echo $esAdminStock ? '6' : '5'; ?>" class="text-center text-muted py-4" style="font-size:0.85rem;">
                             No hay transferencias registradas hoy.
                         </td>
                     </tr>
@@ -314,6 +345,10 @@ if ($usuario_actual === '01' || $usuario_actual === '') {
 <script>
     function forzarRefresco() {
         window.location.href = window.location.origin + window.location.pathname + (window.location.search || '');
+    }
+
+    function confirmarEliminacion() {
+        return confirm("⚠️ ¿Estás seguro de que deseas eliminar permanentemente esta transferencia del sistema?");
     }
 
     let tiempoRestante = 180; 

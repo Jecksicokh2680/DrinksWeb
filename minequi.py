@@ -134,8 +134,27 @@ try:
             # ==========================================
             #         CONTROL DE DUPLICADOS
             # ==========================================
+            # Normalizar asunto actual quitando prefijos de reenvío
+            asunto_normalizado = subject.replace("RV:", "").replace("rv:", "").strip()
+            ya_existe = False
+            
+            for t in lista_transferencias:
+                # Comprobar si coincide el monto y el mismo minuto de llegada
+                if t['monto'] == monto and t['id_unico'].split('_')[1] == tiempo_llave:
+                    # Normalizar el asunto ya guardado para comparar de forma justa
+                    t_asunto_normalizado = t['asunto'].replace("RV:", "").replace("rv:", "").strip()
+                    
+                    # Validar si ambos pertenecen al flujo de Bre-B
+                    if "Bre-B" in asunto_normalizado and "Bre-B" in t_asunto_normalizado:
+                        ya_existe = True
+                        break
+                    
+                    # Control genérico por si el ID exacto ya se encuentra registrado
+                    if t['id_unico'] == f"{monto}_{tiempo_llave}":
+                        ya_existe = True
+                        break
+
             id_transferencia = f"{monto}_{tiempo_llave}"
-            ya_existe = any(t['id_unico'] == id_transferencia for t in lista_transferencias)
 
             if not ya_existe and monto > 0:
                 lista_transferencias.append({

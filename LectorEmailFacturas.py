@@ -27,7 +27,7 @@ REMITENTES_VALIDOS = [
     "siesafe@siesa.com"
 ]
 
-# Configurar la zona horaria de Bogotá (UTC -5) de forma nativa y universal
+# Configurar la zona horaria de Bogotá (UTC -5)
 TZ_BOGOTA = timezone(timedelta(hours=-5))
 
 lista_facturas = []
@@ -41,15 +41,13 @@ for cuenta in CUENTAS_GMAIL:
         mail.login(GMAIL_USER, GMAIL_PASS)
         mail.select("INBOX")
 
+        # Fecha formateada para el estándar IMAP (Ej: 08-Jul-2026)
         fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
-        # Construcción dinámica del criterio de búsqueda
-        criterio_remitentes = f'FROM "{REMITENTES_VALIDOS[0]}"'
-        for remitente in REMITENTES_VALIDOS[1:]:
-            criterio_remitentes = f'OR FROM "{remitente}" ({criterio_remitentes})'
-        
-        criterio_busqueda = f'({criterio_remitentes}) ON {fecha_hoy}'
+        # BÚSQUEDA ROBUSTA: Traemos todos los correos recibidos HOY.
+        criterio_busqueda = f'ON {fecha_hoy}'
 
+        # CORREGIDO: Ahora usa 'criterio_busqueda' correctamente
         status, messages = mail.uid('search', None, criterio_busqueda)
         mail_ids = messages[0].split()
 
@@ -61,6 +59,7 @@ for cuenta in CUENTAS_GMAIL:
                 raw_email = data[0][1]
                 msg = email.message_from_bytes(raw_email)
 
+                # 1. Validar remitente
                 remitente_header = msg.get("From", "")
                 _, remitente_correo = parseaddr(remitente_header)
                 remitente_correo_limpio = remitente_correo.lower().strip()
@@ -68,10 +67,12 @@ for cuenta in CUENTAS_GMAIL:
                 if remitente_correo_limpio not in REMITENTES_VALIDOS:
                     continue
 
+                # 2. Procesar Asunto
                 subject, encoding = decode_header(msg["Subject"])[0]
                 if isinstance(subject, bytes):
                     subject = subject.decode(encoding if encoding else 'utf-8', errors='ignore')
 
+                # 3. Procesar Fecha de Recepción
                 date_str = msg["Date"]
                 try:
                     fecha_parsed = email.utils.parsedate_to_datetime(date_str)
@@ -80,6 +81,7 @@ for cuenta in CUENTAS_GMAIL:
                 except:
                     fecha_correo = datetime.now(TZ_BOGOTA).strftime('%Y-%m-%d %H:%M:%S')
 
+                # 4. Extraer cuerpo del correo
                 body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
@@ -93,49 +95,45 @@ for cuenta in CUENTAS_GMAIL:
                     if payload:
                         body = payload.decode('utf-8', errors='ignore')
 
-                # Limpieza de HTML conservando los espacios clave
+                # Limpieza de HTML conservando espacios clave
                 texto_plano = re.sub('<[^<]+?>', ' ', body)
                 texto_plano_limpio = " ".join(texto_plano.split())
 
                 # =========================================================================
-                #   EXTRACCIÓN DE DATOS OPTIMIZADA (TABLA, SIESA Y CORRIDO DE RAMO)
+                #   EXTRACCIÓN DE DATOS CON EXPRESIONES REGULARES
                 # =========================================================================
                 
-                # 1. PROVEEDOR
+                # PROVEEDOR
                 proveedor = "No detectado"
                 match_prov = re.search(r'Proveedor\s*:\s*([\s\S]*?)(?:N[uú]mero|Tipo|Fecha|$)', texto_plano_limpio, re.IGNORECASE)
                 if match_prov:
                     proveedor = " ".join(match_prov.group(1).strip().split())
                 else:
-                    # Ajuste Siesa: Captura "FOOD AND DRINKS INCORPORATED S. A. S" antes de "informa que"
                     match_prov_siesa = re.search(r'([\w\s.]+?\s+(?:S\.?\s*A\.?\s*S\.?|SAS))\s+informa\s+que', texto_plano_limpio, re.IGNORECASE)
                     if match_prov_siesa:
                         proveedor = " ".join(match_prov_siesa.group(1).strip().split())
                     else:
-                        # Ajuste específico para Ramo
                         match_prov_ramo = re.search(r'([\w\s.]+?\s+SAS)\s+identificado\s+con\s+Nit', texto_plano_limpio, re.IGNORECASE)
                         if match_prov_ramo:
                             proveedor = match_prov_ramo.group(1).strip()
                         elif "RAMO" in texto_plano_limpio.upper():
                             proveedor = "PRODUCTOS RAMO SAS"
 
-                # 2. NÚMERO DE DOCUMENTO
+                # NÚMERO DE DOCUMENTO
                 num_documento = "No detectado"
                 match_doc = re.search(r'N[uú]mero\s+de\s+documento\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
                 if match_doc:
                     num_documento = match_doc.group(1).strip()
                 else:
-                    # Ajuste Siesa: Busca "Factura Nº: DCRB7632" tolerando variantes del símbolo No
                     match_doc_siesa = re.search(r'Factura\s+N[oº°]*\s*:\s*([A-Z0-9_-]+)', texto_plano_limpio, re.IGNORECASE)
                     if match_doc_siesa:
                         num_documento = match_doc_siesa.group(1).strip()
                     else:
-                        # Ajuste para Ramo
                         match_doc_ramo = re.search(r'n[uú]mero\s+([A-Z0-9_-]+)\s+mediante', texto_plano_limpio, re.IGNORECASE)
                         if match_doc_ramo:
                             num_documento = match_doc_ramo.group(1).strip()
 
-                # 3. TIPO DE DOCUMENTO
+                # TIPO DE DOCUMENTO
                 tipo_documento = "Factura de Venta"
                 match_tipo = re.search(r'Tipo\s+de\s+documento\s*:\s*([\s\S]*?)(?:Fecha|Valor|$)', texto_plano_limpio, re.IGNORECASE)
                 if match_tipo:
@@ -143,7 +141,7 @@ for cuenta in CUENTAS_GMAIL:
                 elif "FACTURA ELECTRONICA DE VENTA" in texto_plano_limpio.upper():
                     tipo_documento = "Factura Electrónica de Venta"
 
-                # 4. FECHA DE EMISIÓN
+                # FECHA DE EMISIÓN
                 fecha_emision = "No detectada"
                 match_emision = re.search(r'Fecha\s+de\s+emisi[oó]n\s*:\s*(\d{4}-\d{2}-\d{2})', texto_plano_limpio, re.IGNORECASE)
                 if match_emision:
@@ -155,7 +153,7 @@ for cuenta in CUENTAS_GMAIL:
                     else:
                         fecha_emision = fecha_correo.split()[0]
 
-                # 5. VALOR DE LA FACTURA
+                # VALOR DE LA FACTURA
                 valor = 0.00
                 match_valor = re.search(r'Valor\s*:\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
                 if not match_valor:
@@ -166,22 +164,22 @@ for cuenta in CUENTAS_GMAIL:
                 if match_valor:
                     valor_sucio = match_valor.group(1).rstrip('.')
                     try:
-                        # Ajuste Siesa: Si viene en formato 12479984,64 (con coma decimal y sin puntos)
-                        if ',' in valor_sucio and '.' not in valor_sucio:
-                            valor_limpio = valor_sucio.replace(',', '.')
-                            valor = float(valor_limpio)
-                        else:
-                            # Lógica preventiva para formatos con terminación explícita (.00 o ,00)
-                            if valor_sucio.endswith(',00') or valor_sucio.endswith('.00'):
-                                valor = float(re.sub(r'[^\d]', '', valor_sucio)) / 100
+                        if ',' in valor_sucio and '.' in valor_sucio:
+                            if valor_sucio.rfind(',') > valor_sucio.rfind('.'):
+                                valor_limpio = valor_sucio.replace('.', '').replace(',', '.')
                             else:
-                                valor_limpio = re.sub(r'[^\d]', '', valor_sucio)
-                                valor = float(valor_limpio)
+                                valor_limpio = valor_sucio.replace(',', '')
+                        elif ',' in valor_sucio:
+                            valor_limpio = valor_sucio.replace(',', '.')
+                        else:
+                            valor_limpio = valor_sucio
+                        
+                        valor = float(valor_limpio)
                     except:
                         valor = 0.00
 
                 # ==========================================
-                #         CONTROL DE DUPLICADOS Y AGREGADO
+                #        CONTROL DE DUPLICADOS Y AGREGADO
                 # ==========================================
                 id_unico_factura = f"{num_documento}_{int(round(valor))}"
                 ya_existe = any(f['id_unico'] == id_unico_factura for f in lista_facturas)
@@ -209,4 +207,4 @@ for cuenta in CUENTAS_GMAIL:
             "error": f"Error en la cuenta {GMAIL_USER}: {str(e)}"
         })
 
-print(json.dumps(lista_facturas, ensure_ascii=False))
+print(json.dumps(lista_facturas, ensure_ascii=False, indent=2))
