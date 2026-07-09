@@ -162,7 +162,7 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
 
 $hoy = date('Y-m-d');
 
-// --- CONSULTA MODIFICADA ---
+// --- CONSULTA ---
 $sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre AS nombre_usuario, SUM(n.monto) AS total_monto, COUNT(n.id) AS total_cantidad
                 FROM control_checks_nequi c
                 INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
@@ -199,7 +199,7 @@ if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
-        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; } // Corrección Typo aquí
+        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; }
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
@@ -217,18 +217,33 @@ if ($resultado && $resultado->num_rows > 0) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         .text-break-custom { word-break: break-all; white-space: normal; }
-        .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
-        .form-check-input { width: 1.4em; height: 1.4em; cursor: pointer; }
+        .pagador-texto { max-width: 100%; white-space: normal; word-wrap: break-word; display: inline-block; }
+        .form-check-input { width: 1.5em; height: 1.5em; cursor: pointer; }
         .form-check-input:disabled { opacity: 0.6; cursor: not-allowed; }
         
+        /* Ajustes específicos para pantallas táctiles y móviles extremos */
         @media (max-width: 768px) {
             body { padding: 4px !important; }
-            .container-main { padding: 12px !important; border-radius: 4px !important; }
-            .table th, .table td { font-size: 0.8rem !important; padding: 8px 4px !important; }
-            .fs-5 { font-size: 0.95rem !important; }
-            .fs-4 { font-size: 1.1rem !important; }
-            .fs-3 { font-size: 1.25rem !important; }
-            .badge { font-size: 0.7rem !important; padding: 4px 6px !important; }
+            .container-main { padding: 8px !important; border-radius: 6px !important; }
+            
+            /* Optimización de tablas nativas en móvil */
+            .table-responsive-desktop {
+                display: block;
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .table th, .table td { padding: 6px 4px !important; font-size: 0.78rem !important; }
+            .fs-mobile-amount { font-size: 1.05rem !important; }
+            .badge-mobile { font-size: 0.65rem !important; padding: 3px 5px !important; }
+            
+            /* Permitir empaquetamiento flexible en el badge verde si el espacio es crítico */
+            .badge-green-flexible {
+                white-space: normal !important;
+                word-break: break-word;
+                text-align: left;
+            }
         }
     </style>
 </head>
@@ -249,7 +264,7 @@ if ($resultado && $resultado->num_rows > 0) {
     </div>
 </div>
 
-<div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
+<div class="container-fluid container-xl bg-white p-2 p-md-4 rounded shadow-sm container-main">
     
     <div class="row align-items-center justify-content-between g-2 mb-3">        
         <div class="col-12 col-md-auto">
@@ -273,8 +288,8 @@ if ($resultado && $resultado->num_rows > 0) {
             📊 Resumen Acumulado por Sede y Usuario (Checks de Hoy)
         </div>
         <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-striped table-hover mb-0 align-middle style-table-resumen" style="font-size: 0.85rem;">
+            <div class="table-responsive-desktop">
+                <table class="table table-sm table-striped table-hover mb-0 align-middle" style="font-size: 0.85rem;">
                     <thead class="table-light text-secondary text-nowrap">
                         <tr>
                             <th class="ps-3">🏢 NIT</th>
@@ -290,10 +305,10 @@ if ($resultado && $resultado->num_rows > 0) {
                             <?php foreach ($totales_por_sede as $item): ?>
                                 <tr>
                                     <td class="ps-3 font-monospace fw-medium text-secondary"><?php echo htmlspecialchars($item['nit_empresa']); ?></td>
-                                    <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($item['nro_sucursal']); ?></span></td>
+                                    <td><span class="badge bg-light text-dark border badge-mobile"><?php echo htmlspecialchars($item['nro_sucursal']); ?></span></td>
                                     <td class="font-monospace text-muted"><?php echo htmlspecialchars($item['usuario_cedula']); ?></td>
                                     <td class="fw-semibold text-dark"><?php echo htmlspecialchars($item['nombre_usuario'] ?? 'Sin Nombre'); ?></td>
-                                    <td class="text-center font-monospace"><span class="badge bg-dark"><?php echo $item['total_cantidad']; ?></span></td>
+                                    <td class="text-center font-monospace"><span class="badge bg-dark badge-mobile"><?php echo $item['total_cantidad']; ?></span></td>
                                     <td class="text-end pe-3 fw-bold text-primary fs-6">$<?php echo number_format($item['total_monto'], 0, ',', '.'); ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -316,26 +331,26 @@ if ($resultado && $resultado->num_rows > 0) {
                 <div class="row g-1 text-center align-items-center">
                     <div class="col-4 border-end border-secondary">
                         <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Recibido Hoy</h6>
-                        <span class="fw-bold fs-4">$<?php echo number_format($monto_total, 0, ',', '.'); ?></span>
+                        <span class="fw-bold fs-5 fs-md-4">$<?php echo number_format($monto_total, 0, ',', '.'); ?></span>
                     </div>
                     <div class="col-4 border-end border-secondary">
                         <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Transferencias</h6>
-                        <span class="fw-bold fs-4"><?php echo $total_transferencias; ?></span>
+                        <span class="fw-bold fs-5 fs-md-4"><?php echo $total_transferencias; ?></span>
                     </div>
                     <div class="col-4">
                         <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Promedio</h6>
-                        <span class="fw-bold fs-4">$<?php echo number_format($promedio_transferencias, 0, ',', '.'); ?></span>
+                        <span class="fw-bold fs-5 fs-md-4">$<?php echo number_format($promedio_transferencias, 0, ',', '.'); ?></span>
                     </div>
                 </div>
             </div>
         </div>
     <?php endif; ?>
 
-    <div class="table-responsive border rounded bg-white">
+    <div class="table-responsive-desktop border rounded bg-white">
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
-                    <th class="text-center" style="width: 60px;">Asignar</th>
+                    <th class="text-center" style="width: 50px;">Asignar</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
@@ -361,12 +376,12 @@ if ($resultado && $resultado->num_rows > 0) {
                                        <?php echo $disabled_attr; ?>>
                             </td>
                             <td class="text-nowrap">
-                                <strong><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong><br>
+                                <strong class="d-block"><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong>
                                 <span class="text-muted small" style="font-size:0.75rem;"><?php echo date("h:i A", strtotime($row['fecha_correo'])); ?></span>
                             </td>
                             <td class="celda-remitente">
                                 <?php if ($row['celular_origen'] !== 'No detectado'): ?>
-                                    <span class="badge bg-secondary mb-1 d-inline-block"><?php echo htmlspecialchars($row['celular_origen']); ?></span><br>
+                                    <span class="badge bg-secondary mb-1 d-inline-block badge-mobile"><?php echo htmlspecialchars($row['celular_origen']); ?></span><br>
                                 <?php endif; ?>
                                 
                                 <?php if ($row['pagador'] !== 'No detectado'): ?>
@@ -374,19 +389,26 @@ if ($resultado && $resultado->num_rows > 0) {
                                 <?php endif; ?>
 
                                 <?php if ($row['celular_origen'] === 'No detectado' && $row['pagador'] === 'No detectado'): ?>
-                                    <span class="badge bg-danger">No detectado</span><br>
+                                    <span class="badge bg-danger badge-mobile">No detectado</span><br>
                                 <?php endif; ?>
 
                                 <?php if ($tiene_dueno): ?>
-                                    <span class="badge bg-success mt-1" style="font-size: 0.65rem;">
-                                        📌 Por: <?php echo htmlspecialchars($row['nombre_dueno'] ?? $row['usuario_cedula']); ?>
-                                    </span>
+                                    <div class="mt-1">
+                                        <span class="badge bg-success d-inline-flex align-items-center flex-wrap gap-1 badge-green-flexible" style="font-size: 0.68rem; padding: 4px 6px;">
+                                            <span>📌 Por: <?php echo htmlspecialchars($row['nombre_dueno'] ?? $row['usuario_cedula']); ?></span>
+                                            <?php if(!empty($row['nit_empresa'])): ?>
+                                                <span class="opacity-90 font-monospace" style="font-size: 0.62rem;">
+                                                    - NIT: <?php echo htmlspecialchars($row['nit_empresa']); ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </span>
+                                    </div>
                                 <?php endif; ?>
                             </td>
-                            <td class="text-success fw-bold fs-5 text-nowrap">$<?php echo number_format($row['monto'], 0, ',', '.'); ?></td>
+                            <td class="text-success fw-bold fs-5 fs-mobile-amount text-nowrap">$<?php echo number_format($row['monto'], 0, ',', '.'); ?></td>
                             <td class="celda-detalles">
                                 <div class="mb-1 d-flex flex-wrap gap-1 align-items-center">
-                                    <span class="badge bg-info text-dark text-uppercase" style="font-size:0.65rem;"><?php echo htmlspecialchars($row['banco_origen']); ?></span>
+                                    <span class="badge bg-info text-dark text-uppercase badge-mobile" style="font-size:0.65rem;"><?php echo htmlspecialchars($row['banco_origen']); ?></span>
                                     <span class="text-muted font-monospace text-break-custom" style="font-size:0.72rem;">Ref:<?php echo htmlspecialchars($row['referencia']); ?></span>
                                 </div>
                                 <div class="text-muted text-break-custom font-monospace opacity-75" style="max-width: 220px; font-size: 0.68rem; line-height: 1.1;">
@@ -408,13 +430,10 @@ if ($resultado && $resultado->num_rows > 0) {
 </div>
 
 <script>
-    // MODIFICADO: Implementación nativa que conserva parámetros internos de URL y fuerza la recarga de datos limpios
     function forzarRefresco() {
-        if (window.location.search) {
-            window.location.href = window.location.pathname + window.location.search;
-        } else {
-            window.location.reload(true);
-        }
+        const url_actual = new URL(window.location.href);
+        url_actual.searchParams.set('v', new Date().getTime());
+        window.location.replace(url_actual.href);
     }
 
     document.querySelectorAll('.check-transferencia').forEach(checkbox => {
