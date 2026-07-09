@@ -107,11 +107,9 @@ try:
             match_transaccion = re.search(r'N[uú]mero\s+de\s+transacci[oó]n\s*:\s*([A-Z0-9]{10,})', texto_plano_limpio, re.IGNORECASE)
             if match_transaccion:
                 num_transaccion = match_transaccion.group(1).strip()
-                # Extraer celular si termina con el patrón de 10 dígitos que inicia en 3
                 if len(num_transaccion) >= 10 and num_transaccion[-10].startswith('3'):
                     celular = num_transaccion[-10:]
             
-            # Si no vino en la transacción larga, buscamos un celular común de 10 dígitos suelto
             if celular == "No detectado":
                 match_cel_comun = re.search(r'\b3\d{9}\b', texto_plano_limpio)
                 if match_cel_comun:
@@ -132,31 +130,37 @@ try:
                 referencia = match_ref.group(1).strip()
 
             # ==========================================
-            #         CONTROL DE DUPLICADOS (REVISADO)
+            #    CONTROL DE DUPLICADOS (CON REMITENTE)
             # ==========================================
-            # Limpiamos el asunto actual quitando "RV:" o "rv:" y espacios extras
             asunto_normalizado = subject.upper().replace("RV:", "").replace("RV :", "").strip()
+            pagador_normalizado = pagador.upper().strip()
             
             ya_existe = False
             
             for t in lista_transferencias:
-                # 1. Comprobar si tienen exactamente el mismo monto y banco origen en el mismo día
+                # 1. Comprobar si tienen el mismo monto y banco origen
                 if t['monto'] == monto and t['banco_origen'].lower() == banco.lower():
                     
-                    # 2. Normalizar el asunto que ya está en la lista para compararlo
+                    # 2. Normalizar datos previos para comparar
                     t_asunto_normalizado = t['asunto'].upper().replace("RV:", "").replace("RV :", "").strip()
+                    t_pagador_normalizado = t['pagador'].upper().strip()
                     
-                    # Si los asuntos base coinciden (ej. ambos dicen "¡RECIBISTE PLATA POR BRE-B!")
+                    # 3. NUEVA REGLA: Si ambos tienen pagadores detectados válidos y los nombres NO coinciden, NO es un duplicado
+                    if pagador_normalizado != "NO DETECTADO" and t_pagador_normalizado != "NO DETECTADO":
+                        if pagador_normalizado != t_pagador_normalizado:
+                            continue # Salta este registro en la lista, son personas diferentes.
+                    
+                    # 4. Si el asunto coincide y ocurrieron en el mismo minuto (mismo tiempo_llave), es duplicado
                     if asunto_normalizado == t_asunto_normalizado:
-                        ya_existe = True
-                        
-                        # MEJORA: Si el registro guardado no detectó el pagador real, pero este correo nuevo SÍ lo tiene,
-                        # actualizamos los datos del registro anterior para no perder la información real.
-                        if t['pagador'] == "No detectado" or "PARA:" in t['pagador'].upper():
-                            if pagador != "No detectado" and "PARA:" not in pagador.upper():
-                                t['pagador'] = pagador
-                                t['celular'] = celular
-                        break
+                        if t['id_unico'].split('_')[1] == tiempo_llave:
+                            ya_existe = True
+                            
+                            # Si el correo guardado originalmente no leyó el pagador pero este reenvío sí, lo actualiza
+                            if t_pagador_normalizado == "NO DETECTADO" or "PARA:" in t_pagador_normalizado:
+                                if pagador_normalizado != "NO DETECTADO" and "PARA:" not in pagador_normalizado:
+                                    t['pagador'] = pagador
+                                    t['celular'] = celular
+                            break
 
             id_transferencia = f"{monto}_{tiempo_llave}"
 

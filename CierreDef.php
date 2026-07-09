@@ -88,7 +88,7 @@ $qryFacturadores = "SELECT FACTURADOR_NIT, FACTURADOR FROM (
 ) X GROUP BY FACTURADOR_NIT ORDER BY FACTURADOR ASC";
 $factList = $mysqliActiva->query($qryFacturadores);
 
-$totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0;
+$totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0; $totalTransferAuto = 0;
 $listaEgresos = [];
 $yaExisteTransferEnEgresos = false;
 
@@ -120,27 +120,39 @@ if($UsuarioFact !== ''){
         } 
     }
 
-    // TRANSFERENCIAS AUTOMÁTICAS
+    // TRANSFERENCIAS MANUALES / RELACIÓN ORIGINAL
     $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
                                WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
     $stmtT->bind_param("sss", $fecha_input, $UsuarioFact, $nit_empresa_filtro);
     $stmtT->execute();
     $resT = $stmtT->get_result();
     $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
+
+    // NUEVO: TRANSFERENCIAS AUTOMÁTICAS (Desde control_checks_nequi y notificaciones_nequi)
+    $stmtTA = $mysqli->prepare("SELECT SUM(n.monto) AS total_auto 
+                                FROM control_checks_nequi c
+                                INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
+                                WHERE DATE(c.fecha_hora_check) = ? 
+                                AND c.usuario_cedula = ? 
+                                AND c.nit_empresa = ?");
+    $stmtTA->bind_param("sss", $fecha_input, $UsuarioFact, $nit_empresa_filtro);
+    $stmtTA->execute();
+    $resTA = $stmtTA->get_result();
+    $totalTransferAuto = (float)($resTA->fetch_assoc()['total_auto'] ?? 0);
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
 /* ============================================================
-    LÓGICA DE CÁLCULO AJUSTADA
+    LÓGICA DE CÁLCULO AJUSTADA (Incluye automáticas si aplica)
 ============================================================ */
 if ($yaExisteTransferEnEgresos) {
     $efectivo_neto_final = $totalEgresos - $totalVentas;
 } else {
-    $efectivo_neto_final = ($totalEgresos + $totalTransfer) - $totalVentas;
+    // Se suma tanto transferencia manual como automática para descontar de las ventas
+    $efectivo_neto_final = ($totalEgresos + $totalTransfer + $totalTransferAuto) - $totalVentas;
 }
 
-// MODIFICACIÓN: Si el cierre ya se hizo, permitimos ver los valores aunque no tenga permiso 9999 o 0003
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRealizado);
 ?>
 
@@ -254,7 +266,8 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
                 <table class="table">
                     <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
                     <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                    <tr><td>(-) Transferencias:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                    <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                    <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
                     <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
                         <td><b>TOTAL FÍSICO:</b></td>
                         <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
@@ -318,7 +331,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
         const p0003 = '<?= $permiso0003 ?>';
         const cierreYaHecho = <?= $cierreRealizado ? 'true' : 'false' ?>;
 
-        // MODIFICACIÓN: Si el cierre ya se hizo, se ignora el bloqueo de acceso denegado
         if(tipo === 'cierre' && !cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
             alert('ACCESO DENEGADO: Requiere permiso de supervisor para realizar el cierre.'); 
             return;
@@ -333,7 +345,6 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
         const horaImpresion = '<?= date("h:i a") ?>';
         const estadoSesion = cierreYaHecho ? "SESIÓN CERRADA" : "SESIÓN ABIERTA";
         
-        // Usamos una variable para manejar los asteriscos en JS también basándonos en el estado del cierre
         const vVentas = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($totalVentas) ?>' : '***';
         const vTotal = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($efectivo_neto_final) ?>' : '***';
 
@@ -350,6 +361,7 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
                 <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${vVentas}</b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
                 <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
+                <tr><td>(-) TRANS. AUTO:</td><td style="text-align:right;"><b>$<?= money($totalTransferAuto) ?></b></td></tr>
                 <tr><td colspan="2"><hr></td></tr>
                 <tr style="font-size:16px;">
                     <td><b>TOTAL FÍSICO:</b></td>
