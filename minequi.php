@@ -199,7 +199,7 @@ if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
-        if ($id_largo !== 'No detectado') { $transacciones_processed[] = $id_largo; }
+        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; }
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
@@ -236,12 +236,12 @@ if ($resultado && $resultado->num_rows > 0) {
 
 <div class="container-fluid container-xl mb-3">
     <div class="bg-dark text-white p-2 px-3 rounded shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" style="font-size: 0.85rem;">
-        <div>
+        <div class="text-truncate">
             👤 <strong>Usuario:</strong> <?php echo htmlspecialchars($nombre_usuario_sesion); ?> 
             <span class="text-secondary mx-1">|</span> 
             🆔 <strong>CC/NIT:</strong> <?php echo htmlspecialchars($usuario_actual ?: 'No asignado'); ?>
         </div>
-        <div>
+        <div class="text-truncate">
             🏢 <strong>Empresa (NIT):</strong> <?php echo htmlspecialchars($nit_empresa); ?> 
             <span class="text-secondary mx-1">|</span> 
             📍 <strong>Sucursal:</strong> <?php echo htmlspecialchars($nro_sucursal); ?>
@@ -251,11 +251,15 @@ if ($resultado && $resultado->num_rows > 0) {
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
     
-    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">        
-        <button onclick="forzarRefresco();" class="btn btn-success btn-sm text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
-        <small class="text-muted fw-medium text-nowrap" style="font-size: 0.8rem;">
-            ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
-        </small>
+    <div class="row align-items-center justify-content-between g-2 mb-3">        
+        <div class="col-12 col-md-auto">
+            <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
+        </div>
+        <div class="col-12 col-md-auto text-center text-md-end">
+            <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
+                ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+            </small>
+        </div>
     </div>
 
     <?php if ($error_python): ?>
@@ -283,17 +287,12 @@ if ($resultado && $resultado->num_rows > 0) {
                     </thead>
                     <tbody>
                         <?php if (!empty($totales_por_sede)): ?>
-                            <?php foreach ($totales_por_sede as $item): 
-                                // MODIFICACIÓN: Extraer únicamente la primera palabra (primer nombre)
-                                $nombre_completo = trim($item['nombre_usuario'] ?? 'Sin Nombre');
-                                $partes_nombre = explode(' ', $nombre_completo);
-                                $primer_nombre = !empty($partes_nombre[0]) ? $partes_nombre[0] : 'Sin Nombre';
-                            ?>
+                            <?php foreach ($totales_por_sede as $item): ?>
                                 <tr>
                                     <td class="ps-3 font-monospace fw-medium text-secondary"><?php echo htmlspecialchars($item['nit_empresa']); ?></td>
                                     <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($item['nro_sucursal']); ?></span></td>
                                     <td class="font-monospace text-muted"><?php echo htmlspecialchars($item['usuario_cedula']); ?></td>
-                                    <td class="fw-semibold text-dark"><?php echo htmlspecialchars($primer_nombre); ?></td>
+                                    <td class="fw-semibold text-dark"><?php echo htmlspecialchars($item['nombre_usuario'] ?? 'Sin Nombre'); ?></td>
                                     <td class="text-center font-monospace"><span class="badge bg-dark"><?php echo $item['total_cantidad']; ?></span></td>
                                     <td class="text-end pe-3 fw-bold text-primary fs-6">$<?php echo number_format($item['total_monto'], 0, ',', '.'); ?></td>
                                 </tr>
@@ -457,7 +456,7 @@ if ($resultado && $resultado->num_rows > 0) {
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutos < 10 ? '0' + minutos : minutes;
+        minutos = minutes < 10 ? '0' + minutos : minutos;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
