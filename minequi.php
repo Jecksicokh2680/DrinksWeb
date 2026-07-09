@@ -208,7 +208,7 @@ if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
-        if ($id_largo !== 'No detectado') { $transacciones_processed[] = $id_largo; }
+        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; }
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
@@ -356,6 +356,7 @@ if ($resultado && $resultado->num_rows > 0) {
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
+                    <th class="text-center" style="width: 50px;">ID</th>
                     <th class="text-center" style="width: 50px;">Asignar</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
@@ -374,6 +375,7 @@ if ($resultado && $resultado->num_rows > 0) {
                         if (empty($usuario_actual)) { $disabled_attr = 'disabled'; } 
                     ?>
                         <tr>
+                            <td class="text-center font-monospace small text-muted">#<?php echo $row['id']; ?></td>
                             <td class="text-center">
                                 <input type="checkbox" 
                                        class="form-check-input check-transferencia" 
@@ -425,7 +427,7 @@ if ($resultado && $resultado->num_rows > 0) {
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-4" style="font-size:0.85rem;">
+                        <td colspan="6" class="text-center text-muted py-4" style="font-size:0.85rem;">
                             No hay transferencias registradas hoy.
                         </td>
                     </tr>
