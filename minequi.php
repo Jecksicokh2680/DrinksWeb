@@ -162,7 +162,7 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
 
 $hoy = date('Y-m-d');
 
-// --- CONSULTA MODIFICADA: INCLUYE NIT_EMPRESA Y USUARIO_CEDULA EN FILAS DE RESUMEN ---
+// --- CONSULTA MODIFICADA ---
 $sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre AS nombre_usuario, SUM(n.monto) AS total_monto, COUNT(n.id) AS total_cantidad
                 FROM control_checks_nequi c
                 INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
@@ -199,7 +199,7 @@ if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
-        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; }
+        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; } // Corrección Typo aquí
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
@@ -408,8 +408,13 @@ if ($resultado && $resultado->num_rows > 0) {
 </div>
 
 <script>
+    // MODIFICADO: Implementación nativa que conserva parámetros internos de URL y fuerza la recarga de datos limpios
     function forzarRefresco() {
-        window.location.href = window.location.origin + window.location.pathname + (window.location.search || '');
+        if (window.location.search) {
+            window.location.href = window.location.pathname + window.location.search;
+        } else {
+            window.location.reload(true);
+        }
     }
 
     document.querySelectorAll('.check-transferencia').forEach(checkbox => {
@@ -456,7 +461,7 @@ if ($resultado && $resultado->num_rows > 0) {
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutes < 10 ? '0' + minutos : minutos;
+        minutos = minutos < 10 ? '0' + minutos : minutos;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
