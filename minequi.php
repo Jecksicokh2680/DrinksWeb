@@ -162,12 +162,21 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
 
 $hoy = date('Y-m-d');
 
-// --- CONSULTA ---
+// --- CONDICIÓN DE FILTRADO PARA EL RESUMEN ACUMULADO ---
+$filtro_resumen = "";
+if (!$esAdminStock) {
+    // Si no es admin, filtramos estrictamente por su cédula Y el NIT de la sesión actual
+    $user_escapado = $mysqliWeb->real_escape_string($usuario_actual);
+    $nit_escapado  = $mysqliWeb->real_escape_string($nit_empresa);
+    $filtro_resumen = " AND c.usuario_cedula = '$user_escapado' AND c.nit_empresa = '$nit_escapado' ";
+}
+
+// --- CONSULTA TOTALES (FILTRADA SEGÚN EL ROL Y EL NIT) ---
 $sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre AS nombre_usuario, SUM(n.monto) AS total_monto, COUNT(n.id) AS total_cantidad
                 FROM control_checks_nequi c
                 INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
                 LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
-                WHERE DATE(n.fecha_correo) = '$hoy'
+                WHERE DATE(n.fecha_correo) = '$hoy' $filtro_resumen
                 GROUP BY c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre
                 ORDER BY c.nit_empresa ASC, c.nro_sucursal ASC, total_monto DESC";
 $res_totales = $mysqliWeb->query($sql_totales);
@@ -178,7 +187,7 @@ if ($res_totales && $res_totales->num_rows > 0) {
     }
 }
 
-// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA
+// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA (Sigue visible para todos)
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
                        c.usuario_cedula, c.nit_empresa, c.nro_sucursal, t.Nombre AS nombre_dueno
                FROM notificaciones_nequi n
@@ -199,7 +208,7 @@ if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
         if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
-        if ($id_largo !== 'No detectado') { $transacciones_procesadas[] = $id_largo; }
+        if ($id_largo !== 'No detectado') { $transacciones_processed[] = $id_largo; }
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
@@ -221,12 +230,10 @@ if ($resultado && $resultado->num_rows > 0) {
         .form-check-input { width: 1.5em; height: 1.5em; cursor: pointer; }
         .form-check-input:disabled { opacity: 0.6; cursor: not-allowed; }
         
-        /* Ajustes específicos para pantallas táctiles y móviles extremos */
         @media (max-width: 768px) {
             body { padding: 4px !important; }
             .container-main { padding: 8px !important; border-radius: 6px !important; }
             
-            /* Optimización de tablas nativas en móvil */
             .table-responsive-desktop {
                 display: block;
                 width: 100%;
@@ -238,7 +245,6 @@ if ($resultado && $resultado->num_rows > 0) {
             .fs-mobile-amount { font-size: 1.05rem !important; }
             .badge-mobile { font-size: 0.65rem !important; padding: 3px 5px !important; }
             
-            /* Permitir empaquetamiento flexible en el badge verde si el espacio es crítico */
             .badge-green-flexible {
                 white-space: normal !important;
                 word-break: break-word;
@@ -285,7 +291,7 @@ if ($resultado && $resultado->num_rows > 0) {
 
     <div class="card mb-4 shadow-sm border-0">
         <div class="card-header bg-secondary text-white p-2 px-3 fw-bold small">
-            📊 Resumen Acumulado por Sede y Usuario (Checks de Hoy)
+            📊 Resumen Acumulado <?php echo $esAdminStock ? "por Sede y Usuario" : "de tu Usuario"; ?> (Checks de Hoy)
         </div>
         <div class="card-body p-0">
             <div class="table-responsive-desktop">
@@ -315,7 +321,7 @@ if ($resultado && $resultado->num_rows > 0) {
                         <?php else: ?>
                             <tr>
                                 <td colspan="6" class="text-center text-muted py-3">
-                                    No hay asignaciones registradas por el momento el día de hoy.
+                                    No tienes asignaciones registradas el día de hoy para esta empresa.
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -431,9 +437,9 @@ if ($resultado && $resultado->num_rows > 0) {
 
 <script>
     function forzarRefresco() {
-        const url_actual = new URL(window.location.href);
-        url_actual.searchParams.set('v', new Date().getTime());
-        window.location.replace(url_actual.href);
+        const urlActual = new URL(window.location.href);
+        urlActual.searchParams.set('v', new Date().getTime());
+        window.location.href = urlActual.toString();
     }
 
     document.querySelectorAll('.check-transferencia').forEach(checkbox => {
