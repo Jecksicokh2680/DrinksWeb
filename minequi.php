@@ -13,27 +13,76 @@ date_default_timezone_set('America/Bogota');
 // 1. Incluir e implementar el archivo de conexión existente
 require_once __DIR__ . '/Conexion.php';
 
-// Validar si la conexión del archivo externo falló
 if (isset($conn_error)) {
     die("<div class='alert alert-danger text-center m-3'>" . htmlspecialchars($conn_error) . "</div>");
 }
 
-// Usar la variable global definida en tu Conexion.php
 if (!isset($mysqliWeb)) {
     die("<div class='alert alert-danger text-center m-3'>❌ Error: La variable de conexión \$mysqliWeb no está definida.</div>");
 }
 
-// Configurar la zona horaria en la sesión de la Base de Datos usando tu objeto global
 $mysqliWeb->query("SET time_zone = '-05:00'");
 
-// --- FUNCIÓN DE AUTORIZACIÓN CORREGIDA Y REFORZADA ---
+// --- DATOS DE SESIÓN ACTUAL ---
+$usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
+$nit_empresa    = isset($_SESSION['NitEmpresa']) ? trim($_SESSION['NitEmpresa']) : 'No asignado';
+$nro_sucursal   = isset($_SESSION['NroSucursal']) ? trim($_SESSION['NroSucursal']) : 'No asignada';
+
+// --- PROCESAR ACCIÓN AJAX (GUARDAR / ELIMINAR CHECK) ---
+if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
+    header('Content-Type: application/json');
+    
+    if (empty($usuario_actual)) {
+        echo json_encode(['status' => 'error', 'message' => 'Sesión inválida o expirada.']);
+        exit;
+    }
+
+    $id_trans = filter_input(INPUT_POST, 'id_transferencia', FILTER_VALIDATE_INT);
+    $estado   = filter_input(INPUT_POST, 'estado', FILTER_VALIDATE_INT); // 1 = marcar, 0 = desmarcar
+
+    if (!$id_trans) {
+        echo json_encode(['status' => 'error', 'message' => 'ID de transferencia no válido.']);
+        exit;
+    }
+
+    if ($estado === 1) {
+        // Intentar adueñarse de la transferencia (INSERT)
+        $fecha_actual = date('Y-m-d H:i:s');
+        $stmt_ins = $mysqliWeb->prepare("INSERT INTO control_checks_nequi (id_transferencia, nit_empresa, nro_sucursal, usuario_cedula, fecha_hora_check) VALUES (?, ?, ?, ?, ?)");
+        
+        if ($stmt_ins) {
+            $stmt_ins->bind_param("issss", $id_trans, $nit_empresa, $nro_sucursal, $usuario_actual, $fecha_actual);
+            if ($stmt_ins->execute()) {
+                echo json_encode(['status' => 'success', 'message' => 'Transferencia marcada correctamente.']);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Esta transferencia ya fue reclamada por otro usuario.']);
+            }
+            $stmt_ins->close();
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Error en la preparación de la consulta.']);
+        }
+    } else {
+        // Intentar desmarcar (DELETE) - Solo si el registro le pertenece al usuario actual
+        $stmt_del = $mysqliWeb->prepare("DELETE FROM control_checks_nequi WHERE id_transferencia = ? AND usuario_cedula = ?");
+        if ($stmt_del) {
+            $stmt_del->bind_param("is", $id_trans, $usuario_actual);
+            $stmt_del->execute();
+            
+            if ($stmt_del->affected_rows > 0) {
+                echo json_encode(['status' => 'success', 'message' => 'Transferencia liberada.']);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'No puedes desmarcar una transferencia que pertenece a otro usuario.']);
+            }
+            $stmt_del->close();
+        }
+    }
+    exit; 
+}
+
+// --- FUNCIÓN DE AUTORIZACIÓN ---
 function Autorizacion($User, $Solicitud) {
     global $mysqliWeb; 
-    
-    // Si el usuario es "01" o está vacío, y la solicitud es 9999, denegar inmediatamente
-    if (empty($User) || trim($User) === '' || $User === '01') {
-        return 'NO';
-    }
+    if (empty($User) || trim($User) === '' || $User === '01') { return 'NO'; }
     
     $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
     if ($stmt) {
@@ -42,87 +91,57 @@ function Autorizacion($User, $Solicitud) {
         $res = $stmt->get_result();
         $row = $res->fetch_assoc();
         $stmt->close();
-        
         return ($row && isset($row['Swich'])) ? strtoupper(trim($row['Swich'])) : 'NO';
     }
     return 'NO';
 }
 
-// --- VALIDACIÓN ESTRICTA DE USUARIO ---
-$usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
+$esAdminStock = ($usuario_actual !== '01' && $usuario_actual !== '') ? (Autorizacion($usuario_actual, '9999') === 'SI') : false;
 
-if ($usuario_actual === '01' || $usuario_actual === '') {
-    $esAdminStock = false;
-} else {
-    $esAdminStock = (Autorizacion($usuario_actual, '9999') === 'SI');
-}
-
-// --- PROCESAR ELIMINACIÓN SEGURA SI ES ADMIN CON AUTORIZACIÓN 9999 ---
-$mensaje_eliminar = "";
-if ($esAdminStock && isset($_POST['action']) && $_POST['action'] === 'eliminar_registro') {
-    $id_eliminar = filter_input(INPUT_POST, 'id_transferencia', FILTER_VALIDATE_INT);
-    if ($id_eliminar) {
-        $stmt_del = $mysqliWeb->prepare("DELETE FROM notificaciones_nequi WHERE id = ?");
-        if ($stmt_del) {
-            $stmt_del->bind_param("i", $id_eliminar);
-            if ($stmt_del->execute()) {
-                $mensaje_eliminar = "<div class='alert alert-success py-2 px-3 mb-3' style='font-size:0.85rem;'>✅ Registro eliminado correctamente.</div>";
-            } else {
-                $mensaje_eliminar = "<div class='alert alert-danger py-2 px-3 mb-3' style='font-size:0.85rem;'>❌ Error al intentar eliminar el registro de la base de datos.</div>";
-            }
-            $stmt_del->close();
-        }
+// Consultar nombre de usuario
+$nombre_usuario_sesion = "Invitado";
+if (!empty($usuario_actual)) {
+    $stmt_user = $mysqliWeb->prepare("SELECT Nombre FROM terceros WHERE CedulaNit = ? AND Estado = 1 LIMIT 1");
+    if ($stmt_user) {
+        $stmt_user->bind_param("s", $usuario_actual);
+        $stmt_user->execute();
+        $stmt_user->bind_result($nombre_obtenido);
+        if ($stmt_user->fetch()) { $nombre_usuario_sesion = $nombre_obtenido; }
+        $stmt_user->close();
     }
 }
 
 // 2. Ejecutar el script nativo de Python para leer Gmail
 $command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
 $output = shell_exec($command);
-
-// Decodificar la respuesta de Python
 $nuevos_correos = json_decode($output, true);
 
-// Variable para capturar errores de ejecución o parsing
 $error_python = null;
 if ($output === null) {
     $error_python = "No se pudo ejecutar el script de Python.";
 } elseif ($nuevos_correos === null && !empty(trim($output))) {
-    $error_python = "Error al decodificar JSON de Python. Salida cruda: " . substr($output, 0, 100);
-} elseif (isset($nuevos_correos[0]['error'])) {
-    $error_python = $nuevos_correos[0]['error'];
+    $error_python = "Error al decodificar JSON.";
 }
 
 // 3. Procesar e insertar registros nuevos si no hay errores
 if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
-    
     $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
     $stmt_insert = $mysqliWeb->prepare("INSERT IGNORE INTO notificaciones_nequi 
         (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
 
     $ids_procesados_en_lote = [];
-
     foreach ($nuevos_correos as $correo) {
         if (!isset($correo['id_unico'])) continue;
-
         $id_unico = $correo['id_unico'];
-
-        if (in_array($id_unico, $ids_procesados_en_lote)) {
-            continue;
-        }
+        if (in_array($id_unico, $ids_procesados_en_lote)) { continue; }
 
         $stmt_check->bind_param("s", $id_unico);
         $stmt_check->execute();
         $stmt_check->store_result();
         
         if ($stmt_check->num_rows == 0) {
-            
-            if (!empty($correo['fecha_correo'])) {
-                $fecha_bogota = date('Y-m-d H:i:s', strtotime($correo['fecha_correo']));
-            } else {
-                $fecha_bogota = date('Y-m-d H:i:s'); 
-            }
-
+            $fecha_bogota = !empty($correo['fecha_correo']) ? date('Y-m-d H:i:s', strtotime($correo['fecha_correo'])) : date('Y-m-d H:i:s');
             $uid          = $correo['uid_correo'] ?? '0';
             $monto        = isset($correo['monto']) ? (float)$correo['monto'] : 0.00;
             $celular      = $correo['celular'] ?? 'No detectado';
@@ -132,20 +151,8 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
             $num_largo    = $correo['numero_transaccion_largo'] ?? 'No detectado';
             $asunto       = $correo['asunto'] ?? 'Sin Asunto';
 
-            $stmt_insert->bind_param("ssdsssssss", 
-                $id_unico, 
-                $uid, 
-                $monto, 
-                $celular, 
-                $pagador, 
-                $banco, 
-                $referencia, 
-                $num_largo, 
-                $asunto, 
-                $fecha_bogota
-            );
+            $stmt_insert->bind_param("ssdsssssss", $id_unico, $uid, $monto, $celular, $pagador, $banco, $referencia, $num_largo, $asunto, $fecha_bogota);
             $stmt_insert->execute();
-
             $ids_procesados_en_lote[] = $id_unico;
         }
     }
@@ -153,12 +160,32 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
     $stmt_insert->close();
 }
 
-// 4. Consultar SOLO las transferencias del día (Fecha Bogotá)
 $hoy = date('Y-m-d');
-$sql_select = "SELECT id, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, monto, fecha_correo, asunto, estado_sesion 
-               FROM notificaciones_nequi 
-               WHERE DATE(fecha_correo) = '$hoy' 
-               ORDER BY fecha_correo DESC";
+
+// --- CONSULTA MODIFICADA: INCLUYE NIT_EMPRESA Y USUARIO_CEDULA EN FILAS DE RESUMEN ---
+$sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre AS nombre_usuario, SUM(n.monto) AS total_monto, COUNT(n.id) AS total_cantidad
+                FROM control_checks_nequi c
+                INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
+                LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
+                WHERE DATE(n.fecha_correo) = '$hoy'
+                GROUP BY c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre
+                ORDER BY c.nit_empresa ASC, c.nro_sucursal ASC, total_monto DESC";
+$res_totales = $mysqliWeb->query($sql_totales);
+$totales_por_sede = [];
+if ($res_totales && $res_totales->num_rows > 0) {
+    while ($r_tot = $res_totales->fetch_assoc()) {
+        $totales_por_sede[] = $r_tot;
+    }
+}
+
+// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA
+$sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
+                       c.usuario_cedula, c.nit_empresa, c.nro_sucursal, t.Nombre AS nombre_dueno
+               FROM notificaciones_nequi n
+               LEFT JOIN control_checks_nequi c ON n.id = c.id_transferencia
+               LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
+               WHERE DATE(n.fecha_correo) = '$hoy' 
+               ORDER BY n.fecha_correo DESC";
 
 $resultado = $mysqliWeb->query($sql_select);
 
@@ -171,39 +198,28 @@ $transacciones_procesadas = [];
 if ($resultado && $resultado->num_rows > 0) {
     while ($row = $resultado->fetch_assoc()) {
         $id_largo = $row['numero_transaccion_largo'];
-
-        if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) {
-            continue;
-        }
-
-        if ($id_largo !== 'No detectado') {
-            $transacciones_processed[] = $id_largo; 
-            $transacciones_procesadas[] = $id_largo;
-        }
+        if ($id_largo !== 'No detectado' && in_array($id_largo, $transacciones_procesadas)) { continue; }
+        if ($id_largo !== 'No detectado') { $transacciones_processed[] = $id_largo; }
 
         $monto_total += (float)$row['monto'];
         $filas[] = $row;
     }
-    
     $total_transferencias = count($filas);
-    if ($total_transferencias > 0) {
-        $promedio_transferencias = $monto_total / $total_transferencias;
-    }
+    if ($total_transferencias > 0) { $promedio_transferencias = $monto_total / $total_transferencias; }
 }
-
-$es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Transferencias Nequi & Bre-B</title>
+    <title>Transferencias Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         .text-break-custom { word-break: break-all; white-space: normal; }
         .pagador-texto { max-width: 150px; white-space: normal; word-wrap: break-word; display: inline-block; }
+        .form-check-input { width: 1.4em; height: 1.4em; cursor: pointer; }
+        .form-check-input:disabled { opacity: 0.6; cursor: not-allowed; }
         
         @media (max-width: 768px) {
             body { padding: 4px !important; }
@@ -213,36 +229,87 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
             .fs-4 { font-size: 1.1rem !important; }
             .fs-3 { font-size: 1.25rem !important; }
             .badge { font-size: 0.7rem !important; padding: 4px 6px !important; }
-            .celda-remitente { min-width: 110px; }
-            .celda-detalles { min-width: 130px; }
         }
     </style>
 </head>
 <body class="bg-light p-2 p-md-4">
 
-<div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
-    
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-3 mb-3">
-        <h2 class="text-primary m-0 fs-3 fw-bold text-center text-md-start">📥 Transferencias Bre-B</h2>
-        
-        <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-md-center gap-2">
-            <button onclick="forzarRefresco();" class="btn btn-success btn-sm text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
-            <small class="text-muted text-center text-md-end fw-medium align-self-center" style="font-size: 0.75rem;">
-                ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
-            </small>
+<div class="container-fluid container-xl mb-3">
+    <div class="bg-dark text-white p-2 px-3 rounded shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" style="font-size: 0.85rem;">
+        <div>
+            👤 <strong>Usuario:</strong> <?php echo htmlspecialchars($nombre_usuario_sesion); ?> 
+            <span class="text-secondary mx-1">|</span> 
+            🆔 <strong>CC/NIT:</strong> <?php echo htmlspecialchars($usuario_actual ?: 'No asignado'); ?>
+        </div>
+        <div>
+            🏢 <strong>Empresa (NIT):</strong> <?php echo htmlspecialchars($nit_empresa); ?> 
+            <span class="text-secondary mx-1">|</span> 
+            📍 <strong>Sucursal:</strong> <?php echo htmlspecialchars($nro_sucursal); ?>
         </div>
     </div>
+</div>
 
-    <?php 
-    // Mostrar retroalimentación de la eliminación si existe
-    if (!empty($mensaje_eliminar)) { echo $mensaje_eliminar; } 
-    ?>
+<div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
+    
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">        
+        <button onclick="forzarRefresco();" class="btn btn-success btn-sm text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
+        <small class="text-muted fw-medium text-nowrap" style="font-size: 0.8rem;">
+            ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+        </small>
+    </div>
 
     <?php if ($error_python): ?>
         <div class="alert alert-warning alert-dismissible fade show small py-2 px-3 mb-3" role="alert" style="font-size:0.8rem;">
             <strong>Atención:</strong> <?php echo htmlspecialchars($error_python); ?>
         </div>
     <?php endif; ?>
+
+    <div class="card mb-4 shadow-sm border-0">
+        <div class="card-header bg-secondary text-white p-2 px-3 fw-bold small">
+            📊 Resumen Acumulado por Sede y Usuario (Checks de Hoy)
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-hover mb-0 align-middle style-table-resumen" style="font-size: 0.85rem;">
+                    <thead class="table-light text-secondary text-nowrap">
+                        <tr>
+                            <th class="ps-3">🏢 NIT</th>
+                            <th>📍 Sede</th>
+                            <th>🆔 Usuario</th>
+                            <th>👤 Nombre</th>
+                            <th class="text-center">📦 Cant.</th>
+                            <th class="text-end pe-3">💰 Total </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($totales_por_sede)): ?>
+                            <?php foreach ($totales_por_sede as $item): 
+                                // MODIFICACIÓN: Extraer únicamente la primera palabra (primer nombre)
+                                $nombre_completo = trim($item['nombre_usuario'] ?? 'Sin Nombre');
+                                $partes_nombre = explode(' ', $nombre_completo);
+                                $primer_nombre = !empty($partes_nombre[0]) ? $partes_nombre[0] : 'Sin Nombre';
+                            ?>
+                                <tr>
+                                    <td class="ps-3 font-monospace fw-medium text-secondary"><?php echo htmlspecialchars($item['nit_empresa']); ?></td>
+                                    <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($item['nro_sucursal']); ?></span></td>
+                                    <td class="font-monospace text-muted"><?php echo htmlspecialchars($item['usuario_cedula']); ?></td>
+                                    <td class="fw-semibold text-dark"><?php echo htmlspecialchars($primer_nombre); ?></td>
+                                    <td class="text-center font-monospace"><span class="badge bg-dark"><?php echo $item['total_cantidad']; ?></span></td>
+                                    <td class="text-end pe-3 fw-bold text-primary fs-6">$<?php echo number_format($item['total_monto'], 0, ',', '.'); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">
+                                    No hay asignaciones registradas por el momento el día de hoy.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
     <?php if ($esAdminStock === true): ?>
         <div class="card bg-dark text-white shadow-sm mb-3">
@@ -269,20 +336,31 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
+                    <th class="text-center" style="width: 60px;">Asignar</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
                     <th>Viene de / Ref</th>
-                    <th>Est</th>
-                    <?php if ($esAdminStock): ?>
-                        <th class="text-center">Acción</th>
-                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
                 <?php if (!empty($filas)): ?>
-                    <?php foreach ($filas as $row): ?>
+                    <?php foreach ($filas as $row): 
+                        $tiene_dueno = !empty($row['usuario_cedula']);
+                        $soy_el_dueno = ($tiene_dueno && $row['usuario_cedula'] === $usuario_actual);
+                        
+                        $checked_attr = $tiene_dueno ? 'checked' : '';
+                        $disabled_attr = ($tiene_dueno && !$soy_el_dueno) ? 'disabled' : '';
+                        if (empty($usuario_actual)) { $disabled_attr = 'disabled'; } 
+                    ?>
                         <tr>
+                            <td class="text-center">
+                                <input type="checkbox" 
+                                       class="form-check-input check-transferencia" 
+                                       data-id="<?php echo $row['id']; ?>" 
+                                       <?php echo $checked_attr; ?> 
+                                       <?php echo $disabled_attr; ?>>
+                            </td>
                             <td class="text-nowrap">
                                 <strong><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong><br>
                                 <span class="text-muted small" style="font-size:0.75rem;"><?php echo date("h:i A", strtotime($row['fecha_correo'])); ?></span>
@@ -293,11 +371,17 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
                                 <?php endif; ?>
                                 
                                 <?php if ($row['pagador'] !== 'No detectado'): ?>
-                                    <small class="text-dark fw-semibold pagador-texto"><?php echo htmlspecialchars($row['pagador']); ?></small>
+                                    <small class="text-dark fw-semibold pagador-texto"><?php echo htmlspecialchars($row['pagador']); ?></small><br>
                                 <?php endif; ?>
 
                                 <?php if ($row['celular_origen'] === 'No detectado' && $row['pagador'] === 'No detectado'): ?>
-                                    <span class="badge bg-danger">No detectado</span>
+                                    <span class="badge bg-danger">No detectado</span><br>
+                                <?php endif; ?>
+
+                                <?php if ($tiene_dueno): ?>
+                                    <span class="badge bg-success mt-1" style="font-size: 0.65rem;">
+                                        📌 Por: <?php echo htmlspecialchars($row['nombre_dueno'] ?? $row['usuario_cedula']); ?>
+                                    </span>
                                 <?php endif; ?>
                             </td>
                             <td class="text-success fw-bold fs-5 text-nowrap">$<?php echo number_format($row['monto'], 0, ',', '.'); ?></td>
@@ -310,29 +394,11 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
                                     ID: <?php echo htmlspecialchars($row['numero_transaccion_largo']); ?>
                                 </div>
                             </td>
-                            <td>
-                                <?php if (strcasecmp($row['estado_sesion'], 'pendiente') === 0): ?>
-                                    <span class="badge bg-warning text-dark">Pendiente</span>
-                                <?php else: ?>
-                                    <span class="badge bg-success">Ok</span>
-                                <?php endif; ?>
-                            </td>
-                            <?php if ($esAdminStock): ?>
-                                <td class="text-center">
-                                    <form method="POST" action="" onsubmit="return confirmarEliminacion();" style="display:inline;">
-                                        <input type="hidden" name="action" value="eliminar_registro">
-                                        <input type="hidden" name="id_transferencia" value="<?php echo $row['id']; ?>">
-                                        <button type="submit" class="btn btn-danger btn-sm px-2 py-1" style="font-size: 0.75rem;">
-                                            🗑️ Eliminar
-                                        </button>
-                                    </form>
-                                </td>
-                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="<?php echo $esAdminStock ? '6' : '5'; ?>" class="text-center text-muted py-4" style="font-size:0.85rem;">
+                        <td colspan="5" class="text-center text-muted py-4" style="font-size:0.85rem;">
                             No hay transferencias registradas hoy.
                         </td>
                     </tr>
@@ -347,9 +413,41 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         window.location.href = window.location.origin + window.location.pathname + (window.location.search || '');
     }
 
-    function confirmarEliminacion() {
-        return confirm("⚠️ ¿Estás seguro de que deseas eliminar permanentemente esta transferencia del sistema?");
-    }
+    document.querySelectorAll('.check-transferencia').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const idTransferencia = this.getAttribute('data-id');
+            const estadoNuevo = this.checked ? 1 : 0;
+            const elemento = this;
+
+            elemento.disabled = true;
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_check');
+            formData.append('id_transferencia', idTransferencia);
+            formData.append('estado', estadoNuevo);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    forzarRefresco();
+                } else {
+                    alert('⚠️ ' + data.message);
+                    elemento.checked = !elemento.checked;
+                    elemento.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Ocurrió un error en la conexión.');
+                elemento.checked = !elemento.checked;
+                elemento.disabled = false;
+            });
+        });
+    });
 
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
@@ -359,7 +457,7 @@ $es_popup = isset($_GET['popup']) && $_GET['popup'] == 1;
         let minutos = Math.floor(tiempoRestante / 60);
         let segundos = tiempoRestante % 60;
 
-        minutos = minutos < 10 ? '0' + minutos : minutos;
+        minutos = minutos < 10 ? '0' + minutos : minutes;
         segundos = segundos < 10 ? '0' + segundos : segundos;
 
         if(contenedorTimer) {
