@@ -382,7 +382,7 @@ body{
             </div>
             <?php endforeach; ?>
         </div>
-        <button type="submit" class="btn-audit">✅ Guardar Auditoría Seleccionada</button>
+      
     </form>
 </body>
 </html>
