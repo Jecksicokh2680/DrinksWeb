@@ -196,7 +196,7 @@ body {
                         🧮 Ver Transferencias Bre-B desde el Banco
                         </a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>   
-                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">Auditoria Pedidos</a>                 
+                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame"> 🧮 Auditoria Pedidos</a>                 
                     </div>
 
                     <?php if ($EsJefeBodega): ?>
