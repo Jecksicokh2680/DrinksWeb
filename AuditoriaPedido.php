@@ -78,23 +78,278 @@ foreach ($rows as $r) {
     <meta charset="UTF-8">
     <title>Auditoría de Pedidos</title>
     <style>
-        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; padding:20px;}
-        .grid-container{display:grid; grid-template-columns:repeat(auto-fill, minmax(400px, 1fr)); gap:20px;}
-        .card{background:white; border-radius:10px; padding:15px; box-shadow:0 4px 6px rgba(0,0,0,0.1); border-top:4px solid #f57c00;}
-        .card-header{font-size:12px; border-bottom:2px solid #f0f0f0; margin-bottom:12px; padding-bottom:8px; font-weight:bold;}
-        .item-row{display:grid; grid-template-columns:30px 1fr 50px 50px 80px; align-items:center; padding:6px 0; border-bottom:1px solid #f9f9f9; font-size:13px; cursor:pointer; transition: background 0.2s;}
-        .item-row:hover{background:#fff8e1;}
-        .item-row:has(input:checked) { background: #fff3e0; font-weight:bold; }
-        .item-row span{ text-align:center; }
-        .item-row span:nth-child(2){ text-align:left; }
-        .item-row span:last-child{ text-align:right; font-weight:500; }
-        .total{text-align:right; font-weight:800; margin-top:15px; color:#2e7d32; font-size:16px;}
-        .btn-audit{margin-top:20px; background:#f57c00; color:white; border:none; padding:12px; width:100%; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;}
-        select, input, button{padding:8px; border-radius:4px; border:1px solid #ccc;}
+        *{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    font-family:'Segoe UI',sans-serif;
+    background:#f4f7f6;
+    padding:15px;
+}
+
+/*==========================
+    FILTROS
+==========================*/
+
+.filtros{
+    margin-bottom:20px;
+    background:#fff;
+    padding:15px;
+    border-radius:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.08);
+
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+}
+
+.filtros input,
+.filtros select,
+.filtros button{
+    padding:10px;
+    border-radius:6px;
+    border:1px solid #CCC;
+    font-size:15px;
+}
+
+.filtros button{
+    background:#f57c00;
+    color:white;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+/*==========================
+    TARJETAS
+==========================*/
+
+.grid-container{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
+    gap:20px;
+}
+
+.card{
+
+    background:white;
+    border-radius:12px;
+    padding:15px;
+
+    box-shadow:0 5px 12px rgba(0,0,0,.08);
+
+    border-top:5px solid #f57c00;
+
+    display:flex;
+    flex-direction:column;
+}
+
+.card-header{
+
+    font-size:14px;
+    font-weight:bold;
+
+    border-bottom:2px solid #eee;
+
+    padding-bottom:10px;
+    margin-bottom:10px;
+}
+
+.item-row{
+
+    display:grid;
+
+    grid-template-columns:
+        30px
+        1fr
+        50px
+        50px
+        85px;
+
+    align-items:center;
+
+    padding:8px 0;
+
+    border-bottom:1px solid #f4f4f4;
+
+    cursor:pointer;
+
+    transition:.2s;
+}
+
+.item-row:hover{
+    background:#fff8e1;
+}
+
+.item-row:has(input:checked){
+
+    background:#fff3e0;
+    font-weight:bold;
+
+}
+
+.item-row span{
+
+    text-align:center;
+    font-size:13px;
+
+}
+
+.item-row span:nth-child(2){
+
+    text-align:left;
+    padding-left:8px;
+
+}
+
+.item-row span:last-child{
+
+    text-align:right;
+    font-weight:600;
+
+}
+
+.total{
+
+    margin-top:15px;
+
+    text-align:right;
+
+    color:#2e7d32;
+
+    font-size:18px;
+
+    font-weight:bold;
+
+}
+
+.btn-audit{
+
+    margin-top:25px;
+
+    width:100%;
+
+    background:#f57c00;
+
+    color:white;
+
+    border:none;
+
+    border-radius:8px;
+
+    padding:16px;
+
+    font-size:18px;
+
+    font-weight:bold;
+
+    cursor:pointer;
+
+}
+
+/*==========================
+        CELULAR
+==========================*/
+
+@media (max-width:768px){
+
+    body{
+
+        padding:8px;
+
+    }
+
+    .grid-container{
+
+        grid-template-columns:1fr;
+
+        gap:15px;
+
+    }
+
+    .card{
+
+        width:100%;
+
+        min-height:calc(100vh - 30px);
+
+        padding:15px;
+
+        border-radius:0;
+
+        border-top:8px solid #f57c00;
+
+    }
+
+    .card-header{
+
+        font-size:16px;
+
+    }
+
+    .item-row{
+
+        grid-template-columns:
+            28px
+            1fr
+            45px
+            45px
+            70px;
+
+        font-size:14px;
+
+        padding:12px 0;
+
+    }
+
+    .item-row span{
+
+        font-size:14px;
+
+    }
+
+    .total{
+
+        margin-top:auto;
+
+        font-size:22px;
+
+        padding-top:20px;
+
+    }
+
+    .btn-audit{
+
+        position:sticky;
+
+        bottom:10px;
+
+        font-size:18px;
+
+    }
+
+    .filtros{
+
+        flex-direction:column;
+        align-items:stretch;
+
+    }
+
+    .filtros input,
+    .filtros select,
+    .filtros button{
+
+        width:100%;
+
+    }
+
+}
     </style>
 </head>
 <body>
-    <form method="GET" style="margin-bottom:20px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+    <form method="GET" <form method="GET" class="filtros">
         Desde: <input type="date" name="fecha_ini" value="<?= $_GET['fecha_ini'] ?? date('Y-m-d') ?>">
         Hasta: <input type="date" name="fecha_fin" value="<?= $_GET['fecha_fin'] ?? date('Y-m-d') ?>">
         Sucursal: 
