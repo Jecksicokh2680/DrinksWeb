@@ -196,7 +196,7 @@ body {
                         🧮 Ver Transferencias Bre-B desde el Banco
                         </a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>   
-                                         
+                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">Auditoria Pedidos</a>                 
                     </div>
 
                     <?php if ($EsJefeBodega): ?>
@@ -242,6 +242,7 @@ body {
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
+                                    
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                                                                                                
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia </a>

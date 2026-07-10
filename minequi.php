@@ -234,13 +234,6 @@ if ($resultado && $resultado->num_rows > 0) {
             body { padding: 4px !important; }
             .container-main { padding: 8px !important; border-radius: 6px !important; }
             
-            .table-responsive-desktop {
-                display: block;
-                width: 100%;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            
             .table th, .table td { padding: 6px 4px !important; font-size: 0.78rem !important; }
             .fs-mobile-amount { font-size: 1.05rem !important; }
             .badge-mobile { font-size: 0.65rem !important; padding: 3px 5px !important; }
@@ -250,6 +243,30 @@ if ($resultado && $resultado->num_rows > 0) {
                 word-break: break-word;
                 text-align: left;
             }
+        }
+
+        /* Contenedor del buscador centrado */
+        .busqueda-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        /* Estilo para que el input destaque */
+        .input-filtro {
+            width: 100%;
+            max-width: 500px; /* Tamaño máximo para que no se vea gigante en desktop */
+            padding: 10px 20px;
+            border-radius: 50px !important; /* Estilo redondeado moderno */
+            border: 2px solid #ced4da;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .input-filtro:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 8px rgba(13, 110, 253, 0.25);
+            outline: none;
         }
     </style>
 </head>
@@ -276,6 +293,9 @@ if ($resultado && $resultado->num_rows > 0) {
         <div class="col-12 col-md-auto">
             <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
         </div>
+
+        
+
         <div class="col-12 col-md-auto text-center text-md-end">
             <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
                 ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
@@ -294,7 +314,8 @@ if ($resultado && $resultado->num_rows > 0) {
             📊 Resumen Acumulado <?php echo $esAdminStock ? "por Sede y Usuario" : "de tu Usuario"; ?> (Checks de Hoy)
         </div>
         <div class="card-body p-0">
-            <div class="table-responsive-desktop">
+            <!-- Añadida la clase nativa table-responsive de Bootstrap -->
+            <div class="table-responsive w-100">
                 <table class="table table-sm table-striped table-hover mb-0 align-middle" style="font-size: 0.85rem;">
                     <thead class="table-light text-secondary text-nowrap">
                         <tr>
@@ -351,8 +372,14 @@ if ($resultado && $resultado->num_rows > 0) {
             </div>
         </div>
     <?php endif; ?>
-
-    <div class="table-responsive-desktop border rounded bg-white">
+    <div class="col-12 col-md-6 busqueda-container mb-0">
+            <input type="text" 
+                   id="filtroTabla" 
+                   class="form-control input-filtro" 
+                   placeholder="🔍 Escribe para buscar en la tabla...">
+    </div>
+    <!-- Se cambió a la clase table-responsive estándar de Bootstrap para preservar tus celdas intactas en escritorio y móviles -->
+    <div class="table-responsive w-100 border rounded bg-white">
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
@@ -500,6 +527,21 @@ if ($resultado && $resultado->num_rows > 0) {
             forzarRefresco(); 
         }
     }, 1000);
+
+    document.getElementById('filtroTabla').addEventListener('keyup', function() {
+        let filtro = this.value.toLowerCase();
+        let filas = document.querySelectorAll('tbody tr');
+
+        filas.forEach(fila => {
+            let textoFila = fila.textContent.toLowerCase();
+            
+            if (textoFila.includes(filtro)) {
+                fila.style.display = '';
+            } else {
+                fila.style.display = 'none';
+            }
+        });
+    });
 </script>
 
 </body>
