@@ -2,6 +2,7 @@
 require 'Conexion.php';
 require 'helpers.php';
 session_start();
+require 'auth_check.php';
 // Si no hay sesión, redirigimos al Login rompiendo cualquier iframe
 if (empty($_SESSION['Usuario'])) {
     echo "<script>window.top.location.href='Login.php?msg=Debe iniciar sesión';</script>";

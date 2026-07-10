@@ -1,5 +1,6 @@
 <?php
 session_start();
+require 'auth_check.php';
 date_default_timezone_set('America/Bogota'); 
 require_once 'Conexion.php'; 
 

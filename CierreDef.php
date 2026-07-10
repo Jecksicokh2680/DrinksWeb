@@ -9,6 +9,7 @@ ini_set('session.gc_maxlifetime', $session_timeout);
 session_set_cookie_params($session_timeout);
 
 session_start();
+require 'auth_check.php';
 session_regenerate_id(true);
 
 require("ConnCentral.php"); 
