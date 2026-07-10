@@ -376,7 +376,7 @@ if ($resultado && $resultado->num_rows > 0) {
             <input type="text" 
                    id="filtroTabla" 
                    class="form-control input-filtro" 
-                   placeholder="🔍 Escribe para buscar en la tabla...">
+                   placeholder="🔍 Filtrar por cajero...">
     </div>
     <!-- Se cambió a la clase table-responsive estándar de Bootstrap para preservar tus celdas intactas en escritorio y móviles -->
     <div class="table-responsive w-100 border rounded bg-white">
