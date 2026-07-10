@@ -36,7 +36,8 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     $condFactura = $extraCond . ($f_fac != "" ? " AND T1.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
     $condPedido  = $extraCond . ($f_fac != "" ? " AND T2.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
 
-    $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD FROM FACTURAS INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura UNION ALL SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD FROM PEDIDOS INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido ORDER BY FECHA ASC, HORA ASC, DOCUMENTO ASC";
+    // Se cambió el ORDER BY al final a DESC para ordenar los paneles en forma descendente
+    $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD FROM FACTURAS INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura UNION ALL SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD FROM PEDIDOS INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
 
     $stmt = $cnx->prepare($sql);
     $stmt->bind_param("ssss", $f_ini, $f_fin, $f_ini, $f_fin);
@@ -181,7 +182,7 @@ foreach ($rows as $r) {
             cursor:pointer;
         }
 
-        /* Contenedor de navegación móvil (Oculto en PC) */
+        /* Contenedor de navegación móvil */
         .movil-nav {
             display: none;
         }
@@ -191,13 +192,12 @@ foreach ($rows as $r) {
         ==========================*/
         @media (max-width:768px){
             body{ padding:8px; }
-            .grid-container{ display:block; } /* Cambiado a block para controlar visibilidad con JS */
+            .grid-container{ display:block; }
 
-            /* Por defecto ocultamos las tarjetas en móvil, JS mostrará la activa */
             .card{
                 display: none;
                 width:100%;
-                min-height:calc(100vh - 180px); /* Ajustado para dar espacio a los botones */
+                min-height:calc(100vh - 180px);
                 padding:15px;
                 border-radius:0;
                 border-top:8px solid #f57c00;
@@ -205,7 +205,7 @@ foreach ($rows as $r) {
             }
             
             .card.active {
-                display: flex; /* Solo se muestra la tarjeta con la clase active */
+                display: flex;
             }
 
             .card-header{ font-size:16px; }
@@ -216,7 +216,6 @@ foreach ($rows as $r) {
             .filtros{ flex-direction:column; align-items:stretch; }
             .filtros input, .filtros select, .filtros button{ width:100%; }
 
-            /* Estilos para la barra de navegación en celular */
             .movil-nav {
                 display: flex;
                 justify-content: space-between;
@@ -272,7 +271,7 @@ foreach ($rows as $r) {
         <div class="grid-container" id="contenedorTarjetas">
             <?php foreach($pedidos as $nro => $d): ?>
             <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?></div>
+                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> (<?= date("g:i a", strtotime($d['HORA'])) ?>)</div>
                 <div class="item-row" style="font-weight:bold; color:#f57c00; border-bottom:2px solid #ddd; cursor:default;">
                     <span></span><span>Producto</span><span>Caj</span><span>Und</span><span>Total</span>
                 </div>
@@ -293,18 +292,15 @@ foreach ($rows as $r) {
     </form>
 
     <script>
-        // Lógica de paginación para celulares
         let tarjetas = document.querySelectorAll('.card');
         let indexActual = 0;
 
         function inicializarPaginacion() {
-            // Solo actúa si estamos en pantalla móvil (el diseño oculta las tarjetas por defecto)
             if (window.innerWidth <= 768 && tarjetas.length > 0) {
                 tarjetas.forEach(t => t.classList.remove('active'));
                 tarjetas[indexActual].classList.add('active');
                 actualizarControles();
             } else {
-                // En PC removemos restricciones para que se vean todas
                 tarjetas.forEach(t => t.style.display = '');
             }
         }
@@ -313,14 +309,12 @@ foreach ($rows as $r) {
             tarjetas[indexActual].classList.remove('active');
             indexActual += direccion;
             
-            // Límites
             if (indexActual < 0) indexActual = 0;
             if (indexActual >= tarjetas.length) indexActual = tarjetas.length - 1;
             
             tarjetas[indexActual].classList.add('active');
             actualizarControles();
             
-            // Auto scroll arriba para ver la cabecera de la nueva tarjeta
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
 
@@ -337,7 +331,6 @@ foreach ($rows as $r) {
             document.getElementById('btnNext').disabled = (indexActual === tarjetas.length - 1);
         }
 
-        // Ejecutar al cargar la página y al redimensionar la pantalla
         window.addEventListener('DOMContentLoaded', inicializarPaginacion);
         window.addEventListener('resize', inicializarPaginacion);
     </script>
