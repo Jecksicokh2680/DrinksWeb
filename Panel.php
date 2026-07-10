@@ -196,7 +196,7 @@ body {
                         🧮 Ver Transferencias Bre-B desde el Banco
                         </a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>   
-                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame"> 🧮 Auditoria Pedidos</a>                 
+                                 
                     </div>
 
                     <?php if ($EsJefeBodega): ?>
@@ -214,6 +214,7 @@ body {
                     </h6>
                     <div class="menu-seccion ps-2">
                         <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
+                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame"> 🧮 Auditoria Pedidos</a>        
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                    
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">🧮 Chat Interno </a>
                     </div>
