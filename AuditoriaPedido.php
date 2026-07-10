@@ -36,6 +36,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     $condFactura = $extraCond . ($f_fac != "" ? " AND T1.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
     $condPedido  = $extraCond . ($f_fac != "" ? " AND T2.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
 
+    // Mantiene el orden descendente (los más recientes primero)
     $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD FROM FACTURAS INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura UNION ALL SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD FROM PEDIDOS INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
 
     $stmt = $cnx->prepare($sql);
@@ -181,7 +182,6 @@ foreach ($rows as $r) {
             cursor:pointer;
         }
 
-        /* Contenedor de navegación móvil */
         .movil-nav {
             display: none;
         }
@@ -196,7 +196,7 @@ foreach ($rows as $r) {
             .card{
                 display: none;
                 width:100%;
-                min-height:calc(100vh - 240px); /* Ajustado para dar espacio a botones superiores e inferiores */
+                min-height:calc(100vh - 240px);
                 padding:15px;
                 border-radius:0;
                 border-top:8px solid #f57c00;
@@ -222,7 +222,6 @@ foreach ($rows as $r) {
             .filtros{ flex-direction:column; align-items:stretch; }
             .filtros input, .filtros select, .filtros button{ width:100%; }
 
-            /* Estilos barra navegación móvil (Abajo del pedido) */
             .movil-nav {
                 display: flex;
                 justify-content: space-between;
@@ -329,8 +328,7 @@ foreach ($rows as $r) {
             tarjetas[indexActual].classList.add('active');
             actualizarControles();
             
-            // Hace un scroll suave hacia arriba de la pantalla al cambiar para ver el inicio del nuevo pedido
-            window.scrollTo({top: 0, behavior: 'smooth'});
+            // Línea de scrollTo eliminada: la pantalla ya no saltará arriba al cambiar
         }
 
         function actualizarControles() {
