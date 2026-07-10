@@ -44,6 +44,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
+// --- Obtención de datos ---
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
 $fSuc = $_GET['sucursal'] ?? '';
@@ -51,6 +52,7 @@ $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
+// --- Agrupar y Calcular ---
 $pedidos = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 $unicaja = [];
@@ -74,41 +76,28 @@ foreach ($rows as $r) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auditoría de Pedidos</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: sans-serif; background: #f4f7f6; margin: 0; padding: 10px; }
-        
-        /* Filtros: apilados en móvil, línea en escritorio */
-        form.filtros { display: flex; flex-direction: column; gap: 10px; background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        form.filtros input, form.filtros select, form.filtros button { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 5px; }
-        
-        /* Grid: 1 columna en móvil, 3 columnas cuando hay espacio */
-        .container { 
-            display: grid; 
-            grid-template-columns: 1fr; 
-            gap: 15px; 
-        }
-        @media (min-width: 900px) {
-            .container { grid-template-columns: repeat(3, 1fr); }
-        }
-
-        .card { background: white; padding: 15px; border-radius: 8px; border-top: 5px solid #f57c00; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        
-        .item-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; gap: 10px; font-size: 13px; cursor: pointer; }
-        .item-row input { width: 18px; height: 18px; }
-        .item-name { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .item-val { width: 70px; text-align: right; }
-
-        .btn-fix { position: sticky; bottom: 0; width: 100%; padding: 18px; background: #f57c00; color: white; border: none; font-size: 18px; font-weight: bold; border-radius: 8px; z-index: 100; margin-top: 20px; }
+        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; padding:20px;}
+        .grid-container{display:grid; grid-template-columns:repeat(auto-fill, minmax(400px, 1fr)); gap:20px;}
+        .card{background:white; border-radius:10px; padding:15px; box-shadow:0 4px 6px rgba(0,0,0,0.1); border-top:4px solid #f57c00;}
+        .card-header{font-size:12px; border-bottom:2px solid #f0f0f0; margin-bottom:12px; padding-bottom:8px; font-weight:bold;}
+        .item-row{display:grid; grid-template-columns:30px 1fr 50px 50px 80px; align-items:center; padding:6px 0; border-bottom:1px solid #f9f9f9; font-size:13px; cursor:pointer; transition: background 0.2s;}
+        .item-row:hover{background:#fff8e1;}
+        .item-row:has(input:checked) { background: #fff3e0; font-weight:bold; }
+        .item-row span{ text-align:center; }
+        .item-row span:nth-child(2){ text-align:left; }
+        .item-row span:last-child{ text-align:right; font-weight:500; }
+        .total{text-align:right; font-weight:800; margin-top:15px; color:#2e7d32; font-size:16px;}
+        .btn-audit{margin-top:20px; background:#f57c00; color:white; border:none; padding:12px; width:100%; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;}
+        select, input, button{padding:8px; border-radius:4px; border:1px solid #ccc;}
     </style>
 </head>
 <body>
-
-    <form method="GET" class="filtros">
-        <input type="date" name="fecha_ini" value="<?= $_GET['fecha_ini'] ?? date('Y-m-d') ?>">
-        <input type="date" name="fecha_fin" value="<?= $_GET['fecha_fin'] ?? date('Y-m-d') ?>">
+    <form method="GET" style="margin-bottom:20px; background:#fff; padding:15px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+        Desde: <input type="date" name="fecha_ini" value="<?= $_GET['fecha_ini'] ?? date('Y-m-d') ?>">
+        Hasta: <input type="date" name="fecha_fin" value="<?= $_GET['fecha_fin'] ?? date('Y-m-d') ?>">
+        Sucursal: 
         <select name="sucursal">
             <option value="">Todas</option>
             <option value="CENTRAL" <?= $fSuc=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
@@ -118,26 +107,27 @@ foreach ($rows as $r) {
     </form>
 
     <form action="procesar_auditoria.php" method="POST">
-        <div class="container">
+        <div class="grid-container">
             <?php foreach($pedidos as $nro => $d): ?>
             <div class="card">
-                <div style="font-weight:bold; font-size: 14px;">Doc: <?= $nro ?></div>
-                <div style="font-size: 11px; color: #666; margin-bottom: 10px;"><?= $d['SUCURSAL'] ?> - <?= $d['FACTURADOR'] ?></div>
-                
+                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?></div>
+                <div class="item-row" style="font-weight:bold; color:#f57c00; border-bottom:2px solid #ddd; cursor:default;">
+                    <span></span><span>Producto</span><span>Caj</span><span>Und</span><span>Total</span>
+                </div>
                 <?php foreach($d['ITEMS'] as $idx => $i): ?>
                     <label class="item-row">
                         <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
-                        <span class="item-name"><?= htmlspecialchars($i['PROD']) ?></span>
-                        <span class="item-val">$<?= number_format($i['VAL'],0) ?></span>
+                        <span><?= htmlspecialchars($i['PROD']) ?></span>
+                        <span><?= $i['C'] ?></span>
+                        <span><?= $i['U'] ?></span>
+                        <span>$<?= number_format($i['VAL'],0) ?></span>
                     </label>
                 <?php endforeach; ?>
-                
-                <div style="text-align: right; font-weight: bold; margin-top: 10px; font-size: 14px;">Total: $<?= number_format($d['TOTAL'], 0) ?></div>
+                <div class="total">Total: $<?= number_format($d['TOTAL'], 0) ?></div>
             </div>
             <?php endforeach; ?>
         </div>
-        
+        <button type="submit" class="btn-audit">✅ Guardar Auditoría Seleccionada</button>
     </form>
-
 </body>
 </html>
