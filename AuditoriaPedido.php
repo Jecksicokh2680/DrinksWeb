@@ -6,29 +6,9 @@ require('Conexion.php');
 session_start();
 mysqli_report(MYSQLI_REPORT_OFF);
 
+// Valida que el usuario esté logueado, pero ya no restringe por códigos de autorización
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
-
-// --- Funciones de soporte ---
-function Autorizacion($User, $Solicitud) {
-    global $mysqli; 
-    if (!isset($_SESSION['Autorizaciones'])) $_SESSION['Autorizaciones'] = [];
-    $key = $User . '_' . $Solicitud;
-    if (isset($_SESSION['Autorizaciones'][$key])) return $_SESSION['Autorizaciones'][$key];
-    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit = ? AND Nro_Auto = ?");
-    if (!$stmt) return "NO";
-    $stmt->bind_param("ss", $User, $Solicitud);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $permiso = ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
-    $_SESSION['Autorizaciones'][$key] = $permiso;
-    $stmt->close();
-    return $permiso;
-}
-
-if (Autorizacion($UsuarioSesion, '0003') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No autorizado</h2>");
-}
 
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
@@ -301,14 +281,13 @@ foreach ($rows as $r) {
 
     <script>
         let tarjetas = document.querySelectorAll('.card');
-        // El indexActual arranca en 0 porque el primer panel ($pedidos[0]) es el más reciente de todos.
         let indexActual = 0;
         let esPrimeraCarga = true;
 
         function inicializarPaginacion() {
             if (window.innerWidth <= 768 && tarjetas.length > 0) {
                 if (esPrimeraCarga) {
-                    indexActual = 0; // Garantiza iniciar en el primero (el más reciente)
+                    indexActual = 0; 
                     esPrimeraCarga = false;
                 }
                 tarjetas.forEach(t => t.classList.remove('active'));
