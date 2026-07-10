@@ -36,7 +36,6 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     $condFactura = $extraCond . ($f_fac != "" ? " AND T1.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
     $condPedido  = $extraCond . ($f_fac != "" ? " AND T2.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
 
-    // Se cambió el ORDER BY al final a DESC para ordenar los paneles en forma descendente
     $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD FROM FACTURAS INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura UNION ALL SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD FROM PEDIDOS INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
 
     $stmt = $cnx->prepare($sql);
@@ -197,7 +196,7 @@ foreach ($rows as $r) {
             .card{
                 display: none;
                 width:100%;
-                min-height:calc(100vh - 180px);
+                min-height:calc(100vh - 240px); /* Ajustado para dar espacio a botones superiores e inferiores */
                 padding:15px;
                 border-radius:0;
                 border-top:8px solid #f57c00;
@@ -212,17 +211,26 @@ foreach ($rows as $r) {
             .item-row{ grid-template-columns: 28px 1fr 45px 45px 70px; font-size:14px; padding:12px 0; }
             .item-row span{ font-size:14px; }
             .total{ margin-top:auto; font-size:22px; padding-top:20px; }
-            .btn-audit{ position:sticky; bottom:10px; font-size:18px; margin-top: 15px; }
+            
+            .btn-audit{ 
+                position:sticky; 
+                bottom:10px; 
+                font-size:18px; 
+                margin-top: 15px; 
+            }
+            
             .filtros{ flex-direction:column; align-items:stretch; }
             .filtros input, .filtros select, .filtros button{ width:100%; }
 
+            /* Estilos barra navegación móvil (Abajo del pedido) */
             .movil-nav {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 background: #fff;
-                padding: 10px;
+                padding: 12px;
                 border-radius: 8px;
+                margin-top: 5px;
                 margin-bottom: 15px;
                 box-shadow: 0 2px 6px rgba(0,0,0,.08);
             }
@@ -230,10 +238,10 @@ foreach ($rows as $r) {
                 background: #333;
                 color: white;
                 border: none;
-                padding: 10px 15px;
+                padding: 12px 20px;
                 font-size: 15px;
                 font-weight: bold;
-                border-radius: 5px;
+                border-radius: 6px;
                 cursor: pointer;
             }
             .movil-nav button:disabled {
@@ -241,7 +249,7 @@ foreach ($rows as $r) {
                 cursor: not-allowed;
             }
             .movil-nav span {
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: bold;
                 color: #555;
             }
@@ -260,12 +268,6 @@ foreach ($rows as $r) {
         </select>
         <button type="submit">Filtrar</button>
     </form>
-
-    <div class="movil-nav">
-        <button type="button" id="btnPrev" onclick="cambiarTarjeta(-1)">◀ Atrás</button>
-        <span id="infoPaginacion">Pedido 0 de 0</span>
-        <button type="button" id="btnNext" onclick="cambiarTarjeta(1)">Sig. ▶</button>
-    </div>
 
     <form action="procesar_auditoria.php" method="POST">
         <div class="grid-container" id="contenedorTarjetas">
@@ -288,15 +290,27 @@ foreach ($rows as $r) {
             </div>
             <?php endforeach; ?>
         </div>
+
+        <div class="movil-nav">
+            <button type="button" id="btnPrev" onclick="cambiarTarjeta(-1)">◀ Atrás</button>
+            <span id="infoPaginacion">Pedido 0 de 0</span>
+            <button type="button" id="btnNext" onclick="cambiarTarjeta(1)">Sig. ▶</button>
+        </div>
+
         <button type="submit" class="btn-audit">✅ Guardar Auditoría Seleccionada</button>
     </form>
 
     <script>
         let tarjetas = document.querySelectorAll('.card');
-        let indexActual = 0;
+        let indexActual = tarjetas.length > 0 ? tarjetas.length - 1 : 0;
+        let esPrimeraCarga = true;
 
         function inicializarPaginacion() {
             if (window.innerWidth <= 768 && tarjetas.length > 0) {
+                if (esPrimeraCarga) {
+                    indexActual = tarjetas.length - 1;
+                    esPrimeraCarga = false;
+                }
                 tarjetas.forEach(t => t.classList.remove('active'));
                 tarjetas[indexActual].classList.add('active');
                 actualizarControles();
@@ -315,6 +329,7 @@ foreach ($rows as $r) {
             tarjetas[indexActual].classList.add('active');
             actualizarControles();
             
+            // Hace un scroll suave hacia arriba de la pantalla al cambiar para ver el inicio del nuevo pedido
             window.scrollTo({top: 0, behavior: 'smooth'});
         }
 
