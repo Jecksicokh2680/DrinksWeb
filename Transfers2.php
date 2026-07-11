@@ -6,6 +6,7 @@
 require 'Conexion.php';
 session_start();
 session_regenerate_id(true);
+require 'auth_check.php';
 
 date_default_timezone_set('America/Bogota');
 

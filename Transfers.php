@@ -3,6 +3,7 @@ require 'Conexion.php';
 require 'helpers.php';
 
 session_start();
+require 'auth_check.php';
 
 
 /* ============================================================

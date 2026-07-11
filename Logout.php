@@ -1,4 +1,18 @@
 <?php
+session_start();
+$_SESSION = array(); // Limpiar variables
+if (ini_get("session.use_cookies")) {
+    $params = session_get_cookie_params();
+    setcookie(session_name(), '', time() - 42000, $params["path"]);
+}
 session_destroy();
-header("Location: Login.php?msg=Sesión cerrada");
-exit;
+?>
+<!DOCTYPE html>
+<html>
+<body>
+    <script>
+        alert("Sesión cerrada correctamente.");
+        window.close(); // Intenta cerrar la ventana
+    </script>
+</body>
+</html>
