@@ -4,6 +4,8 @@ require('ConnDrinks.php');
 require('Conexion.php');
 
 session_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 mysqli_report(MYSQLI_REPORT_OFF);
 
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
