@@ -9,7 +9,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Función para obtener datos ---
+// --- Función para obtener datos (Original) ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -32,6 +32,11 @@ $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
+// --- Recuperar auditorías existentes (Carga para persistencia) ---
+$auditados = [];
+$res_audit = $mysqli->query("SELECT DISTINCT CONCAT(TRIM(sede), '|', TRIM(nro_pedido), '|', TRIM(barcode), '|', TRIM(facturador)) as llave FROM auditoria_Pedido");
+while($row = $res_audit->fetch_assoc()) { $auditados[$row['llave']] = true; }
+
 $pedidos = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 $unicaja = [];
@@ -48,7 +53,7 @@ foreach ($rows as $r) {
     $cajas = floor($r['CANTIDAD']);
     $unds = round(($r['CANTIDAD'] - $cajas) * $uni);
     $valorTotalItem = $r['CANTIDAD'] * $r['VALORPROD'];
-    $pedidos[$doc]['ITEMS'][] = ['PROD'=>$r['PRODUCTO'], 'C'=>$cajas, 'U'=>$unds, 'VAL'=>$valorTotalItem];
+    $pedidos[$doc]['ITEMS'][] = ['PROD'=>$r['PRODUCTO'], 'BARCODE'=>$r['Barcode'], 'C'=>$cajas, 'U'=>$unds, 'VAL'=>$valorTotalItem];
     $pedidos[$doc]['TOTAL'] += $valorTotalItem;
 }
 ?>
@@ -67,20 +72,13 @@ foreach ($rows as $r) {
         .grid-container{ display:grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap:15px; }
         .card{ background:white; border-radius:12px; padding:15px; box-shadow:0 5px 12px rgba(0,0,0,.08); border-top:5px solid #f57c00; }
         .card-header{ font-size:13px; font-weight:bold; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px; }
-        
-        /* Ajuste de columna para permitir envolver texto */
         .table-grid { display: grid; grid-template-columns: 30px minmax(0, 1fr) 50px 50px 90px; gap: 5px; align-items: center; font-size: 14px; }
-        
-        .item-row { padding: 8px 0; border-bottom: 1px solid #f4f4f4; }
+        .item-row { padding: 8px 0; border-bottom: 1px solid #f4f4f4; transition: background 0.2s; }
         .resaltar-cero { background-color: #ffebee; }
+        .auditado { background-color: #e8f5e9 !important; }
         .row-total { font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 5px; color: #2e7d32; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        
-        @media (max-width: 480px) { 
-            .grid-container { display: flex; flex-direction: column; gap: 20px; } 
-            .card { width: 100%; margin-bottom: 10px; }
-        }
     </style>
 </head>
 <body>
@@ -94,39 +92,57 @@ foreach ($rows as $r) {
         </select>
         <button type="submit">Filtrar</button>
     </form>
-    <form action="procesar_auditoria.php" method="POST">
-        <div class="grid-container">
-            <?php foreach($pedidos as $nro => $d): 
-                $totalCajas = 0; $totalUnidades = 0;
-            ?>
-            <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?></div>
-                <div class="table-grid" style="font-weight:bold; background:#f9f9f9; padding:5px;">
-                    <span></span><span>Prod</span><span class="text-center">Cjs</span><span class="text-center">Und</span><span class="text-right">Val</span>
-                </div>
-                <?php foreach($d['ITEMS'] as $idx => $i): 
-                    $totalCajas += $i['C']; $totalUnidades += $i['U'];
-                    $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
-                ?>
-                    <div class="table-grid item-row <?= $claseCero ?>">
-                        <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
-                        <span style="word-wrap: break-word; overflow-wrap: break-word;">
-                            <?= htmlspecialchars($i['PROD']) ?>
-                        </span>
-                        <span class="text-center"><?= $i['C'] ?></span>
-                        <span class="text-center"><?= $i['U'] ?></span>
-                        <span class="text-right">$<?= number_format($i['VAL'],0) ?></span>
-                    </div>
-                <?php endforeach; ?>
-                <div class="table-grid row-total">
-                    <span></span><span class="text-right">TOTAL:</span>
-                    <span class="text-center"><?= $totalCajas ?></span>
-                    <span class="text-center"><?= $totalUnidades ?></span>
-                    <span class="text-right">$<?= number_format($d['TOTAL'], 0) ?></span>
-                </div>
+    
+    <div class="grid-container">
+        <?php foreach($pedidos as $nro => $d): 
+            $totalCajas = 0; $totalUnidades = 0;
+        ?>
+        <div class="card">
+            <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?></div>
+            <div class="table-grid" style="font-weight:bold; background:#f9f9f9; padding:5px;">
+                <span></span><span>Prod</span><span class="text-center">Cjs</span><span class="text-center">Und</span><span class="text-right">Val</span>
             </div>
+            <?php foreach($d['ITEMS'] as $i): 
+                $totalCajas += $i['C']; $totalUnidades += $i['U'];
+                $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
+                $llave = trim($d['SUCURSAL']) . '|' . trim($nro) . '|' . trim($i['BARCODE']) . '|' . trim($d['FACTURADOR']);
+                $isChecked = isset($auditados[$llave]);
+            ?>
+                <div class="table-grid item-row <?= $claseCero ?> <?= $isChecked ? 'auditado' : '' ?>">
+                    <input type="checkbox" class="check-auditoria" value="<?= htmlspecialchars($llave) ?>" <?= $isChecked ? 'checked' : '' ?>>
+                    <span style="word-wrap: break-word; overflow-wrap: break-word;"><?= htmlspecialchars($i['PROD']) ?></span>
+                    <span class="text-center"><?= $i['C'] ?></span>
+                    <span class="text-center"><?= $i['U'] ?></span>
+                    <span class="text-right">$<?= number_format($i['VAL'],0) ?></span>
+                </div>
             <?php endforeach; ?>
+            <div class="table-grid row-total">
+                <span></span><span class="text-right">TOTAL:</span>
+                <span class="text-center"><?= $totalCajas ?></span>
+                <span class="text-center"><?= $totalUnidades ?></span>
+                <span class="text-right">$<?= number_format($d['TOTAL'], 0) ?></span>
+            </div>
         </div>
-    </form>
+        <?php endforeach; ?>
+    </div>
+
+    <script>
+    document.querySelectorAll('.check-auditoria').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const row = this.closest('.item-row');
+            const formData = new FormData();
+            formData.append('item', this.value);
+            formData.append('estado', this.checked ? 1 : 0);
+
+            fetch('procesar_auditoria.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    row.classList.toggle('auditado', this.checked);
+                }
+            });
+        });
+    });
+    </script>
 </body>
 </html>
