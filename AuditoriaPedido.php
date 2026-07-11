@@ -26,7 +26,7 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-// --- Validación de acceso ---
+// --- Validación de acceso (0003, 0004, 0014, 9999) ---
 $permisosValidos = ['0003', '0004', '0014', '9999'];
 $tieneAcceso = false;
 foreach ($permisosValidos as $p) {
@@ -133,7 +133,7 @@ foreach ($rows as $r) {
         <div class="grid-container">
             <?php foreach($pedidos as $nro => $d): ?>
             <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> (<?= date("g:i a", strtotime($d['HORA'])) ?>)</div>
+                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?></div>
                 <?php foreach($d['ITEMS'] as $idx => $i): ?>
                     <div class="item-row">
                         <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
