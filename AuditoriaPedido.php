@@ -74,7 +74,18 @@ foreach ($rows as $r) {
         .row-total { font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 5px; color: #2e7d32; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
-        @media (max-width: 480px) { .grid-container { grid-template-columns: 1fr; } }
+        
+    @media (max-width: 480px) { 
+        .grid-container { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 20px; 
+        } 
+        .card { 
+            width: 100%; 
+            margin-bottom: 10px; 
+        }
+    }
     </style>
 </head>
 <body>
