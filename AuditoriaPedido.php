@@ -26,16 +26,25 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-if (Autorizacion($UsuarioSesion, '0004') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
+// --- Validación de acceso ---
+$permisosValidos = ['0003', '0004', '0014', '9999'];
+$tieneAcceso = false;
+foreach ($permisosValidos as $p) {
+    if (Autorizacion($UsuarioSesion, $p) === "SI") {
+        $tieneAcceso = true;
+        break;
+    }
+}
+
+if (!$tieneAcceso) {
     die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No autorizado</h2>");
 }
 
-// Lógica de permisos de Sede
+// Lógica de permisos de Sede (Admin Total incluye 9999)
 $esAdminTotal = (Autorizacion($UsuarioSesion, '9999') === "SI");
 $sedeAsignada = "";
 
 if (!$esAdminTotal) {
-    // Ajusta 'usuarios' y 'Sede' a tu tabla real
     $stmtSede = $mysqli->prepare("SELECT Sede FROM usuarios WHERE Cedula = ?");
     $stmtSede->bind_param("s", $UsuarioSesion);
     $stmtSede->execute();
@@ -58,7 +67,6 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
-// --- Obtención de datos ---
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
 $fSuc = !$esAdminTotal ? $sedeAsignada : ($_GET['sucursal'] ?? '');
@@ -67,7 +75,6 @@ $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
-// --- Agrupar y Calcular ---
 $pedidos = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 $unicaja = [];
@@ -91,7 +98,6 @@ foreach ($rows as $r) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auditoría de Pedidos</title>
     <style>
         *{ box-sizing:border-box; }
@@ -100,16 +106,10 @@ foreach ($rows as $r) {
         .filtros input, .filtros select, .filtros button{ padding:10px; border-radius:6px; border:1px solid #CCC; font-size:15px; }
         .filtros button{ background:#f57c00; color:white; font-weight:bold; cursor:pointer; }
         .grid-container{ display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:20px; }
-        .card{ background:white; border-radius:12px; padding:15px; box-shadow:0 5px 12px rgba(0,0,0,.08); border-top:5px solid #f57c00; display:flex; flex-direction:column; }
+        .card{ background:white; border-radius:12px; padding:15px; box-shadow:0 5px 12px rgba(0,0,0,.08); border-top:5px solid #f57c00; }
         .card-header{ font-size:14px; font-weight:bold; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px; }
-        .item-row{ display:grid; grid-template-columns: 30px 1fr 50px 50px 85px; align-items:center; padding:8px 0; border-bottom:1px solid #f4f4f4; cursor:pointer; }
-        .item-row:hover{ background:#fff8e1; }
-        .item-row span{ text-align:center; font-size:13px; }
-        .item-row span:nth-child(2){ text-align:left; padding-left:8px; }
-        .item-row span:last-child{ text-align:right; font-weight:600; }
+        .item-row{ display:grid; grid-template-columns: 30px 1fr 50px 50px 85px; align-items:center; padding:8px 0; border-bottom:1px solid #f4f4f4; }
         .total{ margin-top:15px; text-align:right; color:#2e7d32; font-size:18px; font-weight:bold; }
-        .movil-nav { display: none; }
-        @media (max-width:768px){ .grid-container{ display:block; } .card{ display: none; width:100%; min-height:calc(100vh - 240px); padding:15px; border-top:8px solid #f57c00; margin-bottom: 15px; } .card.active { display: flex; } .movil-nav { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(0,0,0,.08); } .movil-nav button { background: #333; color: white; border: none; padding: 12px 20px; font-size: 15px; font-weight: bold; border-radius: 6px; } }
     </style>
 </head>
 <body>
@@ -129,53 +129,24 @@ foreach ($rows as $r) {
         <?php if (!$esAdminTotal): ?><input type="hidden" name="sucursal" value="<?= $sedeAsignada ?>"><?php endif; ?>
         <button type="submit">Filtrar</button>
     </form>
-
     <form action="procesar_auditoria.php" method="POST">
-        <div class="grid-container" id="contenedorTarjetas">
+        <div class="grid-container">
             <?php foreach($pedidos as $nro => $d): ?>
             <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> (<?= date("g:i a", strtotime($d['HORA'])) ?>)</div>
+                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?></div>
                 <?php foreach($d['ITEMS'] as $idx => $i): ?>
-                    <label class="item-row">
+                    <div class="item-row">
                         <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
                         <span><?= htmlspecialchars($i['PROD']) ?></span>
                         <span><?= $i['C'] ?></span>
                         <span><?= $i['U'] ?></span>
                         <span>$<?= number_format($i['VAL'],0) ?></span>
-                    </label>
+                    </div>
                 <?php endforeach; ?>
                 <div class="total">Total: $<?= number_format($d['TOTAL'], 0) ?></div>
             </div>
             <?php endforeach; ?>
         </div>
-        <div class="movil-nav">
-            <button type="button" id="btnPrev" onclick="cambiarTarjeta(-1)">◀ Atrás</button>
-            <span id="infoPaginacion">Pedido 0 de 0</span>
-            <button type="button" id="btnNext" onclick="cambiarTarjeta(1)">Sig. ▶</button>
-        </div>
     </form>
-    <script>
-        let tarjetas = document.querySelectorAll('.card');
-        let indexActual = 0;
-        function inicializarPaginacion() {
-            if (window.innerWidth <= 768 && tarjetas.length > 0) {
-                tarjetas.forEach(t => t.classList.remove('active'));
-                tarjetas[indexActual].classList.add('active');
-                actualizarControles();
-            }
-        }
-        function cambiarTarjeta(d) {
-            tarjetas[indexActual].classList.remove('active');
-            indexActual = Math.max(0, Math.min(tarjetas.length - 1, indexActual + d));
-            tarjetas[indexActual].classList.add('active');
-            actualizarControles();
-        }
-        function actualizarControles() {
-            document.getElementById('infoPaginacion').innerText = `Pedido ${indexActual + 1} de ${tarjetas.length}`;
-            document.getElementById('btnPrev').disabled = (indexActual === 0);
-            document.getElementById('btnNext').disabled = (indexActual === tarjetas.length - 1);
-        }
-        window.addEventListener('DOMContentLoaded', inicializarPaginacion);
-    </script>
 </body>
 </html>
