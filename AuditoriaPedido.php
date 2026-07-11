@@ -40,7 +40,7 @@ if (!$tieneAcceso) {
     die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No autorizado</h2>");
 }
 
-// Lógica de permisos de Sede (Admin Total incluye 9999)
+// Lógica de permisos de Sede
 $esAdminTotal = (Autorizacion($UsuarioSesion, '9999') === "SI");
 $sedeAsignada = "";
 
@@ -133,7 +133,7 @@ foreach ($rows as $r) {
         <div class="grid-container">
             <?php foreach($pedidos as $nro => $d): ?>
             <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?></div>
+                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> (<?= date("g:i a", strtotime($d['HORA'])) ?>)</div>
                 <?php foreach($d['ITEMS'] as $idx => $i): ?>
                     <div class="item-row">
                         <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
