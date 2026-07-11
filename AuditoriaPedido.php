@@ -32,9 +32,14 @@ $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
+// Cargar datos de auditoría y estados
 $auditados = [];
-$res_audit = $mysqli->query("SELECT CONCAT(TRIM(sede), '|', TRIM(nro_pedido), '|', TRIM(barcode), '|', TRIM(facturador)) as llave, usuario_verificador FROM auditoria_Pedido");
-while($row = $res_audit->fetch_assoc()) { $auditados[$row['llave']] = $row['usuario_verificador']; }
+$estados_doc = [];
+$res_audit = $mysqli->query("SELECT *, CONCAT(TRIM(sede), '|', TRIM(nro_pedido), '|', TRIM(barcode), '|', TRIM(facturador)) as llave FROM auditoria_Pedido");
+while($row = $res_audit->fetch_assoc()) { 
+    if($row['estado_check'] == 1) $auditados[$row['llave']] = $row['usuario_verificador'];
+    if($row['estado_pedido'] != 'pendiente') $estados_doc[$row['sede'].'|'.$row['nro_pedido']] = $row['estado_pedido'];
+}
 
 $pedidos = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
@@ -99,9 +104,15 @@ foreach ($rows as $r) {
     <div class="grid-container">
         <?php foreach($pedidos as $nro => $d): 
             $totalCajas = 0; $totalUnidades = 0;
+            $est = $estados_doc[$d['SUCURSAL'].'|'.$nro] ?? 'pendiente';
         ?>
         <div class="card">
-            <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?>
+            <div class="card-header">
+                Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?>
+                <div style="margin:8px 0;">
+                    <button onclick="cambiarEstado('<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'entregado')" style="background:<?= $est=='entregado'?'#2e7d32':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Entregado</button>
+                    <button onclick="cambiarEstado('<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'anulado')" style="background:<?= $est=='anulado'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Anulado</button>
+                </div>
                 <div class="msg-auditor"><?php if (!empty($d['AUDITORES'])): ?>✓ Auditado por: <?= implode(', ', array_keys($d['AUDITORES'])) ?><?php endif; ?></div>
             </div>
             <div class="table-grid" style="font-weight:bold; background:#f9f9f9; padding:5px;">
@@ -113,7 +124,7 @@ foreach ($rows as $r) {
                 $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
             ?>
             <div class="table-grid item-row <?= $isChecked ? 'auditado' : '' ?> <?= $claseCero ?>">
-                <input type="checkbox" class="check-auditoria" value="<?= htmlspecialchars($i['LLAVE']) ?>" <?= $isChecked ? 'checked' : '' ?>>
+                <input type="checkbox" class="check-auditoria" data-item="<?= $i['LLAVE'] ?>" data-cant="<?= ($i['C'] + ($i['U']/100)) ?>" <?= $isChecked ? 'checked' : '' ?>>
                 <span><?= htmlspecialchars($i['PROD']) ?></span>
                 <span class="text-center"><?= $i['C'] ?></span>
                 <span class="text-center"><?= $i['U'] ?></span>
@@ -133,23 +144,19 @@ foreach ($rows as $r) {
     <script>
     document.querySelectorAll('.check-auditoria').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
-            const row = this.closest('.item-row');
-            const card = this.closest('.card');
-            const msgDiv = card.querySelector('.msg-auditor');
-            
             fetch('procesar_auditoria.php', { 
                 method: 'POST', 
-                body: new URLSearchParams({'item': this.value, 'estado': this.checked ? 1 : 0}) 
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.success) {
-                    row.classList.toggle('auditado', this.checked);
-                    msgDiv.innerHTML = this.checked ? `✓ Auditado por: ${data.usuario_auditor}` : '';
-                }
-            });
+                body: new URLSearchParams({'item': this.dataset.item, 'estado': this.checked ? 1 : 0, 'cantidad': this.dataset.cant}) 
+            }).then(() => location.reload());
         });
     });
+
+    function cambiarEstado(sede, nro, estado) {
+        fetch('procesar_auditoria.php', {
+            method: 'POST',
+            body: new URLSearchParams({'tipo': 'estado_pedido', 'sede': sede, 'nro': nro, 'estado': estado})
+        }).then(() => location.reload());
+    }
     </script>
 </body>
 </html>
