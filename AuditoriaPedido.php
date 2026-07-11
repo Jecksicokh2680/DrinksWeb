@@ -9,7 +9,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Función para obtener datos (Sin restricciones de autorización) ---
+// --- Función para obtener datos ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -26,10 +26,9 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
-$fSuc = $_GET['sucursal'] ?? ''; // Ahora toma la sucursal seleccionada libremente
+$fSuc = $_GET['sucursal'] ?? ''; 
 
 $rows = [];
-// Carga ambas sucursales por defecto si no se selecciona una, o la seleccionada
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
@@ -68,24 +67,20 @@ foreach ($rows as $r) {
         .grid-container{ display:grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap:15px; }
         .card{ background:white; border-radius:12px; padding:15px; box-shadow:0 5px 12px rgba(0,0,0,.08); border-top:5px solid #f57c00; }
         .card-header{ font-size:13px; font-weight:bold; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px; }
-        .table-grid { display: grid; grid-template-columns: 30px 1fr 50px 50px 90px; gap: 5px; align-items: center; font-size: 14px; }
+        
+        /* Ajuste de columna para permitir envolver texto */
+        .table-grid { display: grid; grid-template-columns: 30px minmax(0, 1fr) 50px 50px 90px; gap: 5px; align-items: center; font-size: 14px; }
+        
         .item-row { padding: 8px 0; border-bottom: 1px solid #f4f4f4; }
         .resaltar-cero { background-color: #ffebee; }
         .row-total { font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 5px; color: #2e7d32; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         
-    @media (max-width: 480px) { 
-        .grid-container { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 20px; 
-        } 
-        .card { 
-            width: 100%; 
-            margin-bottom: 10px; 
+        @media (max-width: 480px) { 
+            .grid-container { display: flex; flex-direction: column; gap: 20px; } 
+            .card { width: 100%; margin-bottom: 10px; }
         }
-    }
     </style>
 </head>
 <body>
@@ -115,7 +110,9 @@ foreach ($rows as $r) {
                 ?>
                     <div class="table-grid item-row <?= $claseCero ?>">
                         <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= htmlspecialchars($i['PROD']) ?>"><?= htmlspecialchars($i['PROD']) ?></span>
+                        <span style="word-wrap: break-word; overflow-wrap: break-word;">
+                            <?= htmlspecialchars($i['PROD']) ?>
+                        </span>
                         <span class="text-center"><?= $i['C'] ?></span>
                         <span class="text-center"><?= $i['U'] ?></span>
                         <span class="text-right">$<?= number_format($i['VAL'],0) ?></span>
