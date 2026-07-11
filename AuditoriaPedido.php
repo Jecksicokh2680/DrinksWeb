@@ -9,7 +9,29 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Función para obtener datos (Sin restricciones de autorización) ---
+// --- Función para verificar permiso 9999 ---
+function esAdminTotal($User) {
+    global $mysqli;
+    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit = ? AND Nro_Auto = '9999'");
+    $stmt->bind_param("s", $User);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return ($row['Swich'] ?? 'NO') === 'SI';
+}
+
+$esAdminTotal = esAdminTotal($UsuarioSesion);
+$sedeAsignada = "";
+
+// Si no es admin, obtenemos su sede
+if (!$esAdminTotal) {
+    $stmtSede = $mysqli->prepare("SELECT Sede FROM usuarios WHERE Cedula = ?");
+    $stmtSede->bind_param("s", $UsuarioSesion);
+    $stmtSede->execute();
+    $resSede = $stmtSede->get_result()->fetch_assoc();
+    $sedeAsignada = $resSede['Sede'] ?? 'CENTRAL'; // Por defecto, si no hay sede, CENTRAL
+    $stmtSede->close();
+}
+
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -26,12 +48,20 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
-$fSuc = $_GET['sucursal'] ?? ''; // Ahora toma la sucursal seleccionada libremente
+
+// Definir qué sucursales consultar
+$sucursalesAConsultar = [];
+if ($esAdminTotal) {
+    $fSuc = $_GET['sucursal'] ?? '';
+    if ($fSuc == '' || $fSuc == 'CENTRAL') $sucursalesAConsultar[] = 'CENTRAL';
+    if ($fSuc == '' || $fSuc == 'DRINKS') $sucursalesAConsultar[] = 'DRINKS';
+} else {
+    $sucursalesAConsultar[] = $sedeAsignada;
+}
 
 $rows = [];
-// Carga ambas sucursales por defecto si no se selecciona una, o la seleccionada
-if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
-if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
+if (in_array('CENTRAL', $sucursalesAConsultar)) $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
+if (in_array('DRINKS', $sucursalesAConsultar)) $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
 $pedidos = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
@@ -81,44 +111,49 @@ foreach ($rows as $r) {
     <form method="GET" class="filtros">
         <input type="date" name="fecha_ini" value="<?= $_GET['fecha_ini'] ?? date('Y-m-d') ?>">
         <input type="date" name="fecha_fin" value="<?= $_GET['fecha_fin'] ?? date('Y-m-d') ?>">
-        <select name="sucursal">
-            <option value="">Todas</option>
-            <option value="CENTRAL" <?= $fSuc=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
-            <option value="DRINKS" <?= $fSuc=='DRINKS'?'selected':'' ?>>DRINKS</option>
-        </select>
+        
+        <?php if ($esAdminTotal): ?>
+            <select name="sucursal">
+                <option value="">Todas</option>
+                <option value="CENTRAL" <?= ($_GET['sucursal']??'')=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
+                <option value="DRINKS" <?= ($_GET['sucursal']??'')=='DRINKS'?'selected':'' ?>>DRINKS</option>
+            </select>
+        <?php else: ?>
+            <input type="text" value="Sede: <?= $sedeAsignada ?>" disabled>
+        <?php endif; ?>
+        
         <button type="submit">Filtrar</button>
     </form>
-    <form action="procesar_auditoria.php" method="POST">
-        <div class="grid-container">
-            <?php foreach($pedidos as $nro => $d): 
-                $totalCajas = 0; $totalUnidades = 0;
-            ?>
-            <div class="card">
-                <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?></div>
-                <div class="table-grid" style="font-weight:bold; background:#f9f9f9; padding:5px;">
-                    <span></span><span>Prod</span><span class="text-center">Cjs</span><span class="text-center">Und</span><span class="text-right">Val</span>
-                </div>
-                <?php foreach($d['ITEMS'] as $idx => $i): 
-                    $totalCajas += $i['C']; $totalUnidades += $i['U'];
-                    $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
-                ?>
-                    <div class="table-grid item-row <?= $claseCero ?>">
-                        <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= htmlspecialchars($i['PROD']) ?>"><?= htmlspecialchars($i['PROD']) ?></span>
-                        <span class="text-center"><?= $i['C'] ?></span>
-                        <span class="text-center"><?= $i['U'] ?></span>
-                        <span class="text-right">$<?= number_format($i['VAL'],0) ?></span>
-                    </div>
-                <?php endforeach; ?>
-                <div class="table-grid row-total">
-                    <span></span><span class="text-right">TOTAL:</span>
-                    <span class="text-center"><?= $totalCajas ?></span>
-                    <span class="text-center"><?= $totalUnidades ?></span>
-                    <span class="text-right">$<?= number_format($d['TOTAL'], 0) ?></span>
-                </div>
+    
+    <div class="grid-container">
+        <?php foreach($pedidos as $nro => $d): 
+            $totalCajas = 0; $totalUnidades = 0;
+        ?>
+        <div class="card">
+            <div class="card-header">Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?></div>
+            <div class="table-grid" style="font-weight:bold; background:#f9f9f9; padding:5px;">
+                <span></span><span>Prod</span><span class="text-center">Cjs</span><span class="text-center">Und</span><span class="text-right">Val</span>
             </div>
+            <?php foreach($d['ITEMS'] as $idx => $i): 
+                $totalCajas += $i['C']; $totalUnidades += $i['U'];
+                $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
+            ?>
+                <div class="table-grid item-row <?= $claseCero ?>">
+                    <input type="checkbox" name="audit[]" value="<?= $nro ?>_<?= $idx ?>">
+                    <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="<?= htmlspecialchars($i['PROD']) ?>"><?= htmlspecialchars($i['PROD']) ?></span>
+                    <span class="text-center"><?= $i['C'] ?></span>
+                    <span class="text-center"><?= $i['U'] ?></span>
+                    <span class="text-right">$<?= number_format($i['VAL'],0) ?></span>
+                </div>
             <?php endforeach; ?>
+            <div class="table-grid row-total">
+                <span></span><span class="text-right">TOTAL:</span>
+                <span class="text-center"><?= $totalCajas ?></span>
+                <span class="text-center"><?= $totalUnidades ?></span>
+                <span class="text-right">$<?= number_format($d['TOTAL'], 0) ?></span>
+            </div>
         </div>
-    </form>
+        <?php endforeach; ?>
+    </div>
 </body>
 </html>
