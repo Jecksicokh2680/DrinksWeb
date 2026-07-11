@@ -26,7 +26,7 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-if (Autorizacion($UsuarioSesion, '0003') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
+if (Autorizacion($UsuarioSesion, '0004') !== "SI" && Autorizacion($UsuarioSesion, '9999') !== "SI") {
     die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No autorizado</h2>");
 }
 
