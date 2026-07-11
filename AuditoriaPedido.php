@@ -4,50 +4,12 @@ require('ConnDrinks.php');
 require('Conexion.php');
 
 session_start();
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 mysqli_report(MYSQLI_REPORT_OFF);
 
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Funciones de soporte ---
-function Autorizacion($User, $Solicitud) {
-    global $mysqli; 
-    if (!isset($_SESSION['Autorizaciones'])) $_SESSION['Autorizaciones'] = [];
-    $key = $User . '_' . $Solicitud;
-    if (isset($_SESSION['Autorizaciones'][$key])) return $_SESSION['Autorizaciones'][$key];
-    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit = ? AND Nro_Auto = ?");
-    if (!$stmt) return "NO";
-    $stmt->bind_param("ss", $User, $Solicitud);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $permiso = ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
-    $_SESSION['Autorizaciones'][$key] = $permiso;
-    $stmt->close();
-    return $permiso;
-}
-
-$permisosValidos = ['0003', '0004', '0014', '9999'];
-$tieneAcceso = false;
-foreach ($permisosValidos as $p) {
-    if (Autorizacion($UsuarioSesion, $p) === "SI") { $tieneAcceso = true; break; }
-}
-
-if (!$tieneAcceso) die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No autorizado</h2>");
-
-$esAdminTotal = (Autorizacion($UsuarioSesion, '9999') === "SI");
-$sedeAsignada = "";
-
-if (!$esAdminTotal) {
-    $stmtSede = $mysqli->prepare("SELECT Sede FROM usuarios WHERE Cedula = ?");
-    $stmtSede->bind_param("s", $UsuarioSesion);
-    $stmtSede->execute();
-    $resSede = $stmtSede->get_result()->fetch_assoc();
-    $sedeAsignada = $resSede['Sede'] ?? 'CENTRAL';
-    $stmtSede->close();
-}
-
+// --- Función para obtener datos (Sin restricciones de autorización) ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -64,9 +26,10 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
-$fSuc = !$esAdminTotal ? $sedeAsignada : ($_GET['sucursal'] ?? '');
+$fSuc = $_GET['sucursal'] ?? ''; // Ahora toma la sucursal seleccionada libremente
 
 $rows = [];
+// Carga ambas sucursales por defecto si no se selecciona una, o la seleccionada
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
@@ -118,14 +81,10 @@ foreach ($rows as $r) {
     <form method="GET" class="filtros">
         <input type="date" name="fecha_ini" value="<?= $_GET['fecha_ini'] ?? date('Y-m-d') ?>">
         <input type="date" name="fecha_fin" value="<?= $_GET['fecha_fin'] ?? date('Y-m-d') ?>">
-        <select name="sucursal" <?= !$esAdminTotal ? 'disabled' : '' ?>>
-            <?php if ($esAdminTotal): ?>
-                <option value="">Todas</option>
-                <option value="CENTRAL" <?= $fSuc=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
-                <option value="DRINKS" <?= $fSuc=='DRINKS'?'selected':'' ?>>DRINKS</option>
-            <?php else: ?>
-                <option value="<?= $sedeAsignada ?>" selected><?= $sedeAsignada ?></option>
-            <?php endif; ?>
+        <select name="sucursal">
+            <option value="">Todas</option>
+            <option value="CENTRAL" <?= $fSuc=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
+            <option value="DRINKS" <?= $fSuc=='DRINKS'?'selected':'' ?>>DRINKS</option>
         </select>
         <button type="submit">Filtrar</button>
     </form>
