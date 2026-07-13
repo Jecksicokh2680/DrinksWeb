@@ -33,7 +33,7 @@ $EsJefeBodega = (Autorizacion($UsuarioSesion, '0004') === 'SI');
 body { margin: 0; display: flex; min-height: 100vh; font-family: 'Segoe UI', Arial, sans-serif; background: #f8fafc; }
 .sidebar { width: 260px; background: linear-gradient(180deg, #0d6efd 0%, #063f99 100%); color: #fff; display: flex; flex-direction: column; overflow-y: auto; }
 .navbar-brand { padding: 1.5rem 1rem; font-weight: 800; text-align: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
-.sidebar .nav-link { color: rgba(255, 255, 255, 0.85); padding: 8px 14px; font-size: 13px; margin: 2px 10px; border-radius: 6px; text-decoration: none; display: flex; align-items: center; }
+.sidebar .nav-link { color: rgba(255, 255, 255, 0.85); padding: 8px 14px; font-size: 13px; margin: 2px 10px; border-radius: 6px; text-decoration: none; display: flex; align-items: center; cursor: pointer; }
 .sidebar .nav-link:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
 .accordion-item { background: transparent; border: none; }
 .accordion-button { padding: 12px 14px; font-size: 14px; background: transparent; color: #fff; box-shadow: none !important; }
@@ -49,6 +49,7 @@ body { margin: 0; display: flex; min-height: 100vh; font-family: 'Segoe UI', Ari
     <div class="navbar-brand">SISTEMA BNMA</div>
     <div class="accordion accordion-flush px-2" id="menuPrincipal">
 
+        <!-- Módulo Cajeros -->
         <div class="accordion-item">
             <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#mCajeros">💰 Módulo Cajeros</button></h2>
             <div id="mCajeros" class="accordion-collapse collapse"><div class="accordion-body">
@@ -59,11 +60,13 @@ body { margin: 0; display: flex; min-height: 100vh; font-family: 'Segoe UI', Ari
                 <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord</a>
                 <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>
                 <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero</a>
-                <a class="nav-link" href="minequi.php" target="contentFrame">🧮 Ver Transferencias Banco</a>
+                <!-- Link con Popup -->
+                <a class="nav-link" href="minequi.php" onclick="const w=450; const h=screen.availHeight; const l=screen.availWidth-w; window.open(this.href, 'TransfersBanco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes`); return false;">🧮 Ver Transferencias Banco</a>
                 <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>
             </div></div>
         </div>
 
+        <!-- Jefes de Bodega -->
         <?php if ($EsJefeBodega): ?>
         <div class="accordion-item">
             <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#mBodega">📦 Jefes de Bodega</button></h2>
@@ -74,6 +77,7 @@ body { margin: 0; display: flex; min-height: 100vh; font-family: 'Segoe UI', Ari
         </div>
         <?php endif; ?>
 
+        <!-- General -->
         <div class="accordion-item">
             <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#mGeneral">⚙️ General / Compartido</button></h2>
             <div id="mGeneral" class="accordion-collapse collapse"><div class="accordion-body">
@@ -81,10 +85,12 @@ body { margin: 0; display: flex; min-height: 100vh; font-family: 'Segoe UI', Ari
                 <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🧮 Auditoria Pedidos</a>
                 <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>
                 <a class="nav-link" href="recibir_mercancia.php" target="contentFrame">🧮 Recibir Mercancia</a>
-                <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300'); return false;">🧮 Chat Interno</a>
+                <!-- Link con Popup -->
+                <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=no'); return false;">🧮 Chat Interno</a>
             </div></div>
         </div>
 
+        <!-- Administración -->
         <?php if ($EsAdmin): ?>
         <div class="accordion-item">
             <h2 class="accordion-header"><button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#admin">🔐 Administración</button></h2>
