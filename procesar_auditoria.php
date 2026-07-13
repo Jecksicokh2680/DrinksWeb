@@ -3,49 +3,42 @@ session_start();
 require('Conexion.php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Manejo de la auditoría de items (CHECKBOXES)
-    if (isset($_POST['item'])) {
-        $itemData = explode('|', $_POST['item']);
-        $sede = $itemData[0];
-        $nro = $itemData[1];
-        $barcode = $itemData[2];
-        $facturador = $itemData[3];
-        $estado = (int)$_POST['estado'];
-        $cantidad = (float)$_POST['cantidad'];
-        $usuario = $_SESSION['Usuario'] ?? 'Desconocido';
+    $usuario = $_SESSION['Usuario'] ?? 'Desconocido';
 
-        if ($estado === 1) {
+    // 1. Auditoría de Items (Checkbox)
+    if (isset($_POST['item'])) {
+        $data = explode('|', $_POST['item']);
+        if ($_POST['estado'] == 1) {
+            // Intentamos insertar
             $sql = "INSERT INTO auditoria_Pedido (sede, nro_pedido, barcode, facturador, cantidad_facturada, estado_check, usuario_verificador) 
-                    VALUES (?, ?, ?, ?, ?, 1, ?)
-                    ON DUPLICATE KEY UPDATE 
-                    estado_check = 1, 
-                    cantidad_facturada = VALUES(cantidad_facturada),
-                    usuario_verificador = VALUES(usuario_verificador)";
+                    VALUES (?, ?, ?, ?, ?, 1, ?) ON DUPLICATE KEY UPDATE estado_check = 1, usuario_verificador = ?";
             $stmt = $mysqli->prepare($sql);
-            $stmt->bind_param("ssssds", $sede, $nro, $barcode, $facturador, $cantidad, $usuario);
+            $stmt->bind_param("ssssdss", $data[0], $data[1], $data[2], $data[3], $_POST['cantidad'], $usuario, $usuario);
+            $stmt->execute();
         } else {
             $sql = "DELETE FROM auditoria_Pedido WHERE sede=? AND nro_pedido=? AND barcode=?";
             $stmt = $mysqli->prepare($sql);
-            $stmt->bind_param("sss", $sede, $nro, $barcode);
+            $stmt->bind_param("sss", $data[0], $data[1], $data[2]);
+            $stmt->execute();
         }
-        $stmt->execute();
-        
-        // Devolvemos el nombre del usuario como texto plano para el JavaScript
         echo $usuario;
-        exit;
     }
 
-    // Manejo del estado del pedido (ENTREGADO/ANULADO)
+    // 2. Estado del Pedido (Entregado/Anulado)
     if (isset($_POST['tipo']) && $_POST['tipo'] === 'estado_pedido') {
-        $sede = $_POST['sede'];
-        $nro = $_POST['nro'];
-        $estado = $_POST['estado'];
-        
-        $sql = "UPDATE auditoria_Pedido SET estado_pedido = ? WHERE sede = ? AND nro_pedido = ?";
-        $stmt = $mysqli->prepare($sql);
-        $stmt->bind_param("sss", $estado, $sede, $nro);
+        // FORMA MÁS SEGURA: Primero intentamos actualizar
+        $sql_upd = "UPDATE auditoria_Pedido SET estado_pedido = ? WHERE sede = ? AND nro_pedido = ?";
+        $stmt = $mysqli->prepare($sql_upd);
+        $stmt->bind_param("sss", $_POST['estado'], $_POST['sede'], $_POST['nro']);
         $stmt->execute();
-        exit;
+
+        // Si no se actualizó ninguna fila, insertamos (esto ocurre si el pedido aún no ha sido auditado)
+        if ($stmt->affected_rows === 0) {
+            $sql_ins = "INSERT INTO auditoria_Pedido (sede, nro_pedido, estado_pedido) VALUES (?, ?, ?)";
+            $stmt_ins = $mysqli->prepare($sql_ins);
+            $stmt_ins->bind_param("sss", $_POST['sede'], $_POST['nro'], $_POST['estado']);
+            $stmt_ins->execute();
+        }
     }
 }
 ?>

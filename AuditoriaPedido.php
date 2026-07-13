@@ -9,6 +9,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
+// --- Función original ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -36,7 +37,7 @@ $estados_doc = [];
 $res_audit = $mysqli->query("SELECT *, CONCAT(TRIM(sede), '|', TRIM(nro_pedido), '|', TRIM(barcode), '|', TRIM(facturador)) as llave FROM auditoria_Pedido");
 while($row = $res_audit->fetch_assoc()) { 
     if($row['estado_check'] == 1) $auditados[$row['llave']] = $row['usuario_verificador'];
-    if($row['estado_pedido'] != 'pendiente') $estados_doc[$row['sede'].'|'.$row['nro_pedido']] = $row['estado_pedido'];
+    if($row['estado_pedido'] != '' && $row['estado_pedido'] != null) $estados_doc[$row['sede'].'|'.$row['nro_pedido']] = $row['estado_pedido'];
 }
 
 $pedidos = [];
@@ -52,6 +53,7 @@ foreach ($rows as $r) {
     $doc = $r['DOCUMENTO'];
     if (!isset($pedidos[$doc])) $pedidos[$doc] = ['SUCURSAL'=>$r['SUCURSAL'], 'FACTURADOR'=>$r['FACTURADOR'], 'HORA'=>$r['HORA'], 'ITEMS'=>[], 'TOTAL'=>0, 'AUDITORES'=>[]];
     $llave = trim($r['SUCURSAL']) . '|' . trim($doc) . '|' . trim($r['Barcode']) . '|' . trim($r['FACTURADOR']);
+    
     if (isset($auditados[$llave])) $pedidos[$doc]['AUDITORES'][$auditados[$llave]] = true;
 
     $uni = $unicaja[$r['Barcode']] ?? 1;
@@ -107,8 +109,8 @@ foreach ($rows as $r) {
             <div class="card-header">
                 Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?>
                 <div style="margin:8px 0;">
-                    <button onclick="cambiarEstado('<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'entregado')" style="background:<?= $est=='entregado'?'#2e7d32':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Entregado</button>
-                    <button onclick="cambiarEstado('<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'anulado')" style="background:<?= $est=='anulado'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Anulado</button>
+                    <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'entregado')" style="background:<?= $est=='entregado'?'#2e7d32':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Entregado</button>
+                    <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'anulado')" style="background:<?= $est=='anulado'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Anulado</button>
                 </div>
                 <div class="msg-auditor"><?php if (!empty($d['AUDITORES'])): ?>✓ Auditado por: <?= implode(', ', array_keys($d['AUDITORES'])) ?><?php endif; ?></div>
             </div>
@@ -141,32 +143,27 @@ foreach ($rows as $r) {
     <script>
     document.querySelectorAll('.check-auditoria').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
-            const isChecked = this.checked;
-            const parentRow = this.closest('.item-row');
             const card = this.closest('.card');
             const msgAuditor = card.querySelector('.msg-auditor');
-
             fetch('procesar_auditoria.php', { 
                 method: 'POST', 
-                body: new URLSearchParams({'item': this.dataset.item, 'estado': isChecked ? 1 : 0, 'cantidad': this.dataset.cant}) 
+                body: new URLSearchParams({'item': this.dataset.item, 'estado': this.checked ? 1 : 0, 'cantidad': this.dataset.cant}) 
             })
-            .then(response => response.text())
-            .then(nombreUsuario => {
-                if (isChecked) {
-                    parentRow.classList.add('auditado');
-                    msgAuditor.innerText = "✓ Auditado por: " + nombreUsuario.trim();
-                } else {
-                    parentRow.classList.remove('auditado');
-                    msgAuditor.innerText = "";
-                }
+            .then(r => r.text())
+            .then(user => {
+                this.closest('.item-row').classList.toggle('auditado', this.checked);
+                msgAuditor.innerText = this.checked ? "✓ Auditado por: " + user.trim() : "";
             });
         });
     });
 
-    function cambiarEstado(sede, nro, estado) {
+    function cambiarEstado(btn, sede, nro, estado) {
         fetch('procesar_auditoria.php', {
             method: 'POST',
             body: new URLSearchParams({'tipo': 'estado_pedido', 'sede': sede, 'nro': nro, 'estado': estado})
+        }).then(() => {
+            btn.parentElement.querySelectorAll('.btn-est').forEach(b => b.style.background = '#ccc');
+            btn.style.background = (estado === 'entregado') ? '#2e7d32' : '#c62828';
         });
     }
     </script>
