@@ -29,14 +29,22 @@ if ($sede_actual === 'drinks') {
     $nit_empresa_filtro = "86057267-8";  
 }
 
+$inactive_timeout = 1800; // Por ejemplo, 30 minutos
+
 if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
-    session_unset(); session_destroy();
-    header("Location: Login.php?msg=Sesion expirada"); exit;
+    // Redirigimos directamente a logout.php para centralizar la limpieza
+    header("Location: logout.php?msg=Sesion expirada");
+    exit;
 }
 $_SESSION['ultimo_acceso'] = time();
 
+// Validación de usuario
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
-if ($UsuarioSesion === '') { header("Location: Login.php?msg=Debe iniciar sesion"); exit; }
+if ($UsuarioSesion === '') { 
+    // header("Location: Login.php?msg=Debe iniciar sesion"); 
+    header("Location: logout.php?msg=Sesion expirada");
+    exit; 
+}
 
 /* ============================================================
     FUNCIÓN DE PERMISOS

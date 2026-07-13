@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 // Iniciar sesión si no se ha iniciado antes
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
+    require 'auth_check.php';
 }
 
 // Establecer la zona horaria de Bogotá para PHP

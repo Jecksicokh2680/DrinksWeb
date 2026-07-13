@@ -9,7 +9,6 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Función original sin cambios ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
@@ -32,7 +31,6 @@ $rows = [];
 if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
 
-// Cargar datos de auditoría y estados
 $auditados = [];
 $estados_doc = [];
 $res_audit = $mysqli->query("SELECT *, CONCAT(TRIM(sede), '|', TRIM(nro_pedido), '|', TRIM(barcode), '|', TRIM(facturador)) as llave FROM auditoria_Pedido");
@@ -54,7 +52,6 @@ foreach ($rows as $r) {
     $doc = $r['DOCUMENTO'];
     if (!isset($pedidos[$doc])) $pedidos[$doc] = ['SUCURSAL'=>$r['SUCURSAL'], 'FACTURADOR'=>$r['FACTURADOR'], 'HORA'=>$r['HORA'], 'ITEMS'=>[], 'TOTAL'=>0, 'AUDITORES'=>[]];
     $llave = trim($r['SUCURSAL']) . '|' . trim($doc) . '|' . trim($r['Barcode']) . '|' . trim($r['FACTURADOR']);
-    
     if (isset($auditados[$llave])) $pedidos[$doc]['AUDITORES'][$auditados[$llave]] = true;
 
     $uni = $unicaja[$r['Barcode']] ?? 1;
@@ -144,10 +141,25 @@ foreach ($rows as $r) {
     <script>
     document.querySelectorAll('.check-auditoria').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            const parentRow = this.closest('.item-row');
+            const card = this.closest('.card');
+            const msgAuditor = card.querySelector('.msg-auditor');
+
             fetch('procesar_auditoria.php', { 
                 method: 'POST', 
-                body: new URLSearchParams({'item': this.dataset.item, 'estado': this.checked ? 1 : 0, 'cantidad': this.dataset.cant}) 
-            }).then(() => location.reload());
+                body: new URLSearchParams({'item': this.dataset.item, 'estado': isChecked ? 1 : 0, 'cantidad': this.dataset.cant}) 
+            })
+            .then(response => response.text())
+            .then(nombreUsuario => {
+                if (isChecked) {
+                    parentRow.classList.add('auditado');
+                    msgAuditor.innerText = "✓ Auditado por: " + nombreUsuario.trim();
+                } else {
+                    parentRow.classList.remove('auditado');
+                    msgAuditor.innerText = "";
+                }
+            });
         });
     });
 
@@ -155,7 +167,7 @@ foreach ($rows as $r) {
         fetch('procesar_auditoria.php', {
             method: 'POST',
             body: new URLSearchParams({'tipo': 'estado_pedido', 'sede': sede, 'nro': nro, 'estado': estado})
-        }).then(() => location.reload());
+        });
     }
     </script>
 </body>
