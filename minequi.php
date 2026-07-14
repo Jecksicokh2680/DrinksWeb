@@ -508,7 +508,7 @@ if ($resultado && $resultado->num_rows > 0) {
         });
     });
 
-    let tiempoRestante = 180; 
+    let tiempoRestante = 300; 
     const contenedorTimer = document.getElementById('timer');
 
     const cuentaRegresiva = setInterval(function() {

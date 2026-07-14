@@ -343,111 +343,52 @@ body {
     <div class="navbar-brand">SISTEMA BNMA</div>
 
     <div class="accordion accordion-flush px-2" id="menuPrincipal">
-
-
-
         <div class="accordion-item">
-
             <h2 class="accordion-header">
-
                 <button class="accordion-button" data-bs-toggle="collapse" data-bs-target="#basico">
-
                     🔓 Opciones básicas
-
                 </button>
-
             </h2>
-
             <div id="basico" class="accordion-collapse collapse show">
-
                 <div class="accordion-body">
-
-                   
-
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
-
                         💰 Módulo Cajeros
-
-                    </h6>
-
+                    </h6>            
                     <div class="menu-seccion ps-2 mb-3">
-
                         <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
-
-                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>                  
-
+                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
-
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
-
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
-
-                        <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
-
+                          <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
                         <a class="nav-link" href="minequi.php"
-
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
-
                         🧮 Ver Transferencias Bre-B desde el Banco
-
                         </a>
-
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">🧮 Ver Que llega Hoy</a>  
-
-                                 
-
-                    </div>
-
-
-
+    </div>
                     <?php if ($EsJefeBodega): ?>
-
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
-
                         📦 Jefes de Bodega (JB)
-
                     </h6>
-
                     <div class="menu-seccion ps-2 mb-3">
-
                         <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación Anulación JB</a>
-
                         <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
-
                     </div>
-
                     <?php endif; ?>
-
-                   
-
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
-
                         ⚙️ General / Compartido
-
                     </h6>
-
                     <div class="menu-seccion ps-2">
-
                         <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
-
-                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame"> 🧮 Auditoria Pedidos</a>        
-
-                        <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>                    
-
+                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame"> 🧮 Auditoria Pedidos</a>    
+                        <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>     
                         <a class="nav-link" href="recibir_mercancia.php" target="contentFrame">🧮 Recibir Mercancia</a>
-
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">🧮 Chat Interno </a>
-
                     </div>
-
-
-
                 </div>
-
             </div>
-
         </div>
 
 
@@ -469,13 +410,8 @@ body {
             <div id="admin" class="accordion-collapse collapse">
 
                 <div class="accordion-body">
-
                     <div class="accordion sub-accordion">
-
-
-
                         <div class="accordion-item">
-
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminOp">
 
                                 📊 Operación

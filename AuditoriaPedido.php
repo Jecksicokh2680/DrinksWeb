@@ -49,6 +49,8 @@ if ($skus && isset($mysqliWeb)) {
     while ($u = $q->fetch_assoc()) $unicaja[$u['Sku']] = $u['Unicaja'];
 }
 
+// ... (código previo igual)
+
 foreach ($rows as $r) {
     $doc = $r['DOCUMENTO'];
     if (!isset($pedidos[$doc])) $pedidos[$doc] = ['SUCURSAL'=>$r['SUCURSAL'], 'FACTURADOR'=>$r['FACTURADOR'], 'HORA'=>$r['HORA'], 'ITEMS'=>[], 'TOTAL'=>0, 'AUDITORES'=>[]];
@@ -63,6 +65,15 @@ foreach ($rows as $r) {
     $pedidos[$doc]['ITEMS'][] = ['PROD'=>$r['PRODUCTO'], 'BARCODE'=>$r['Barcode'], 'C'=>$cajas, 'U'=>$unds, 'VAL'=>$valorTotalItem, 'LLAVE'=>$llave];
     $pedidos[$doc]['TOTAL'] += $valorTotalItem;
 }
+
+// --- NUEVA LÍNEA: Ordenar items por nombre (PROD) ---
+foreach ($pedidos as &$p) {
+    usort($p['ITEMS'], function($a, $b) {
+        return strcmp($a['PROD'], $b['PROD']);
+    });
+}
+unset($p); // Buena práctica tras usar referencias
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -110,7 +121,7 @@ foreach ($rows as $r) {
                 Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?>
                 <div style="margin:8px 0;">
                     <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'entregado')" style="background:<?= $est=='entregado'?'#2e7d32':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Entregado</button>
-                    <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'anulado')" style="background:<?= $est=='anulado'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Anulado</button>
+                    <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'Para anular')" style="background:<?= $est=='Para anular'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Para Anular</button>
                 </div>
                 <div class="msg-auditor"><?php if (!empty($d['AUDITORES'])): ?>✓ Auditado por: <?= implode(', ', array_keys($d['AUDITORES'])) ?><?php endif; ?></div>
             </div>
