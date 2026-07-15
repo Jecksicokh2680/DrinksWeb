@@ -24,7 +24,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $mysqli->prepare("INSERT INTO categorias (CodCat, Nombre, Tipo, IdEmpresa, Unicaja, PrecioVtaNevera) VALUES (?, ?, ?, ?, ?, ?)");
         $tipo = !empty($_POST['Tipo']) ? $_POST['Tipo'] : null;
         $emp  = !empty($_POST['IdEmpresa']) ? $_POST['IdEmpresa'] : null;
-        $stmt->bind_param("ssiiid", $_POST['CodCat'], $_POST['Nombre'], $tipo, $emp, $_POST['Unicaja'], $_POST['PrecioVtaNevera']);
+        $nombre = strtoupper($_POST['Nombre']); 
+        $stmt->bind_param("ssiiid", $_POST['CodCat'], $nombre, $tipo, $emp, $_POST['Unicaja'], $_POST['PrecioVtaNevera']);
         $stmt->execute();
         header("Location: " . $_SERVER['PHP_SELF']);
         exit;
@@ -33,14 +34,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 2. ACTUALIZAR CATEGORÍA (AJAX)
     if (isset($_POST['auto_update'])) {
         $cod = $_POST['CodCat'];
-        $val = ($_POST['valor'] === '') ? null : $_POST['valor'];
         $campo = $_POST['campo'];
+        $val = ($_POST['valor'] === '') ? null : $_POST['valor'];
+
+        if ($campo === 'Nombre' && !is_null($val)) {
+            $val = strtoupper($val);
+        }
+
         $permitidos = ['SegWebF', 'SegWebT', 'Estado', 'Tipo', 'Unicaja', 'PrecioVtaNevera', 'IdEmpresa', 'Nombre'];
         
         if (in_array($campo, $permitidos)) {
             $stmt = $mysqli->prepare("UPDATE categorias SET $campo = ? WHERE CodCat = ?");
             $stmt->bind_param("ss", $val, $cod);
-            if ($stmt->execute()) echo "OK"; else { http_response_code(500); echo $mysqli->error; }
+            if ($stmt->execute()) {
+                echo $val; 
+            } else { 
+                http_response_code(500); 
+                echo $mysqli->error; 
+            }
         }
         exit;
     }
@@ -104,26 +115,26 @@ $categorias = $mysqli->query("SELECT * FROM categorias ORDER BY CodCat")->fetch_
             <?php foreach($categorias as $c): ?>
             <tr class="<?= $c['Estado'] == '0' ? 'retirado' : '' ?>">
                 <td><strong><?= $c['CodCat'] ?></strong></td>
-                <td><input value="<?= htmlspecialchars($c['Nombre']) ?>" onblur="update('<?= $c['CodCat'] ?>', 'Nombre', this.value)"></td>
+                <td><input value="<?= htmlspecialchars($c['Nombre']) ?>" onblur="update('<?= $c['CodCat'] ?>', 'Nombre', this)"></td>
                 <td>
-                    <select onchange="update('<?= $c['CodCat'] ?>', 'IdEmpresa', this.value)">
+                    <select onchange="update('<?= $c['CodCat'] ?>', 'IdEmpresa', this)">
                         <option value="">-- N/A --</option>
                         <?php foreach($empresas as $e): ?><option value="<?= $e['IdEmpresa'] ?>" <?= $e['IdEmpresa']==$c['IdEmpresa']?'selected':'' ?>><?= $e['Nombre'] ?></option><?php endforeach; ?>
                     </select>
                 </td>
                 <td>
-                    <select onchange="update('<?= $c['CodCat'] ?>', 'Tipo', this.value)">
+                    <select onchange="update('<?= $c['CodCat'] ?>', 'Tipo', this)">
                         <option value="">-- Seleccione --</option>
                         <?php foreach($familias as $f): ?><option value="<?= $f['id'] ?>" <?= $c['Tipo']==$f['id']?'selected':'' ?>><?= $f['nombre'] ?></option><?php endforeach; ?>
                     </select>
                 </td>
-                <td><input type="number" value="<?= $c['Unicaja'] ?>" onblur="update('<?= $c['CodCat'] ?>', 'Unicaja', this.value)" style="width:50px;"></td>
-                <td><input type="number" step="0.01" value="<?= $c['PrecioVtaNevera'] ?>" onblur="update('<?= $c['CodCat'] ?>', 'PrecioVtaNevera', this.value)" style="width:70px;"></td>
+                <td><input type="number" value="<?= $c['Unicaja'] ?>" onblur="update('<?= $c['CodCat'] ?>', 'Unicaja', this)" style="width:50px;"></td>
+                <td><input type="number" step="0.01" value="<?= $c['PrecioVtaNevera'] ?>" onblur="update('<?= $c['CodCat'] ?>', 'PrecioVtaNevera', this)" style="width:70px;"></td>
                 <td>
-                    F <input type="checkbox" <?= $c['SegWebF']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'SegWebF', this.checked?'1':'0')">
-                    T <input type="checkbox" <?= $c['SegWebT']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'SegWebT', this.checked?'1':'0')">
+                    F <input type="checkbox" <?= $c['SegWebF']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'SegWebF', this)">
+                    T <input type="checkbox" <?= $c['SegWebT']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'SegWebT', this)">
                 </td>
-                <td><input type="checkbox" <?= $c['Estado']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'Estado', this.checked?'1':'0'); this.closest('tr').classList.toggle('retirado', !this.checked)"></td>
+                <td><input type="checkbox" <?= $c['Estado']=='1'?'checked':'' ?> onchange="update('<?= $c['CodCat'] ?>', 'Estado', this); this.closest('tr').classList.toggle('retirado', !this.checked)"></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
@@ -138,26 +149,35 @@ function filtrarTabla() {
 
     for (let i = 1; i < filas.length; i++) {
         let fila = filas[i];
+        let cod = fila.cells[0].textContent.toLowerCase();
+        let nombre = fila.querySelector('input[onblur*="Nombre"]').value.toLowerCase();
         let checkbox = fila.querySelector('input[type="checkbox"][onchange*="Estado"]');
         let estadoFila = checkbox.checked ? "1" : "0";
         
-        let textoFila = fila.textContent.toLowerCase();
-        let coincideTexto = textoFila.indexOf(filtroTexto) > -1;
+        let coincideTexto = (cod.indexOf(filtroTexto) > -1 || nombre.indexOf(filtroTexto) > -1);
         let coincideEstado = (filtroEstado === "todos" || estadoFila === filtroEstado);
 
         fila.style.display = (coincideTexto && coincideEstado) ? "" : "none";
     }
 }
 
-async function update(cod, campo, val) {
+async function update(cod, campo, el) {
+    const val = (el.type === 'checkbox') ? (el.checked ? '1' : '0') : el.value;
     const fd = new FormData();
     fd.append('auto_update', '1');
     fd.append('CodCat', cod);
     fd.append('campo', campo);
     fd.append('valor', val);
     fd.append('csrf_token', '<?= $csrf_token ?>');
+    
     const res = await fetch(window.location.href, { method: 'POST', body: fd });
-    if (!res.ok) alert("Error al guardar");
+    if (res.ok) {
+        if (campo === 'Nombre') {
+            el.value = await res.text();
+        }
+    } else {
+        alert("Error al guardar");
+    }
 }
 </script>
 </body>
