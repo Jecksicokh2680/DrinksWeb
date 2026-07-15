@@ -9,14 +9,29 @@ mysqli_report(MYSQLI_REPORT_OFF);
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 if (!$UsuarioSesion) { header("Location: Login.php"); exit; }
 
-// --- Función original ---
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
     $condFactura = $extraCond . ($f_fac != "" ? " AND T1.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
     $condPedido  = $extraCond . ($f_fac != "" ? " AND T2.NOMBRES = '".$cnx->real_escape_string($f_fac)."' " : "");
 
-    $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD FROM FACTURAS INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura UNION ALL SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD FROM PEDIDOS INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
+    $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, CLI.nombres AS CLIENTE, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD 
+            FROM FACTURAS 
+            INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA 
+            INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO 
+            INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR 
+            INNER JOIN TERCEROS CLI ON CLI.IDTERCERO=FACTURAS.IDTERCERO
+            WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura 
+            UNION ALL 
+            SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, CLI.nombres AS CLIENTE, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD 
+            FROM PEDIDOS 
+            INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO 
+            INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO 
+            INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO 
+            INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO 
+            INNER JOIN TERCEROS CLI ON CLI.IDTERCERO=PEDIDOS.IDTERCERO
+            WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido 
+            ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
 
     $stmt = $cnx->prepare($sql);
     $stmt->bind_param("ssss", $f_ini, $f_fin, $f_ini, $f_fin);
@@ -49,11 +64,9 @@ if ($skus && isset($mysqliWeb)) {
     while ($u = $q->fetch_assoc()) $unicaja[$u['Sku']] = $u['Unicaja'];
 }
 
-// ... (código previo igual)
-
 foreach ($rows as $r) {
     $doc = $r['DOCUMENTO'];
-    if (!isset($pedidos[$doc])) $pedidos[$doc] = ['SUCURSAL'=>$r['SUCURSAL'], 'FACTURADOR'=>$r['FACTURADOR'], 'HORA'=>$r['HORA'], 'ITEMS'=>[], 'TOTAL'=>0, 'AUDITORES'=>[]];
+    if (!isset($pedidos[$doc])) $pedidos[$doc] = ['SUCURSAL'=>$r['SUCURSAL'], 'FACTURADOR'=>$r['FACTURADOR'], 'CLIENTE'=>$r['CLIENTE'], 'HORA'=>$r['HORA'], 'ITEMS'=>[], 'TOTAL'=>0, 'AUDITORES'=>[]];
     $llave = trim($r['SUCURSAL']) . '|' . trim($doc) . '|' . trim($r['Barcode']) . '|' . trim($r['FACTURADOR']);
     
     if (isset($auditados[$llave])) $pedidos[$doc]['AUDITORES'][$auditados[$llave]] = true;
@@ -66,14 +79,10 @@ foreach ($rows as $r) {
     $pedidos[$doc]['TOTAL'] += $valorTotalItem;
 }
 
-// --- NUEVA LÍNEA: Ordenar items por nombre (PROD) ---
 foreach ($pedidos as &$p) {
-    usort($p['ITEMS'], function($a, $b) {
-        return strcmp($a['PROD'], $b['PROD']);
-    });
+    usort($p['ITEMS'], function($a, $b) { return strcmp($a['PROD'], $b['PROD']); });
 }
-unset($p); // Buena práctica tras usar referencias
-
+unset($p);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -94,8 +103,7 @@ unset($p); // Buena práctica tras usar referencias
         .auditado { background-color: #e8f5e9 !important; }
         .resaltar-cero { background-color: #ffebee !important; color: #c62828; font-weight: bold; }
         .row-total { font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 5px; color: #2e7d32; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
+        .text-right { text-align: right; } .text-center { text-align: center; }
         .msg-auditor { color: #2e7d32; font-size: 11px; margin-top:5px; font-weight:bold; }
     </style>
 </head>
@@ -118,7 +126,9 @@ unset($p); // Buena práctica tras usar referencias
         ?>
         <div class="card">
             <div class="card-header">
-                Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> | <?= $d['FACTURADOR'] ?> | Hora: <?= $d['HORA'] ?>
+                Doc: <?= $nro ?> | <?= $d['SUCURSAL'] ?> <br>
+                Vendedor: <?= $d['FACTURADOR'] ?> | Cliente: <strong><?= htmlspecialchars($d['CLIENTE']) ?></strong><br>
+                Hora: <?= $d['HORA'] ?>
                 <div style="margin:8px 0;">
                     <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'entregado')" style="background:<?= $est=='entregado'?'#2e7d32':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Entregado</button>
                     <button class="btn-est" onclick="cambiarEstado(this, '<?= $d['SUCURSAL'] ?>', '<?= $nro ?>', 'Para anular')" style="background:<?= $est=='Para anular'?'#c62828':'#ccc' ?>; border:none; padding:3px 8px; color:white; cursor:pointer; border-radius:4px;">Para Anular</button>
