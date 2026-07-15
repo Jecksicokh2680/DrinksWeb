@@ -610,6 +610,8 @@ body {
 
                                     <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
 
+                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>
+
                                     <a class="nav-link" href="Productos.php" target="contentFrame">Lista Productos</a>
 
                                     <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Categoria Producto</a>
