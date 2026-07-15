@@ -13,7 +13,7 @@ session_destroy();
     <script>
         alert("Sesión cerrada correctamente.");
         // window.close(); // Intenta cerrar la ventana
-        window.location.href = "login.php";
+        window.location.href = "Login.php";
     </script>
 </body>
 </html>
