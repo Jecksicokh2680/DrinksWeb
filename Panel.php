@@ -614,6 +614,8 @@ body {
 
                                     <a class="nav-link" href="Productos.php" target="contentFrame">Lista Productos</a>
 
+                                    <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Actualizar Productos en Categorias</a>
+
                                     <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Categoria Producto</a>
 
                                 </div>
