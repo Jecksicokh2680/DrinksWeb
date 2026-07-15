@@ -101,7 +101,7 @@ unset($p);
         .table-grid { display: grid; grid-template-columns: 30px minmax(0, 1fr) 50px 50px 90px; gap: 5px; align-items: center; font-size: 14px; }
         .item-row { padding: 8px 0; border-bottom: 1px solid #f4f4f4; }
         .auditado { background-color: #e8f5e9 !important; }
-        .resaltar-cero { background-color: #ffebee !important; color: #c62828; font-weight: bold; }
+        .resaltar-cero { background-color: #ffebee !important; color: #c62828 !important; font-weight: bold !important; }
         .row-total { font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 5px; color: #2e7d32; }
         .text-right { text-align: right; } .text-center { text-align: center; }
         .msg-auditor { color: #2e7d32; font-size: 11px; margin-top:5px; font-weight:bold; }
@@ -141,7 +141,7 @@ unset($p);
             <?php foreach($d['ITEMS'] as $i): 
                 $totalCajas += $i['C']; $totalUnidades += $i['U'];
                 $isChecked = isset($auditados[$i['LLAVE']]);
-                $claseCero = ($i['VAL'] == 0) ? 'resaltar-cero' : '';
+                $claseCero = ($i['VAL'] <= 100) ? 'resaltar-cero' : '';
             ?>
             <div class="table-grid item-row <?= $isChecked ? 'auditado' : '' ?> <?= $claseCero ?>">
                 <input type="checkbox" class="check-auditoria" data-item="<?= $i['LLAVE'] ?>" data-cant="<?= ($i['C'] + ($i['U']/100)) ?>" <?= $isChecked ? 'checked' : '' ?>>
