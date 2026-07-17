@@ -6,7 +6,6 @@ require_once("Conexion.php");      // $mysqliWeb
 date_default_timezone_set('America/Bogota'); 
 session_start();
 
-// Configuración de IDs de empresa
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 define('SUC_DEFAULT', '001');
@@ -14,7 +13,6 @@ define('SUC_DEFAULT', '001');
 $mysqli = $mysqliWeb; 
 $UsuarioSesion = $_SESSION['Usuario'] ?? 'SISTEMA';
 
-// Mapeo de nombres de sedes (PHP)
 $nombresSedesMap = [
     '86057267-8'  => 'CENTRAL',
     '86057267'    => 'CENTRAL',
@@ -22,9 +20,6 @@ $nombresSedesMap = [
     '901724534-7' => 'DRINK'
 ];
 
-/* ============================================================
-    SEGURIDAD Y PERMISOS
-============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli; 
     if (!isset($_SESSION['Autorizaciones'])) $_SESSION['Autorizaciones'] = [];
@@ -41,92 +36,90 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-$aut_0003 = Autorizacion($UsuarioSesion, '0015'); 
-$aut_9999 = Autorizacion($UsuarioSesion, '9999');
+$aut_0015 = Autorizacion($UsuarioSesion, '0015'); // Para Reversar
+$aut_0016 = Autorizacion($UsuarioSesion, '0016'); // Para Grabar Traslados
+$aut_9999 = Autorizacion($UsuarioSesion, '9999'); // Master
 
-if ($aut_0003 !== "SI" && $aut_9999 !== "SI") {
-    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización</h2>");
+if ($aut_0015 !== "SI" && $aut_0016 !== "SI" && $aut_9999 !== "SI") {
+    die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización de acceso</h2>");
 }
 
-/* ============================================================
-    POST: MOVIMIENTOS Y REVERSIONES
-============================================================ */
 if($_SERVER['REQUEST_METHOD']=='POST'){
     if(isset($_POST['mover'])){
-        $obs = !empty($_POST['observacion']) ? $_POST['observacion'] : "Traspaso manual";
-        $barcode = $_POST['barcode'];
-        $cantidad = (float)$_POST['cantidad'];
-        $origen = $_POST['origen'];
-        $destino = $_POST['destino'];
-
-        if($cantidad <= 0 || $origen === $destino) {
-            $msg = "<div class='alert err'>❌ Datos inválidos</div>";
+        if ($aut_0016 !== "SI" && $aut_9999 !== "SI") {
+            $msg = "<div class='alert err'>❌ No tienes permiso para grabar traslados (Requiere 0016)</div>";
         } else {
-            $dbOrig = ($origen == "Central") ? $mysqliCentral : $mysqliDrinks;
-            $nitOrig = ($origen == "Central") ? NIT_CENTRAL : NIT_DRINKS;
-            $dbDest = ($destino == "Central") ? $mysqliCentral : $mysqliDrinks;
-            $nitDest = ($destino == "Central") ? NIT_CENTRAL : NIT_DRINKS;
+            $obs = !empty($_POST['observacion']) ? $_POST['observacion'] : "Traspaso manual";
+            $barcode = $_POST['barcode'];
+            $cantidad = (float)$_POST['cantidad'];
+            $origen = $_POST['origen'];
+            $destino = $_POST['destino'];
 
-            $idO = $dbOrig->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
-            $idD = $dbDest->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
-
-            if($idO && $idD) {
-                try {
-                    $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
-                    $dbOrig->query("UPDATE inventario SET cantidad = cantidad - $cantidad WHERE idproducto = $idO");
-                    $dbDest->query("UPDATE inventario SET cantidad = cantidad + $cantidad WHERE idproducto = $idD");
-                    
-                    $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, NOW())";
-                    $stmtLog = $mysqliWeb->prepare($sqlLog);
-                    $stmtLog->bind_param("sssdss", $nitOrig, $UsuarioSesion, $barcode, $cantidad, $nitDest, $obs);
-                    $stmtLog->execute();
-                    
-                    $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
-                    $msg = "<div class='alert ok'>✅ Traslado exitoso</div>";
-                } catch(Exception $e) {
-                    $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
-                    $msg = "<div class='alert err'>❌ Error: ".$e->getMessage()."</div>";
-                }
+            if($cantidad <= 0 || $origen === $destino) {
+                $msg = "<div class='alert err'>❌ Datos inválidos</div>";
             } else {
-                $msg = "<div class='alert err'>❌ Producto no encontrado en sedes</div>";
+                $dbOrig = ($origen == "Central") ? $mysqliCentral : $mysqliDrinks;
+                $nitOrig = ($origen == "Central") ? NIT_CENTRAL : NIT_DRINKS;
+                $dbDest = ($destino == "Central") ? $mysqliCentral : $mysqliDrinks;
+                $nitDest = ($destino == "Central") ? NIT_CENTRAL : NIT_DRINKS;
+
+                $idO = $dbOrig->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
+                $idD = $dbDest->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
+
+                if($idO && $idD) {
+                    try {
+                        $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
+                        $dbOrig->query("UPDATE inventario SET cantidad = cantidad - $cantidad WHERE idproducto = $idO");
+                        $dbDest->query("UPDATE inventario SET cantidad = cantidad + $cantidad WHERE idproducto = $idD");
+                        
+                        $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, NOW())";
+                        $stmtLog = $mysqliWeb->prepare($sqlLog);
+                        $stmtLog->bind_param("sssdss", $nitOrig, $UsuarioSesion, $barcode, $cantidad, $nitDest, $obs);
+                        $stmtLog->execute();
+                        
+                        $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
+                        $msg = "<div class='alert ok'>✅ Traslado exitoso</div>";
+                    } catch(Exception $e) {
+                        $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
+                        $msg = "<div class='alert err'>❌ Error: ".$e->getMessage()."</div>";
+                    }
+                } else {
+                    $msg = "<div class='alert err'>❌ Producto no encontrado en sedes</div>";
+                }
             }
         }
     }
 
-    if(isset($_POST['aprobar']) && ($aut_9999=="SI" || $aut_0003=="SI")){
-        $id = (int)$_POST['idMov'];
-        $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id AND Aprobado=1")->fetch_assoc();
-        if($res){
-            $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
-            $destDb = ($res['NitEmpresa_Dest']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
-            $bc = $res['barcode']; $cant = $res['cant'];
+    if(isset($_POST['aprobar'])){
+        if ($aut_0015 !== "SI" && $aut_9999 !== "SI") {
+            $msg = "<div class='alert err'>❌ No tienes permiso para reversar (Requiere 0015)</div>";
+        } else {
+            $id = (int)$_POST['idMov'];
+            $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id AND Aprobado=1")->fetch_assoc();
+            if($res){
+                $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+                $destDb = ($res['NitEmpresa_Dest']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+                $bc = $res['barcode']; $cant = $res['cant'];
 
-            $idO = $origDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
-            $idD = $destDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
+                $idO = $origDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
+                $idD = $destDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
 
-            try {
-                $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
-
-                // Devolver inventarios a sus estados originales
-                $origDb->query("UPDATE inventario SET cantidad=cantidad+$cant WHERE idproducto=$idO");
-                $destDb->query("UPDATE inventario SET cantidad=cantidad-$cant WHERE idproducto=$idD");
-                
-                // Corrección: Cambiar tanto Aprobado como Estado a 0 al reversar
-                $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0, Estado=0 WHERE idMov=$id");
-
-                $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
-                $msg = "<div class='alert ok'>✅ Movimiento reversado (Aprobado y Estado fijados en 0)</div>";
-            } catch (Exception $e) {
-                $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
-                $msg = "<div class='alert err'>❌ Error al procesar reverso: ".$e->getMessage()."</div>";
+                try {
+                    $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
+                    $origDb->query("UPDATE inventario SET cantidad=cantidad+$cant WHERE idproducto=$idO");
+                    $destDb->query("UPDATE inventario SET cantidad=cantidad-$cant WHERE idproducto=$idD");
+                    $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0 WHERE idMov=$id");
+                    $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
+                    $msg = "<div class='alert ok'>✅ Movimiento reversado correctamente</div>";
+                } catch (Exception $e) {
+                    $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
+                    $msg = "<div class='alert err'>❌ Error al procesar reverso: ".$e->getMessage()."</div>";
+                }
             }
         }
     }
 }
 
-/* ============================================================
-    CONSULTAS
-============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term = $_GET['term'] ?? '';
 $f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
@@ -155,7 +148,6 @@ if($term !== '' || $categoria !== ''){
 
 $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' ORDER BY fecha DESC LIMIT 500");
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -176,11 +168,9 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
     </style>
 </head>
 <body>
-
 <div class="card">
     <h2>📦 Grabacion de Traslados de Mercancia</h2>
     <?php if(isset($msg)) echo $msg; ?>
-
     <form method="GET" style="display:flex; gap:10px; margin-bottom:20px;">
         <select name="categoria" class="input-s">
             <option value="">-- Categorías --</option>
@@ -191,17 +181,11 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         <button type="button" class="btn" style="background:#f39c12" onclick="document.getElementById('m').style.display='block'">📅 Historial</button>
         <a href="?" style="padding:10px; text-decoration:none; color:#666;">Limpiar</a>
     </form>
-
     <?php if($barcodes): ?>
     <table>
-        <thead>
-            <tr><th>Barcode</th><th>Producto</th><th>Drinks</th><th>Central</th><th>Operación</th></tr>
-        </thead>
+        <thead><tr><th>Barcode</th><th>Producto</th><th>Drinks</th><th>Central</th><th>Operación</th></tr></thead>
         <tbody>
-            <?php foreach($barcodes as $b): 
-                $vC = $central[$b]['cantidad'] ?? 0;
-                $vD = $drinks[$b]['cantidad'] ?? 0;
-            ?>
+            <?php foreach($barcodes as $b): $vC = $central[$b]['cantidad'] ?? 0; $vD = $drinks[$b]['cantidad'] ?? 0; ?>
             <tr>
                 <td><code><?= $b ?></code></td>
                 <td style="text-align:left;"><?= htmlspecialchars($central[$b]['descripcion'] ?? $drinks[$b]['descripcion'] ?? 'N/A') ?></td>
@@ -228,41 +212,25 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
     <div class="modal-content">
         <span onclick="this.parentElement.parentElement.style.display='none'" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
         <h3>🗓 Historial de Movimientos</h3>
-        
         <form method="GET" style="display:flex; gap:10px; margin-bottom:15px;">
             <input type="date" name="f_inicio" value="<?= $f_inicio ?>" class="input-s">
             <input type="date" name="f_fin" value="<?= $f_fin ?>" class="input-s">
             <button type="submit" class="btn" style="background:#34495e">Filtrar</button>
-            <button type="button" onclick="printMovimientos()" class="btn" style="background:#2980b9">🖨 Imprimir Historial</button>
         </form>
-
-        <table id="tableHistory">
-            <thead>
-                <tr>
-                    <th>Fecha / Hora</th><th>Usuario</th><th>Producto / Barcode</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Obs</th><th>Estado</th>
-                </tr>
-            </thead>
+        <table>
+            <thead><tr><th>Fecha</th><th>Usuario</th><th>Producto</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Obs</th><th>Acción</th></tr></thead>
             <tbody>
-                <?php while($r = $resMov->fetch_assoc()): 
-                    $nomProd = $nombresGlobales[$r['barcode']] ?? 'Desconocido';
-                    $origName = $nombresSedesMap[trim($r['NitEmpresa_Orig'])] ?? $r['NitEmpresa_Orig'];
-                    $destName = $nombresSedesMap[trim($r['NitEmpresa_Dest'])] ?? $r['NitEmpresa_Dest'];
-                ?>
+                <?php while($r = $resMov->fetch_assoc()): ?>
                 <tr style="<?= $r['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
-                    <td><?= $r['fecha'] ?></td>
-                    <td><?= $r['usuario_Orig'] ?></td>
-                    <td data-nombre="<?= htmlspecialchars($nomProd) ?>" style="text-align:left; max-width:250px;">
-                        <div style="font-weight:bold; color:#2c3e50;"><?= htmlspecialchars($nomProd) ?></div>
-                        <small style="font-family:monospace; color:#666;">[<?= $r['barcode'] ?>]</small>
-                    </td>
-                    <td style="font-weight:bold;"><?= number_format($r['cant'], 1) ?></td>
-                    <td style="font-weight:bold;"><?= $origName ?></td> <td style="font-weight:bold;"><?= $destName ?></td> <td style="font-size:11px;"><?= $r['Observacion'] ?></td>
+                    <td><?= $r['fecha'] ?></td><td><?= $r['usuario_Orig'] ?></td>
+                    <td><?= $nombresGlobales[$r['barcode']] ?? 'Desconocido' ?></td>
+                    <td><?= number_format($r['cant'], 1) ?></td>
+                    <td><?= $r['NitEmpresa_Orig'] ?></td><td><?= $r['NitEmpresa_Dest'] ?></td><td><?= $r['Observacion'] ?></td>
                     <td>
-                        <?php 
-                        if(($aut_9999=="SI" || $aut_0003=="SI") && $r['Aprobado']==1): ?>
-                            <form method="POST" onsubmit="return confirm('¿Realmente desea reversar este movimiento?')">
+                        <?php if(($aut_0015=="SI" || $aut_9999=="SI") && $r['Aprobado']==1): ?>
+                            <form method="POST" onsubmit="return confirm('¿Reversar?')">
                                 <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
-                                <button type="submit" name="aprobar" style="background:none; border:none; cursor:pointer; font-size:16px;" title="Reversar">🔄</button>
+                                <button type="submit" name="aprobar" style="cursor:pointer;">🔄</button>
                             </form>
                         <?php else: echo $r['Aprobado']==1 ? '✅' : '❌'; endif; ?>
                     </td>
@@ -272,94 +240,5 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         </table>
     </div>
 </div>
-
-<script>
-function printMovimientos(){
-    const tableClone = document.getElementById('tableHistory').cloneNode(true);
-    const header = tableClone.querySelector('thead tr');
-    const rows = tableClone.querySelectorAll('tbody tr');
-    
-    const nombresSedes = {
-        '86057267-8': 'CENTRAL',
-        '86057267': 'CENTRAL',
-        '901724534': 'DRINK',
-        '901724534-7': 'DRINK'
-    };
-
-    rows.forEach(row => {
-        const fullDateTime = row.cells[0].innerText;
-        const timeOnly = fullDateTime.split(' ')[1] ? fullDateTime.split(' ')[1].substring(0, 5) : fullDateTime;
-        row.cells[0].innerText = timeOnly;
-
-        const celdaBarcode = row.cells[2];
-        const nombreProd = celdaBarcode.getAttribute('data-nombre');
-        celdaBarcode.innerHTML = `
-            <div style="font-size:11px; font-weight:900; line-height:1; word-wrap: break-word;">${nombreProd}</div>
-            <div style="font-size:9px; font-family:monospace;">[${celdaBarcode.querySelector('small').innerText.replace('[','').replace(']','').trim()}]</div>
-        `;
-
-        row.cells[4].innerHTML = `<b>${nombresSedes[row.cells[4].innerText.trim()] || row.cells[4].innerText}</b>`;
-        row.cells[5].innerHTML = `<b>${nombresSedes[row.cells[5].innerText.trim()] || row.cells[5].innerText}</b>`;
-
-        row.deleteCell(7);
-        row.deleteCell(6);
-        row.deleteCell(1);
-    });
-
-    header.deleteCell(7);
-    header.deleteCell(6);
-    header.deleteCell(1);
-
-    const fechaFiltro = document.getElementsByName('f_inicio')[0].value;
-    const win = window.open('', '', 'height=700,width=900');
-    
-    win.document.write(`
-        <html>
-        <head>
-            <title>TR_${fechaFiltro}</title>
-            <style>
-                @media print {
-                    @page { size: portrait; margin: 0.3cm; }
-                    body { margin: 0; padding: 0; }
-                }
-                body { 
-                    font-family: 'Courier New', Courier, monospace; 
-                    width: 100%; 
-                    color: #000 !important;
-                }
-                h2 { text-align: center; font-size: 16px; margin-bottom: 2px; text-transform: uppercase; }
-                .header-info { text-align: center; font-size: 11px; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
-                table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-                th, td { border: 1px solid #000; padding: 4px 2px; font-size: 11px; text-align: center; word-wrap: break-word; }
-                th { background: #000 !important; color: #fff !important; font-size: 10px; }
-                th:nth-child(1), td:nth-child(1) { width: 15%; } 
-                th:nth-child(2), td:nth-child(2) { width: 45%; text-align: left; } 
-                th:nth-child(3), td:nth-child(3) { width: 12%; font-size: 13px; font-weight: bold; } 
-                th:nth-child(4), td:nth-child(4) { width: 14%; font-weight: bold; } 
-                th:nth-child(5), td:nth-child(5) { width: 14%; font-weight: bold; }
-                .footer-firmas { margin-top: 30px; display: flex; justify-content: space-between; }
-                .firma-box { border-top: 1px solid #000; width: 45%; text-align: center; font-size: 9px; padding-top: 5px; }
-            </style>
-        </head>
-        <body>
-            <h2>Reporte Traslados</h2>
-            <div class="header-info">FECHA: ${fechaFiltro} | GEN: <?= date('d/m H:i') ?></div>
-            ${tableClone.outerHTML}
-            <div class="footer-firmas">
-                <div class="firma-box">ENTREGA</div>
-                <div class="firma-box">RECIBE</div>
-            </div>
-        </body>
-        </html>
-    `);
-    
-    win.document.close();
-    setTimeout(() => { 
-        win.focus(); 
-        win.print(); 
-        win.close(); 
-    }, 500);
-}
-</script>
 </body>
 </html>
