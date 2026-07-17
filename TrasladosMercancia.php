@@ -41,7 +41,7 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-$aut_0003 = Autorizacion($UsuarioSesion, '0003'); 
+$aut_0003 = Autorizacion($UsuarioSesion, '0015'); 
 $aut_9999 = Autorizacion($UsuarioSesion, '9999');
 
 if ($aut_0003 !== "SI" && $aut_9999 !== "SI") {

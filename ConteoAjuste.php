@@ -118,7 +118,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                        WHERE c.estado = 'A' 
                        AND DATE(c.fecha_conteo) = '$hoy'
-                       ORDER BY c.id DESC");
+                       ORDER BY c.fecha_conteo DESC");
 ?>
 
 <!DOCTYPE html>
