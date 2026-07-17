@@ -185,12 +185,19 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
     <table>
         <thead><tr><th>Barcode</th><th>Producto</th><th>Drinks</th><th>Central</th><th>Operación</th></tr></thead>
         <tbody>
-            <?php foreach($barcodes as $b): $vC = $central[$b]['cantidad'] ?? 0; $vD = $drinks[$b]['cantidad'] ?? 0; ?>
+            <?php foreach($barcodes as $b): 
+                $vC = $central[$b]['cantidad'] ?? 0; 
+                $vD = $drinks[$b]['cantidad'] ?? 0; 
+            ?>
             <tr>
                 <td><code><?= $b ?></code></td>
                 <td style="text-align:left;"><?= htmlspecialchars($central[$b]['descripcion'] ?? $drinks[$b]['descripcion'] ?? 'N/A') ?></td>
-                <td style="color:#2980b9; font-weight:bold;"><?= number_format($vD,1) ?></td>
-                <td style="color:#27ae60; font-weight:bold;"><?= number_format($vC,1) ?></td>
+                <td style="color:#2980b9; font-weight:bold;">
+                    <?= ($aut_9999=="SI") ? number_format($vD,1) : "---" ?>
+                </td>
+                <td style="color:#27ae60; font-weight:bold;">
+                    <?= ($aut_9999=="SI") ? number_format($vC,1) : "---" ?>
+                </td>
                 <td>
                     <form method="POST" onsubmit="return confirm('¿Confirmar traslado?')">
                         <input type="hidden" name="barcode" value="<?= $b ?>">
