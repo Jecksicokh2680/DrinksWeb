@@ -1,18 +1,14 @@
 <?php
-require_once("ConnCentral.php");   // $mysqliCentral
-require_once("ConnDrinks.php");    // $mysqliDrinks
-require_once("Conexion.php");      // $mysqliWeb
+require_once("ConnCentral.php");   
+require_once("ConnDrinks.php");    
+require_once("Conexion.php");      
 
-/* ============================================================
-   LÓGICA AJAX: PROCESAR ACTUALIZACIONES
-============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     $bc   = $_POST['barcode'];
-    $sede = $_POST['sede'] ?? ''; 
+    $sede = $_POST['sede'] ?? 'Central';
     $db   = ($sede === 'Central') ? $mysqliCentral : $mysqliDrinks;
 
-    // 1. Actualizar Stock
     if ($_POST['action'] === 'update_stock') {
         $nueva_cant = floatval($_POST['cantidad']);
         $res = $db->query("SELECT idproducto FROM productos WHERE barcode = '$bc' LIMIT 1");
@@ -21,12 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt = $db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
             $stmt->bind_param("di", $nueva_cant, $idp);
             echo json_encode(['success' => $stmt->execute()]);
-        } else {
-            echo json_encode(['success' => false, 'error' => 'Producto no encontrado']);
         }
     }
 
-    // 2. Cambiar Estado
     if ($_POST['action'] === 'toggle_status') {
         $nuevo_estado = intval($_POST['estado']);
         $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
@@ -34,64 +27,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         echo json_encode(['success' => $stmt->execute()]);
     }
 
-    // NUEVO: 3. Actualizar Descripción en ambas sedes
-    if ($_POST['action'] === 'update_description') {
-        $nueva_desc = trim($_POST['descripcion']);
-        if (empty($nueva_desc)) {
-            echo json_encode(['success' => false, 'error' => 'La descripción no puede estar vacía.']);
-            exit;
-        }
-
-        // Actualizamos en Central
-        $stmtC = $mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-        $stmtC->bind_param("ss", $nueva_desc, $bc);
-        $resC = $stmtC->execute();
-
-        // Actualizamos en Drinks
-        $stmtD = $mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-        $stmtD->bind_param("ss", $nueva_desc, $bc);
-        $resD = $stmtD->execute();
-
-        echo json_encode(['success' => ($resC || $resD)]);
+    if ($_POST['action'] === 'update_name') {
+        $nombre = $_POST['nombre'];
+        $mysqliCentral->query("UPDATE productos SET descripcion = '$nombre' WHERE barcode = '$bc'");
+        $mysqliDrinks->query("UPDATE productos SET descripcion = '$nombre' WHERE barcode = '$bc'");
+        echo json_encode(['success' => true]);
     }
     exit;
 }
 
-/* ============================================================
-   CONSULTA DE DATOS
-============================================================ */
-$categoria = $_GET['categoria'] ?? '';
-$term      = $_GET['term'] ?? '';
-$like      = "%$term%";
+$term = $_GET['term'] ?? '';
+$like = "%$term%";
 
-$prodCat = [];
-$resPC = $mysqliWeb->query("SELECT sku, CodCat FROM catproductos");
-while ($r = $resPC->fetch_assoc()) { $prodCat[$r['sku']] = $r['CodCat']; }
-
-$cats = [];
-$resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
-while ($c = $resCat->fetch_assoc()) { $cats[$c['CodCat']] = $c['Nombre']; }
-
-$sql = "SELECT p.barcode, p.descripcion, p.estado, IFNULL(SUM(i.cantidad),0) cantidad 
+// Consulta incluyendo precioventa
+$sql = "SELECT p.barcode, p.descripcion, p.estado, p.precioventa, IFNULL(SUM(i.cantidad),0) cantidad 
         FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
 
 $stmtC = $mysqliCentral->prepare($sql);
 $stmtC->bind_param("ss", $like, $like);
 $stmtC->execute();
-$resC = $stmtC->get_result();
 $central = [];
+$resC = $stmtC->get_result();
 while ($r = $resC->fetch_assoc()) { $central[$r['barcode']] = $r; }
 
 $stmtD = $mysqliDrinks->prepare($sql);
 $stmtD->bind_param("ss", $like, $like);
 $stmtD->execute();
-$resD = $stmtD->get_result();
 $drinks = [];
+$resD = $stmtD->get_result();
 while ($r = $resD->fetch_assoc()) { $drinks[$r['barcode']] = $r; }
 
 $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
-usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN') <=> ($prodCat[$b] ?? 'SIN'); });
 ?>
 
 <!DOCTYPE html>
@@ -108,17 +75,11 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
         
         .row-drinks { background: #fffcf5; }
         .row-central { background: #f5f9ff; }
-        .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; padding: 10px; }
+        .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; }
         
-        /* Input inline de descripción */
-        .desc-input { background: transparent; border: 1px solid transparent; font-size: 15px; font-weight: bold; color: #333; width: 75%; padding: 4px 8px; border-radius: 4px; transition: all 0.3s; }
-        .desc-input:hover { background: #fff; border-color: #ccc; }
-        .desc-input:focus { background: #fff; border-color: #2196F3; outline: none; box-shadow: 0 0 5px rgba(33,150,243,0.3); }
-
         .stock-input { width: 70px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; }
         .btn-save { background: #28a745; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
-        .btn-save:hover { background: #218838; }
-
+        
         .switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 18px; }
@@ -129,97 +90,63 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
         .badge-sede { font-size: 10px; padding: 3px 6px; border-radius: 4px; color: white; font-weight: bold; text-transform: uppercase; }
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
-
-        .search-container { margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e3e6f0; }
-        .search-form { display: flex; gap: 10px; }
-        .search-input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-        .btn-search { background: #1a2a6c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .btn-search:hover { background: #142154; }
-        .btn-clear { background: #6c757d; color: white; text-decoration: none; padding: 10px 15px; border-radius: 6px; font-size: 14px; display: inline-flex; align-items: center; }
-        .btn-clear:hover { background: #5a6268; }
+        #filtro { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 6px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>🛠️ Panel de Inventario Edición Directa</h2>
-
-    <div class="search-container">
-        <form method="GET" action="" class="search-form">
-            <input type="text" name="term" class="search-input" placeholder="Buscar por descripción o código de barras..." value="<?= htmlspecialchars($term) ?>">
-            <button type="submit" class="btn-search">🔍 Buscar</button>
-            <?php if ($term !== ''): ?>
-                <a href="?" class="btn-clear">❌ Limpiar</a>
-            <?php endif; ?>
-        </form>
-    </div>
+    <h2>🛠️ Panel de Inventario con Precios</h2>
+    <input type="text" id="filtro" placeholder="🔍 Buscar por nombre o código..." onkeyup="filtrar()">
 
     <table>
         <thead>
             <tr>
                 <th style="text-align:left">Producto / Sede</th>
                 <th>Estado</th>
-                <th>Stock Actual</th>
+                <th>Precio Venta</th>
+                <th>Stock</th>
                 <th>Acción</th>
             </tr>
         </thead>
         <tbody>
-            <?php if (empty($barcodes)): ?>
-                <tr>
-                    <td colspan="4" style="padding: 20px; color: #888;">No se encontraron productos que coincidan con la búsqueda.</td>
-                </tr>
-            <?php endif; ?>
-
             <?php foreach ($barcodes as $b): 
-                $d = $drinks[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---'];
-                $c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---'];
+                $d = $drinks[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0];
+                $c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0];
                 $desc = ($c['descripcion'] !== '---') ? $c['descripcion'] : $d['descripcion'];
+                $pv = ($c['precioventa'] != 0) ? $c['precioventa'] : $d['precioventa'];
             ?>
-            <tr>
-                <td colspan="4" class="product-header">
-                    <span style="color:#666; font-family: monospace; font-size: 14px;">[<?= $b ?>]</span>
-                    <input type="text" 
-                           class="desc-input" 
-                           value="<?= htmlspecialchars($desc) ?>" 
-                           onblur="updateDescription('<?= $b ?>', this.value)" 
-                           onkeydown="if(event.key === 'Enter') { this.blur(); }">
+            <tr class="product-header">
+                <td colspan="5" style="text-align:left;">
+                    <span style="color:#666; font-size: 12px;">[<?= $b ?>]</span>
+                    <input type="text" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
             </tr>
 
             <tr class="row-drinks">
-                <td style="text-align:left; padding-left: 30px;">
-                    <span class="badge-sede bg-drinks">Drinks</span>
-                </td>
+                <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-drinks">Drinks</span></td>
                 <td>
                     <label class="switch">
                         <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Drinks', this)" <?= $d['estado']==1?'checked':'' ?>>
                         <span class="slider"></span>
                     </label>
                 </td>
-                <td>
-                    <input type="number" step="any" class="stock-input" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>">
-                </td>
-                <td>
-                    <button class="btn-save" onclick="saveStock('<?= $b ?>', 'Drinks')">💾</button>
-                </td>
+                <td>$<?= number_format($pv, 0) ?></td>
+                <td><input type="number" step="any" class="stock-input" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>"></td>
+                <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Drinks')">💾</button></td>
             </tr>
 
             <tr class="row-central">
-                <td style="text-align:left; padding-left: 30px;">
-                    <span class="badge-sede bg-central">Central</span>
-                </td>
+                <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-central">Central</span></td>
                 <td>
                     <label class="switch">
                         <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Central', this)" <?= $c['estado']==1?'checked':'' ?>>
                         <span class="slider"></span>
                     </label>
                 </td>
-                <td>
-                    <input type="number" step="any" class="stock-input" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>">
-                </td>
-                <td>
-                    <button class="btn-save" onclick="saveStock('<?= $b ?>', 'Central')">💾</button>
-                </td>
+                <td>$<?= number_format($pv, 0) ?></td>
+                <td><input type="number" step="any" class="stock-input" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>"></td>
+                <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Central')">💾</button></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
@@ -227,59 +154,24 @@ usort($barcodes, function($a, $b) use($prodCat) { return ($prodCat[$a] ?? 'SIN')
 </div>
 
 <script>
-// NUEVA FUNCIÓN: Actualizar descripción inline
-function updateDescription(barcode, newDesc) {
-    const formData = new FormData();
-    formData.append('action', 'update_description');
-    formData.append('barcode', barcode);
-    formData.append('descripcion', newDesc);
-
-    fetch('', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-        if(!data.success) {
-            alert('Error al actualizar la descripción: ' + (data.error || 'Desconocido'));
-        }
-    })
-    .catch(err => alert('Error de red al actualizar descripción.'));
-}
-
-function saveStock(barcode, sede) {
-    const qty = document.getElementById(`input-${sede.toLowerCase()}-${barcode}`).value;
-    
-    const formData = new FormData();
-    formData.append('action', 'update_stock');
-    formData.append('barcode', barcode);
-    formData.append('sede', sede);
-    formData.append('cantidad', qty);
-
-    fetch('', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-        if(data.success) {
-            alert(`Stock de ${sede} actualizado correctamente.`);
-        } else {
-            alert('Error: ' + data.error);
-        }
+function filtrar() {
+    const term = document.getElementById('filtro').value.toLowerCase();
+    document.querySelectorAll('.product-header').forEach(header => {
+        const text = header.textContent.toLowerCase();
+        const row1 = header.nextElementSibling;
+        const row2 = row1 ? row1.nextElementSibling : null;
+        const visible = text.includes(term);
+        header.style.display = visible ? '' : 'none';
+        if(row1) row1.style.display = visible ? '' : 'none';
+        if(row2) row2.style.display = visible ? '' : 'none';
     });
 }
-
-function toggleStatus(barcode, sede, element) {
-    const estado = element.checked ? 1 : 0;
-    
-    const formData = new FormData();
-    formData.append('action', 'toggle_status');
-    formData.append('barcode', barcode);
-    formData.append('sede', sede);
-    formData.append('estado', estado);
-
-    fetch('', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-        if(!data.success) alert('No se pudo cambiar el estado.');
-    });
+function updateName(b, v) { fetch('', {method:'POST', body:new URLSearchParams({action:'update_name', barcode:b, nombre:v})}); }
+function saveStock(b, s) { 
+    let v = document.getElementById(`input-${s.toLowerCase()}-${b}`).value;
+    fetch('', {method:'POST', body:new URLSearchParams({action:'update_stock', barcode:b, sede:s, cantidad:v})}).then(()=>alert('Actualizado')); 
 }
+function toggleStatus(b, s, e) { fetch('', {method:'POST', body:new URLSearchParams({action:'toggle_status', barcode:b, sede:s, estado:e.checked?1:0})}); }
 </script>
-
 </body>
 </html>

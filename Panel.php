@@ -361,7 +361,8 @@ body {
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
-                          <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
+                        <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
+                        <a class="nav-link" href="pedidofact_X.php" target="contentFrame">🧮 Ver Pedido </a>  
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🧮 Ver Transferencias Bre-B desde el Banco
@@ -429,6 +430,7 @@ body {
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma </a>
 
                                    
+                                    <a class="nav-link" href="Conteo_2.php" target="contentFrame">Conteo Inventario Profesional</a>
 
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
 
