@@ -21,10 +21,16 @@ try:
     mail.select("INBOX")
 
     # Obtener la fecha de hoy en Bogotá en formato IMAP
+
+
+
+    
     fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
     # Buscar correos del día con los asuntos clave
-    criterio_busqueda = f'(OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta" ON {fecha_hoy})'
+   
+    criterio_busqueda = f'(UNSEEN ON {fecha_hoy} (OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta"))'
+    
     status, messages = mail.uid('search', None, criterio_busqueda)
     mail_ids = messages[0].split()
 
