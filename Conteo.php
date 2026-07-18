@@ -29,7 +29,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $skus = [];
     while($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
 
-    // Ajuste responsive en el HTML de retorno
     $html = "<div style='overflow-x:auto;'>
             <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
             <thead><tr style='background:#f4f4f4;'>
@@ -143,9 +142,12 @@ $resCont->execute();
 $resResult = $resCont->get_result();
 while ($r = $resResult->fetch_assoc()) $contados[] = $r['CodCat'];
 
-// Cargar Todas las Categorías Disponibles
+// Cargar Todas las Categorías Disponibles con su Familia
 $categorias = [];
-$res = $mysqli->query("SELECT CodCat, Nombre, unicaja FROM categorias WHERE Estado='1' AND (SegWebT+SegWebF)>=1 ORDER BY CodCat");
+$res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
+                       FROM categorias c 
+                       LEFT JOIN familias f ON c.Tipo = f.id 
+                       WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 ORDER BY c.CodCat");
 while ($r = $res->fetch_assoc()) $categorias[$r['CodCat']] = $r;
 
 // Cálculo Stock Sistema
@@ -207,7 +209,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px; color:#333;}
         .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
         
-        /* Ajuste Responsive para Sede Selector */
         .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; flex-wrap: wrap; }
         .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
@@ -215,7 +216,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         
         .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
         
-        /* Ajuste Grid para móviles */
         .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
         @media (max-width: 600px) {
             .grid { grid-template-columns: 1fr; }
@@ -229,7 +229,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:20px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
         
-        /* Tablas Responsive */
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table{width:100%; border-collapse:collapse; margin-top:20px; min-width: 600px;}
         th,td{padding:10px; border-bottom:1px solid #f0f0f0; text-align:left;}
@@ -273,7 +272,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                 $ya = in_array($c['CodCat'], $contados);
             ?>
             <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $ya?'disabled':'' ?>>
-                <?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $ya?' (CONTEO REALIZADO)':'' ?>
+                <?= $c['CodCat'].' - '.$c['Nombre'] ?> <?= $c['nombre_familia'] ? " (Fam: ".$c['nombre_familia'].")" : "" ?><?= $ya?' (CONTEO REALIZADO)':'' ?>
             </option>
             <?php endforeach; ?>
         </select>
