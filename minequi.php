@@ -5,16 +5,7 @@ ini_set('display_errors', 1);
 // Iniciar sesión si no se ha iniciado antes
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-    
-}
-require 'auth_check.php';
-// Si no hay sesión, redirigimos al Login rompiendo cualquier iframe
-if (empty($_SESSION['Usuario'])) {
-    echo "<script>
-            alert('Sesión no autorizada.');
-            window.location.href = 'about:blank';
-          </script>";
-    exit;
+    require 'auth_check.php';
 }
 
 // Establecer la zona horaria de Bogotá para PHP
@@ -517,7 +508,7 @@ if ($resultado && $resultado->num_rows > 0) {
         });
     });
 
-    let tiempoRestante = 300; 
+    let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
     const cuentaRegresiva = setInterval(function() {
