@@ -359,7 +359,7 @@ body {
                         <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
-                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados Coord </a>                    
+                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados  </a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
                         <a class="nav-link" href="pedidofact_X.php" target="contentFrame">🧮 Ver Pedido </a>  
