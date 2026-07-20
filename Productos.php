@@ -39,7 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $term = $_GET['term'] ?? '';
 $like = "%$term%";
 
-// Consulta incluyendo precioventa
 $sql = "SELECT p.barcode, p.descripcion, p.estado, p.precioventa, IFNULL(SUM(i.cantidad),0) cantidad 
         FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
@@ -72,21 +71,17 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th { background: #1a2a6c; color: white; padding: 12px; font-size: 13px; }
         td { border-bottom: 1px solid #eee; padding: 8px; text-align: center; }
-        
         .row-drinks { background: #fffcf5; }
         .row-central { background: #f5f9ff; }
         .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; }
-        
         .stock-input { width: 70px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; }
         .btn-save { background: #28a745; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
-        
         .switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 18px; }
         .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: #2196F3; }
         input:checked + .slider:before { transform: translateX(16px); }
-        
         .badge-sede { font-size: 10px; padding: 3px 6px; border-radius: 4px; color: white; font-weight: bold; text-transform: uppercase; }
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
@@ -118,11 +113,10 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
             ?>
             <tr class="product-header">
                 <td colspan="5" style="text-align:left;">
-                    <span style="color:#666; font-size: 12px;">[<?= $b ?>]</span>
-                    <input type="text" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
+                    <span style="color:#666; font-size: 12px; margin-right: 10px;">[<?= $b ?>]</span>
+                    <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
             </tr>
-
             <tr class="row-drinks">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-drinks">Drinks</span></td>
                 <td>
@@ -135,7 +129,6 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 <td><input type="number" step="any" class="stock-input" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>"></td>
                 <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Drinks')">💾</button></td>
             </tr>
-
             <tr class="row-central">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-central">Central</span></td>
                 <td>
@@ -156,16 +149,21 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
 <script>
 function filtrar() {
     const term = document.getElementById('filtro').value.toLowerCase();
-    document.querySelectorAll('.product-header').forEach(header => {
-        const text = header.textContent.toLowerCase();
-        const row1 = header.nextElementSibling;
-        const row2 = row1 ? row1.nextElementSibling : null;
-        const visible = text.includes(term);
+    const headers = document.querySelectorAll('.product-header');
+
+    headers.forEach(header => {
+        const codigo = header.querySelector('span').textContent.toLowerCase();
+        const inputNombre = header.querySelector('.nombre-producto');
+        const nombre = inputNombre ? inputNombre.value.toLowerCase() : "";
+        
+        const visible = codigo.includes(term) || nombre.includes(term);
+        
         header.style.display = visible ? '' : 'none';
-        if(row1) row1.style.display = visible ? '' : 'none';
-        if(row2) row2.style.display = visible ? '' : 'none';
+        if (header.nextElementSibling) header.nextElementSibling.style.display = visible ? '' : 'none';
+        if (header.nextElementSibling?.nextElementSibling) header.nextElementSibling.nextElementSibling.style.display = visible ? '' : 'none';
     });
 }
+
 function updateName(b, v) { fetch('', {method:'POST', body:new URLSearchParams({action:'update_name', barcode:b, nombre:v})}); }
 function saveStock(b, s) { 
     let v = document.getElementById(`input-${s.toLowerCase()}-${b}`).value;
