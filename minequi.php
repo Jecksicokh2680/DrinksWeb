@@ -4,16 +4,6 @@ ini_set('display_errors', 1);
 
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 
-if (!$UsuarioSesion) {
-    echo '<script>
-        window.close();
-        // Por si el navegador bloquea el cierre de ventanas que no fueron abiertas por un script:
-        setTimeout(function() {
-            document.body.innerHTML = "<h2 style=\'text-align:center; font-family:sans-serif; margin-top:20vh;\'>Sesión no iniciada. Puedes cerrar esta pestaña.</h2>";
-        }, 100);
-    </script>';
-    exit;
-}
 
 // Iniciar sesión si no se ha iniciado antes
 if (session_status() === PHP_SESSION_NONE) {

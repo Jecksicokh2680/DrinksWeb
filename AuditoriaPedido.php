@@ -8,17 +8,6 @@ mysqli_report(MYSQLI_REPORT_OFF);
 
 $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 
-if (!$UsuarioSesion) {
-    echo '<script>
-        window.close();
-        // Por si el navegador bloquea el cierre de ventanas que no fueron abiertas por un script:
-        setTimeout(function() {
-            document.body.innerHTML = "<h2 style=\'text-align:center; font-family:sans-serif; margin-top:20vh;\'>Sesión no iniciada. Puedes cerrar esta pestaña.</h2>";
-        }, 100);
-    </script>';
-    exit;
-}
-
 function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) {
     if (!$cnx || $cnx->connect_error) return [];
     $extraCond = ($busqProd != "") ? " AND (PRODUCTOS.Descripcion LIKE '%".$cnx->real_escape_string($busqProd)."%' OR PRODUCTOS.Barcode LIKE '%".$cnx->real_escape_string($busqProd)."%') " : "";
