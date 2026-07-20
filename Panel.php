@@ -356,13 +356,13 @@ body {
                     </h6>            
                     <div class="menu-seccion ps-2 mb-3">
                         <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
-                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Grabar Solicitud Anulación</a>
+                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">🧮 Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">🧮 Listado Facturas del Día</a>
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">📄 Calculadora</a>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🧮 Grabar Traslados  </a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🧮 Busca Precio Venta Cero</a>                    
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">🧮 Cierre Diario Cajero </a>  
-                        <a class="nav-link" href="pedidofact_X.php" target="contentFrame">🧮 Ver Pedido </a>  
+                        <!-- <a class="nav-link" href="pedidofact_X.php" target="contentFrame">🧮 Ver Pedido </a>  -->
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🧮 Ver Transferencias Bre-B desde el Banco
@@ -390,7 +390,7 @@ body {
                         </a>
                         
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>     
-                        <a class="nav-link" href="recibir_mercancia.php" target="contentFrame">🧮 Recibir Mercancia</a>
+                        <!-- <a class="nav-link" href="recibir_mercancia.php" target="contentFrame">🧮 Recibir Mercancia</a> -->
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">🧮 Chat Interno </a>
                     </div>
                 </div>
