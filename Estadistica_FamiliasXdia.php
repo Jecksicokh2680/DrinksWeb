@@ -195,7 +195,7 @@ function obtenerMovimientoMesDiaADia($db, $anio, $mes, $listaSkus) {
     while($rp && $row = $rp->fetch_assoc()) {
         $fRaw = $row['fecha_corta'];
         $fechaKey = substr($fRaw, 0, 4) . '-' . substr($fRaw, 4, 2) . '-' . substr($fRaw, 6, 2);
-        if(isset($diasMes[$fechaKey])) {
+        if(isset($diasSemana[$fechaKey]) || isset($diasMes[$fechaKey])) {
             $diasMes[$fechaKey]['cant'] += (float)$row['cant'];
             $diasMes[$fechaKey]['pesos'] += (float)($row['subtotal'] ?? 0);
             $diasMes[$fechaKey]['costo'] += (float)($row['totalcosto'] ?? 0);
@@ -207,6 +207,20 @@ function obtenerMovimientoMesDiaADia($db, $anio, $mes, $listaSkus) {
 function nombreMes($n) {
     $m = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
     return $m[$n];
+}
+
+function nombreDiaCorto($fechaStr) {
+    $diasMap = [
+        'Mon' => 'Lun',
+        'Tue' => 'Mar',
+        'Wed' => 'Mié',
+        'Thu' => 'Jue',
+        'Fri' => 'Vie',
+        'Sat' => 'Sáb',
+        'Sun' => 'Dom'
+    ];
+    $ingles = date('D', strtotime($fechaStr));
+    return $diasMap[$ingles] ?? $ingles;
 }
 
 // AJAX: Matriz con Días en columnas (horizontal) y Categorías de la familia hacia abajo (en CANTIDAD)
@@ -282,13 +296,16 @@ if(isset($_GET['ajax_familia_diario'])) {
     $htmlOutput = '<h3 style="color:#006064; margin:0 0 8px 0; font-size: 15px; word-break: break-word; flex-shrink: 0;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
     $htmlOutput .= '<div class="table-responsive-wrapper"><table class="modal-table">';
     
-    // Encabezado horizontal con los días del mes ordenados de mayor a menor (de $diaLimiteMax hasta 1)
+    // Encabezado horizontal con los días del mes ordenados de mayor a menor y el nombre del día abajo
     $htmlOutput .= '<thead><tr>';
-    $htmlOutput .= '<th class="sticky-col-header">Categoría</th>';
+    $htmlOutput .= '<th class="sticky-col-header" style="vertical-align: middle;">Categoría</th>';
     for($i = $diaLimiteMax; $i >= 1; $i--) {
-        $htmlOutput .= '<th class="day-col-header">' . $i . '</th>';
+        $d = str_pad($i, 2, "0", STR_PAD_LEFT);
+        $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
+        $nombreDia = nombreDiaCorto($fechaDia);
+        $htmlOutput .= '<th class="day-col-header">' . $i . '<br><span style="font-size:9px; color:#555; font-weight:normal;">' . $nombreDia . '</span></th>';
     }
-    $htmlOutput .= '<th class="total-col-header">TOTAL</th>';
+    $htmlOutput .= '<th class="total-col-header" style="vertical-align: middle;">TOTAL</th>';
     $htmlOutput .= '</tr></thead><tbody>';
 
     if(empty($matrizCategorias) || $diaLimiteMax <= 0) {
@@ -372,7 +389,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
         /* Celdas fijas responsivas para la columna de categorías */
         .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
         .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
-        .day-col-header { text-align: center; min-width: 35px; font-size: 11px; }
+        .day-col-header { text-align: center; min-width: 38px; font-size: 11px; }
         .total-col-header { text-align: center; background: #eef2f3; min-width: 70px; font-size: 11px; }
 
         @media(max-width: 768px) {
