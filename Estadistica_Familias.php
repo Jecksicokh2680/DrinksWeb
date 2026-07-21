@@ -72,9 +72,9 @@ function obtenerMovimientoValorizado($db, $anio, $listaSkus) {
     $inClause = implode(",", $listaSkus);
 
     $sqlFac = "SELECT SUBSTRING(F.FECHA, 5, 2) as mes, 
-                      SUM(D.CANTIDAD) as cant, 
-                      SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                      SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                    SUM(D.CANTIDAD) as cant, 
+                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM FACTURAS F
                INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -89,9 +89,9 @@ function obtenerMovimientoValorizado($db, $anio, $listaSkus) {
     }
 
     $sqlPed = "SELECT SUBSTRING(P.FECHA, 5, 2) as mes, 
-                      SUM(D.CANTIDAD) as cant, 
-                      SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                      SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                    SUM(D.CANTIDAD) as cant, 
+                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM PEDIDOS P
                INNER JOIN DETPEDIDOS D ON D.IDPEDIDO = P.IDPEDIDO
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -184,8 +184,9 @@ if(isset($_GET['ajax_familia'])) {
         }
     }
 
+    // MODIFICADO: Ordenar por Utilidad del Mes en valor ($mesUtil) de mayor a menor
     usort($listaCatsData, function($a, $b) {
-        return $b['totPesos'] <=> $a['totPesos'];
+        return $b['mesUtil'] <=> $a['mesUtil'];
     });
     
     echo '<h3 style="color:#006064; margin-top:0;">Categorías de: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
@@ -351,9 +352,9 @@ if(isset($_GET['ajax_familia'])) {
         }
     }
 
-    // Ordenar por ventas del año de mayor a menor
+    // MODIFICADO: Ordenar por Utilidad del Mes en valor ($mesUtil) de mayor a menor
     usort($detalleFamilias, function($a, $b) {
-        return $b['totPesos'] <=> $a['totPesos'];
+        return $b['mesUtil'] <=> $a['mesUtil'];
     });
 
     $labelsFam = array_column($detalleFamilias, 'nombre');
