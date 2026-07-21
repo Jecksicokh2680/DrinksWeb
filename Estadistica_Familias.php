@@ -9,7 +9,10 @@ require("Conexion.php");
 
 $anioActual = date('Y');
 $mesActualNum = date('m');
+$hoy = date('Y-m-d');
+
 $sedeFiltro = $_GET['idsede'] ?? 'todos'; 
+$fechaFiltro = $_GET['fecha'] ?? $hoy; 
 
 /* =====================================================
     1. FUNCIONES DE EXTRACCIÓN
@@ -106,19 +109,56 @@ function obtenerMovimientoValorizado($db, $anio, $listaSkus) {
     return $meses;
 }
 
+function obtenerMovimientoDia($db, $fechaSql, $listaSkus) {
+    $res = ['cant' => 0, 'pesos' => 0, 'costo' => 0];
+    if(empty($listaSkus)) return $res;
+    $inClause = implode(",", $listaSkus);
+    $fechaLimpia = str_replace('-', '', $fechaSql);
+
+    $sqlFac = "SELECT SUM(D.CANTIDAD) as cant, 
+                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+               FROM FACTURAS F
+               INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
+               INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
+               LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA
+               WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA LIKE '$fechaLimpia%' AND PR.barcode IN ($inClause)";
+    $rf = $db->query($sqlFac);
+    if($rf && $row = $rf->fetch_assoc()) {
+        $res['cant'] += (float)($row['cant'] ?? 0);
+        $res['pesos'] += (float)($row['subtotal'] ?? 0);
+        $res['costo'] += (float)($row['totalcosto'] ?? 0);
+    }
+
+    $sqlPed = "SELECT SUM(D.CANTIDAD) as cant, 
+                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+               FROM PEDIDOS P
+               INNER JOIN DETPEDIDOS D ON D.IDPEDIDO = P.IDPEDIDO
+               INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
+               WHERE P.ESTADO='0' AND P.FECHA LIKE '$fechaLimpia%' AND PR.barcode IN ($inClause)";
+    $rp = $db->query($sqlPed);
+    if($rp && $row = $rp->fetch_assoc()) {
+        $res['cant'] += (float)($row['cant'] ?? 0);
+        $res['pesos'] += (float)($row['subtotal'] ?? 0);
+        $res['costo'] += (float)($row['totalcosto'] ?? 0);
+    }
+    return $res;
+}
+
 function nombreMes($n) {
     $m = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
     return $m[$n];
 }
 
-// AJAX: Si se solicita el detalle de categorías para una familia
+// AJAX: Detalle de categorías para una familia
 if(isset($_GET['ajax_familia'])) {
     $idFamAjax = $_GET['ajax_familia'];
     $nombreFamAjax = $_GET['nombre_fam'] ?? '';
     $cats = obtenerCategoriasPorFamilia($mysqli, $idFamAjax);
     
-    $totPesosMesFam = 0; $totPesosAnioFam = 0;
     $listaCatsData = [];
+    $totalPesosMesFam = 0;
 
     foreach($cats as $codCat => $nombreCat) {
         $skusCat = obtenerSkusPorCategoria($mysqli, $codCat);
@@ -126,100 +166,88 @@ if(isset($_GET['ajax_familia'])) {
 
         $vC_Cat = obtenerMovimientoValorizado($mysqliCentral, $anioActual, $skusCat);
         $vD_Cat = obtenerMovimientoValorizado($mysqliPos, $anioActual, $skusCat);
+        
+        $diaC_Cat = obtenerMovimientoDia($mysqliCentral, $fechaFiltro, $skusCat);
+        $diaD_Cat = obtenerMovimientoDia($mysqliPos, $fechaFiltro, $skusCat);
 
         if ($sedeFiltro == 'central') {
-            $pMes = $vC_Cat[$mesActualNum]['pesos'];
-            $cMes = $vC_Cat[$mesActualNum]['cant'];
-            $costoMes = $vC_Cat[$mesActualNum]['costo'];
-            
-            $totPesos = 0; $totCant = 0; $totCosto = 0;
-            foreach($vC_Cat as $m => $val) {
-                $totPesos += $val['pesos'];
-                $totCant += $val['cant'];
-                $totCosto += $val['costo'];
-            }
+            $pDia = $diaC_Cat['pesos']; $cDia = $diaC_Cat['cant']; $costoDia = $diaC_Cat['costo'];
+            $pMes = $vC_Cat[$mesActualNum]['pesos']; $cMes = $vC_Cat[$mesActualNum]['cant']; $costoMes = $vC_Cat[$mesActualNum]['costo'];
+            $totPesos = 0; $totCosto = 0; $totCant = 0;
+            foreach($vC_Cat as $m => $val) { $totPesos += $val['pesos']; $totCant += $val['cant']; $totCosto += $val['costo']; }
         } elseif ($sedeFiltro == 'drinks') {
-            $pMes = $vD_Cat[$mesActualNum]['pesos'];
-            $cMes = $vD_Cat[$mesActualNum]['cant'];
-            $costoMes = $vD_Cat[$mesActualNum]['costo'];
-            
-            $totPesos = 0; $totCant = 0; $totCosto = 0;
-            foreach($vD_Cat as $m => $val) {
-                $totPesos += $val['pesos'];
-                $totCant += $val['cant'];
-                $totCosto += $val['costo'];
-            }
+            $pDia = $diaD_Cat['pesos']; $cDia = $diaD_Cat['cant']; $costoDia = $diaD_Cat['costo'];
+            $pMes = $vD_Cat[$mesActualNum]['pesos']; $cMes = $vD_Cat[$mesActualNum]['cant']; $costoMes = $vD_Cat[$mesActualNum]['costo'];
+            $totPesos = 0; $totCosto = 0; $totCant = 0;
+            foreach($vD_Cat as $m => $val) { $totPesos += $val['pesos']; $totCant += $val['cant']; $totCosto += $val['costo']; }
         } else {
+            $pDia = $diaC_Cat['pesos'] + $diaD_Cat['pesos'];
+            $cDia = $diaC_Cat['cant'] + $diaD_Cat['cant'];
+            $costoDia = $diaC_Cat['costo'] + $diaD_Cat['costo'];
             $pMes = $vC_Cat[$mesActualNum]['pesos'] + $vD_Cat[$mesActualNum]['pesos'];
             $cMes = $vC_Cat[$mesActualNum]['cant'] + $vD_Cat[$mesActualNum]['cant'];
             $costoMes = $vC_Cat[$mesActualNum]['costo'] + $vD_Cat[$mesActualNum]['costo'];
-            
-            $totPesos = 0; $totCant = 0; $totCosto = 0;
-            foreach($vC_Cat as $m => $val) {
-                $totPesos += $val['pesos'] + $vD_Cat[$m]['pesos'];
-                $totCant += $val['cant'] + $vD_Cat[$m]['cant'];
-                $totCosto += $val['costo'] + $vD_Cat[$m]['costo'];
+            $totPesos = 0; $totCosto = 0; $totCant = 0;
+            foreach($vC_Cat as $m => $val) { 
+                $totPesos += $val['pesos'] + $vD_Cat[$m]['pesos']; 
+                $totCant += $val['cant'] + $vD_Cat[$m]['cant']; 
+                $totCosto += $val['costo'] + $vD_Cat[$m]['costo']; 
             }
         }
 
+        $utilDia = $pDia - $costoDia;
+        $porcUtilDia = ($pDia > 0) ? ($utilDia / $pDia) * 100 : 0;
         $utilMes = $pMes - $costoMes;
         $porcUtilMes = ($pMes > 0) ? ($utilMes / $pMes) * 100 : 0;
         $totUtil = $totPesos - $totCosto;
         $porcUtilAnio = ($totPesos > 0) ? ($totUtil / $totPesos) * 100 : 0;
 
-        if($totPesos > 0 || $totCant > 0) {
+        if($totPesos > 0 || $totCant > 0 || $pDia > 0) {
             $listaCatsData[] = [
                 'nombre' => strtoupper($nombreCat),
-                'mesCant' => $cMes,
-                'mesPesos' => $pMes,
-                'mesUtil' => $utilMes,
-                'mesPorcUtil' => $porcUtilMes,
-                'totCant' => $totCant,
-                'totPesos' => $totPesos,
-                'totUtil' => $totUtil,
-                'totPorcUtil' => $porcUtilAnio
+                'diaCant' => $cDia, 'diaPesos' => $pDia, 'diaUtil' => $utilDia, 'diaPorcUtil' => $porcUtilDia,
+                'mesCant' => $cMes, 'mesPesos' => $pMes, 'mesUtil' => $utilMes, 'mesPorcUtil' => $porcUtilMes,
+                'totCant' => $totCant, 'totPesos' => $totPesos, 'totUtil' => $totUtil, 'totPorcUtil' => $porcUtilAnio
             ];
-            $totPesosMesFam += $pMes;
-            $totPesosAnioFam += $totPesos;
+            $totalPesosMesFam += $pMes;
         }
     }
 
-    // MODIFICADO: Ordenar por Utilidad del Mes en valor ($mesUtil) de mayor a menor
     usort($listaCatsData, function($a, $b) {
-        return $b['mesUtil'] <=> $a['mesUtil'];
+        return $b['diaUtil'] <=> $a['diaUtil'];
     });
     
-    echo '<h3 style="color:#006064; margin-top:0;">Categorías de: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
+    echo '<h3 style="color:#006064; margin-top:0;">Categorías de: <b>'.htmlspecialchars($nombreFamAjax).'</b> (Día: '.$fechaFiltro.')</h3>';
     if(empty($listaCatsData)) {
-        echo '<p style="text-align:center; color:#666;">No hay registros para esta familia en la sede seleccionada.</p>';
+        echo '<p style="text-align:center; color:#666;">No hay registros para esta familia en la fecha seleccionada.</p>';
         exit;
     }
     echo '<div style="overflow-x:auto;"><table>';
     echo '<thead><tr>
             <th style="text-align:left">Categoría</th>
+            <th>Unid. Día</th>
+            <th>Ventas Día</th>
+            <th>Util. Día</th>
+            <th>% Util. Día</th>
             <th>Unid. Mes</th>
             <th>Ventas Mes</th>
             <th>Util. Mes</th>
             <th>% Util. Mes</th>
-            <th>Part. Familia</th>
-            <th>Unid. Año</th>
-            <th>Ventas Año</th>
-            <th>Util. Año</th>
-            <th>% Util. Año</th>
+            <th>Part. Mes</th>
           </tr></thead><tbody>';
     foreach($listaCatsData as $cat) {
-        $partFam = ($totPesosAnioFam > 0) ? ($cat['totPesos'] / $totPesosAnioFam) * 100 : 0;
+        $partMesFam = ($totalPesosMesFam > 0) ? ($cat['mesPesos'] / $totalPesosMesFam) * 100 : 0;
         echo '<tr>';
         echo '<td style="text-align:left; color:#006064;">'.$cat['nombre'].'</td>';
+        echo '<td>'.number_format($cat['diaCant'], 0).'</td>';
+        echo '<td>$'.number_format($cat['diaPesos'], 0).'</td>';
+        echo '<td><span class="badge-util" style="background:#fff3e0; color:#e65100;">$'.number_format($cat['diaUtil'], 0).'</span></td>';
+        echo '<td><span class="badge-porc">'.number_format($cat['diaPorcUtil'], 1).'%</span></td>';
         echo '<td>'.number_format($cat['mesCant'], 0).'</td>';
         echo '<td>$'.number_format($cat['mesPesos'], 0).'</td>';
         echo '<td><span class="badge-util">$'.number_format($cat['mesUtil'], 0).'</span></td>';
         echo '<td><span class="badge-porc">'.number_format($cat['mesPorcUtil'], 1).'%</span></td>';
-        echo '<td><span class="badge-part">'.number_format($partFam, 1).'%</span></td>';
-        echo '<td>'.number_format($cat['totCant'], 0).'</td>';
-        echo '<td>$'.number_format($cat['totPesos'], 0).'</td>';
-        echo '<td><span class="badge-util" style="background:#e8f5e9; color:#2e7d32;">$'.number_format($cat['totUtil'], 0).'</span></td>';
-        echo '<td><span class="badge-porc">'.number_format($cat['totPorcUtil'], 1).'%</span></td>';
+        echo '<td><span class="badge-part">'.number_format($partMesFam, 1).'%</span></td>';
         echo '</tr>';
     }
     echo '</tbody></table></div>';
@@ -232,14 +260,14 @@ if(isset($_GET['ajax_familia'])) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Informe de Utilidad por Familia</title>
+    <title>Informe de Utilidad por Familia - Detalle Diario</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:15px;}
         .container{max-width:1600px; margin:auto;}
         .header-filter{background:#fff; padding:20px; border-radius:15px; box-shadow:0 4px 10px rgba(0,0,0,0.05); margin-bottom:20px; display:flex; align-items:center; justify-content: space-between; flex-wrap: wrap; gap: 15px;}
         .card{background:#fff; padding:20px; border-radius:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05); border-top: 6px solid #00838f; margin-bottom: 25px; overflow-x: auto;}
-        select{padding:12px; border-radius:10px; border:1px solid #ddd; width:100%; max-width:300px; font-size:15px; font-weight: bold; color: #006064;}
+        select, input[type="date"]{padding:10px 12px; border-radius:10px; border:1px solid #ddd; font-size:15px; font-weight: bold; color: #006064;}
         table{width:100%; border-collapse:collapse; min-width: 900px;}
         th{background:#f8f9fa; padding:12px; text-align:right; font-size:11px; color:#888; border-bottom:2px solid #eee; text-transform: uppercase;}
         td{padding:12px; border-bottom:1px solid #f1f1f1; text-align:right; font-weight:600; font-size: 13px;}
@@ -258,7 +286,7 @@ if(isset($_GET['ajax_familia'])) {
         @media(max-width: 768px) {
             body { padding: 10px; }
             .header-filter { padding: 15px; flex-direction: column; align-items: stretch; }
-            select { max-width: 100%; }
+            select, input[type="date"] { width: 100%; }
             .card { padding: 15px; }
         }
     </style>
@@ -269,9 +297,10 @@ if(isset($_GET['ajax_familia'])) {
     <div class="header-filter">
         <div>
             <h2 style="margin:0; color:#006064; font-size: 22px;">🏷️ Dashboard de Utilidad y Ventas por Familia</h2>
-            <small>Consolidado por Sede (Haz clic en una familia para ver sus categorías)</small>
+            <small>Análisis diario y consolidado por Sede (Haz clic en una familia para ver sus categorías)</small>
         </div>
-        <form method="GET">
+        <form method="GET" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <input type="date" name="fecha" value="<?= htmlspecialchars($fechaFiltro) ?>" onchange="this.form.submit()">
             <select name="idsede" onchange="this.form.submit()">
                 <option value="todos" <?= $sedeFiltro == 'todos' ? 'selected' : '' ?>>🌎 Todas las Sedes</option>
                 <option value="central" <?= $sedeFiltro == 'central' ? 'selected' : '' ?>>🏢 Sede Central</option>
@@ -284,7 +313,6 @@ if(isset($_GET['ajax_familia'])) {
     $familias = obtenerFamilias($mysqli);
     $detalleFamilias = [];
     $totalGeneralPesosMes = 0;
-    $totalGeneralPesosAnio = 0;
 
     foreach($familias as $idFamilia => $nombreFam) {
         $skusFam = obtenerSkusPorFamilia($mysqli, $idFamilia);
@@ -293,98 +321,79 @@ if(isset($_GET['ajax_familia'])) {
         $vC_Fam = obtenerMovimientoValorizado($mysqliCentral, $anioActual, $skusFam);
         $vD_Fam = obtenerMovimientoValorizado($mysqliPos, $anioActual, $skusFam);
         
+        $diaC_Fam = obtenerMovimientoDia($mysqliCentral, $fechaFiltro, $skusFam);
+        $diaD_Fam = obtenerMovimientoDia($mysqliPos, $fechaFiltro, $skusFam);
+        
         if ($sedeFiltro == 'central') {
-            $pMesFam = $vC_Fam[$mesActualNum]['pesos'];
-            $cMesFam = $vC_Fam[$mesActualNum]['cant'];
-            $costoMesFam = $vC_Fam[$mesActualNum]['costo'];
-            
+            $pDiaFam = $diaC_Fam['pesos']; $cDiaFam = $diaC_Fam['cant']; $costoDiaFam = $diaC_Fam['costo'];
+            $pMesFam = $vC_Fam[$mesActualNum]['pesos']; $cMesFam = $vC_Fam[$mesActualNum]['cant']; $costoMesFam = $vC_Fam[$mesActualNum]['costo'];
             $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vC_Fam as $m => $val) {
-                $totPesosFam += $val['pesos'];
-                $totCantFam += $val['cant'];
-                $totCostoFam += $val['costo'];
-            }
+            foreach($vC_Fam as $m => $val) { $totPesosFam += $val['pesos']; $totCantFam += $val['cant']; $totCostoFam += $val['costo']; }
         } elseif ($sedeFiltro == 'drinks') {
-            $pMesFam = $vD_Fam[$mesActualNum]['pesos'];
-            $cMesFam = $vD_Fam[$mesActualNum]['cant'];
-            $costoMesFam = $vD_Fam[$mesActualNum]['costo'];
-            
+            $pDiaFam = $diaD_Fam['pesos']; $cDiaFam = $diaD_Fam['cant']; $costoDiaFam = $diaD_Fam['costo'];
+            $pMesFam = $vD_Fam[$mesActualNum]['pesos']; $cMesFam = $vD_Fam[$mesActualNum]['cant']; $costoMesFam = $vD_Fam[$mesActualNum]['costo'];
             $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vD_Fam as $m => $val) {
-                $totPesosFam += $val['pesos'];
-                $totCantFam += $val['cant'];
-                $totCostoFam += $val['costo'];
-            }
+            foreach($vD_Fam as $m => $val) { $totPesosFam += $val['pesos']; $totCantFam += $val['cant']; $totCostoFam += $val['costo']; }
         } else {
+            $pDiaFam = $diaC_Fam['pesos'] + $diaD_Fam['pesos'];
+            $cDiaFam = $diaC_Fam['cant'] + $diaD_Fam['cant'];
+            $costoDiaFam = $diaC_Fam['costo'] + $diaD_Fam['costo'];
             $pMesFam = $vC_Fam[$mesActualNum]['pesos'] + $vD_Fam[$mesActualNum]['pesos'];
             $cMesFam = $vC_Fam[$mesActualNum]['cant'] + $vD_Fam[$mesActualNum]['cant'];
             $costoMesFam = $vC_Fam[$mesActualNum]['costo'] + $vD_Fam[$mesActualNum]['costo'];
-            
             $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vC_Fam as $m => $val) {
-                $totPesosFam += $val['pesos'] + $vD_Fam[$m]['pesos'];
-                $totCantFam += $val['cant'] + $vD_Fam[$m]['cant'];
-                $totCostoFam += $val['costo'] + $vD_Fam[$m]['costo'];
+            foreach($vC_Fam as $m => $val) { 
+                $totPesosFam += $val['pesos'] + $vD_Fam[$m]['pesos']; 
+                $totCantFam += $val['cant'] + $vD_Fam[$m]['cant']; 
+                $totCostoFam += $val['costo'] + $vD_Fam[$m]['costo']; 
             }
         }
 
+        $utilDiaFam = $pDiaFam - $costoDiaFam;
+        $porcUtilDia = ($pDiaFam > 0) ? ($utilDiaFam / $pDiaFam) * 100 : 0;
         $utilMesFam = $pMesFam - $costoMesFam;
         $porcUtilMes = ($pMesFam > 0) ? ($utilMesFam / $pMesFam) * 100 : 0;
-
         $totUtilFam = $totPesosFam - $totCostoFam;
         $porcUtilAnio = ($totPesosFam > 0) ? ($totUtilFam / $totPesosFam) * 100 : 0;
 
-        if($totPesosFam > 0 || $totCantFam > 0) {
+        if($totPesosFam > 0 || $totCantFam > 0 || $pDiaFam > 0) {
             $detalleFamilias[] = [
                 'id' => $idFamilia,
                 'nombre' => strtoupper($nombreFam),
-                'totPesos' => $totPesosFam,
-                'totCant' => $totCantFam,
-                'mesPesos' => $pMesFam,
-                'mesCant' => $cMesFam,
-                'mesUtil' => $utilMesFam,
-                'mesPorcUtil' => $porcUtilMes,
-                'totUtil' => $totUtilFam,
-                'totPorcUtil' => $porcUtilAnio
+                'diaCant' => $cDiaFam, 'diaPesos' => $pDiaFam, 'diaUtil' => $utilDiaFam, 'diaPorcUtil' => $porcUtilDia,
+                'mesCant' => $cMesFam, 'mesPesos' => $pMesFam, 'mesUtil' => $utilMesFam, 'mesPorcUtil' => $porcUtilMes,
+                'totCant' => $totCantFam, 'totPesos' => $totPesosFam, 'totUtil' => $totUtilFam, 'totPorcUtil' => $porcUtilAnio
             ];
             $totalGeneralPesosMes += $pMesFam;
-            $totalGeneralPesosAnio += $totPesosFam;
         }
     }
 
-    // MODIFICADO: Ordenar por Utilidad del Mes en valor ($mesUtil) de mayor a menor
     usort($detalleFamilias, function($a, $b) {
-        return $b['mesUtil'] <=> $a['mesUtil'];
+        return $b['diaUtil'] <=> $a['diaUtil'];
     });
-
-    $labelsFam = array_column($detalleFamilias, 'nombre');
-    $pesosFamAnual = array_column($detalleFamilias, 'totPesos');
-    $utilFamAnual = array_column($detalleFamilias, 'totUtil');
     ?>
 
     <?php if(!empty($detalleFamilias)): ?>
     <div class="card">
-        <h2 style="color:#006064; margin-top:0; font-size: 18px;">📊 Ventas y Utilidad por Familia - <?= nombreMes($mesActualNum) ?> / Anual</h2>
+        <h2 style="color:#006064; margin-top:0; font-size: 18px;">📊 Ventas y Utilidad por Familia - Detalle Día (<?= $fechaFiltro ?>)</h2>
         <table>
             <thead>
                 <tr>
                     <th style="text-align:left">Familia</th>
-                    <th>Unidades (Mes)</th>
-                    <th>Ventas ($ Mes)</th>
-                    <th>Utilidad ($ Mes)</th>
+                    <th>Unid. Día</th>
+                    <th>Ventas Día</th>
+                    <th>Util. Día</th>
+                    <th>% Util. Día</th>
+                    <th>Unid. Mes</th>
+                    <th>Ventas Mes</th>
+                    <th>Util. Mes</th>
                     <th>% Util. Mes</th>
                     <th>Part. Mes</th>
-                    <th>Unidades Totales (Año)</th>
-                    <th>Ventas Totales ($ Año)</th>
-                    <th>Utilidad Total ($ Año)</th>
-                    <th>% Util. Año</th>
-                    <th>Part. Anual</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach($detalleFamilias as $fam): 
                     $partMes = ($totalGeneralPesosMes > 0) ? ($fam['mesPesos'] / $totalGeneralPesosMes) * 100 : 0;
-                    $partAnio = ($totalGeneralPesosAnio > 0) ? ($fam['totPesos'] / $totalGeneralPesosAnio) * 100 : 0;
                 ?>
                 <tr>
                     <td style="text-align:left;">
@@ -392,27 +401,19 @@ if(isset($_GET['ajax_familia'])) {
                             <?= $fam['nombre'] ?> 🔍
                         </span>
                     </td>
+                    <td><?= number_format($fam['diaCant'], 0) ?></td>
+                    <td>$<?= number_format($fam['diaPesos'], 0) ?></td>
+                    <td><span class="badge-util" style="background:#fff3e0; color:#e65100;">$<?= number_format($fam['diaUtil'], 0) ?></span></td>
+                    <td><span class="badge-porc"><?= number_format($fam['diaPorcUtil'], 1) ?>%</span></td>
                     <td><?= number_format($fam['mesCant'], 0) ?></td>
                     <td>$<?= number_format($fam['mesPesos'], 0) ?></td>
                     <td><span class="badge-util">$<?= number_format($fam['mesUtil'], 0) ?></span></td>
                     <td><span class="badge-porc"><?= number_format($fam['mesPorcUtil'], 1) ?>%</span></td>
                     <td><span class="badge-part"><?= number_format($partMes, 1) ?>%</span></td>
-                    <td><?= number_format($fam['totCant'], 0) ?></td>
-                    <td>$<?= number_format($fam['totPesos'], 0) ?></td>
-                    <td><span class="badge-util" style="background:#e8f5e9; color:#2e7d32;">$<?= number_format($fam['totUtil'], 0) ?></span></td>
-                    <td><span class="badge-porc"><?= number_format($fam['totPorcUtil'], 1) ?>%</span></td>
-                    <td><span class="badge-part"><?= number_format($partAnio, 1) ?>%</span></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
-
-    <div class="card" style="border-top-color: #ff5722; background: #fffcfb;">
-        <h2 style="text-align:center; color:#d84315; margin-top:0; font-size: 18px;">📈 Gráfico Comparativo: Ventas vs Utilidad Anual por Familia</h2>
-        <div style="position: relative; height: 350px; width: 100%; margin-top: 20px;">
-            <canvas id="graficoFamilias"></canvas>
-        </div>
     </div>
 
     <!-- MODAL CATEGORÍAS -->
@@ -433,7 +434,8 @@ if(isset($_GET['ajax_familia'])) {
         content.innerHTML = '<p style="text-align:center; color:#666; padding: 20px;">Cargando categorías de ' + nombreFamilia + '...</p>';
 
         const sede = "<?= $sedeFiltro ?>";
-        fetch('?idsede=' + sede + '&ajax_familia=' + idFamilia + '&nombre_fam=' + encodeURIComponent(nombreFamilia))
+        const fecha = "<?= $fechaFiltro ?>";
+        fetch('?idsede=' + sede + '&fecha=' + fecha + '&ajax_familia=' + idFamilia + '&nombre_fam=' + encodeURIComponent(nombreFamilia))
             .then(response => response.text())
             .then(html => {
                 content.innerHTML = html;
@@ -446,48 +448,10 @@ if(isset($_GET['ajax_familia'])) {
     function cerrarModalFamilia() {
         document.getElementById('modalFamilia').style.display = 'none';
     }
-
-    new Chart(document.getElementById('graficoFamilias'), {
-        type: 'bar',
-        data: {
-            labels: <?= json_encode($labelsFam) ?>,
-            datasets: [
-                {
-                    label: 'Ventas Totales ($ Año)',
-                    data: <?= json_encode($pesosFamAnual) ?>,
-                    backgroundColor: '#00838fcc',
-                    borderColor: '#006064',
-                    borderWidth: 1,
-                    borderRadius: 5
-                },
-                {
-                    label: 'Utilidad Total ($ Año)',
-                    data: <?= json_encode($utilFamAnual) ?>,
-                    backgroundColor: '#2e7d32cc',
-                    borderColor: '#1b5e20',
-                    borderWidth: 1,
-                    borderRadius: 5
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { callback: v => '$' + v.toLocaleString() }
-                }
-            },
-            plugins: {
-                legend: { display: true, position: 'top' }
-            }
-        }
-    });
     </script>
     <?php else: ?>
     <div class="card">
-        <p style="text-align:center; margin:20px; font-weight:bold; color:#666;">No se encontraron registros de ventas para la sede seleccionada.</p>
+        <p style="text-align:center; margin:20px; font-weight:bold; color:#666;">No se encontraron registros de ventas para la fecha y sede seleccionadas.</p>
     </div>
     <?php endif; ?>
 
