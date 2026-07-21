@@ -282,10 +282,10 @@ if(isset($_GET['ajax_familia_diario'])) {
     $htmlOutput = '<h3 style="color:#006064; margin:0 0 8px 0; font-size: 15px; word-break: break-word; flex-shrink: 0;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
     $htmlOutput .= '<div class="table-responsive-wrapper"><table class="modal-table">';
     
-    // Encabezado horizontal con los días del mes hasta la fecha filtro
+    // Encabezado horizontal con los días del mes ordenados de mayor a menor (de $diaLimiteMax hasta 1)
     $htmlOutput .= '<thead><tr>';
     $htmlOutput .= '<th class="sticky-col-header">Categoría</th>';
-    for($i=1; $i<=$diaLimiteMax; $i++) {
+    for($i = $diaLimiteMax; $i >= 1; $i--) {
         $htmlOutput .= '<th class="day-col-header">' . $i . '</th>';
     }
     $htmlOutput .= '<th class="total-col-header">TOTAL</th>';
@@ -300,7 +300,7 @@ if(isset($_GET['ajax_familia_diario'])) {
             $htmlOutput .= '<tr>';
             $htmlOutput .= '<td class="sticky-col-cell">' . $cat['nombre'] . '</td>';
             
-            for($i=1; $i<=$diaLimiteMax; $i++) {
+            for($i = $diaLimiteMax; $i >= 1; $i--) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
                 $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
                 $valDia = $cat['dias'][$fechaDia] ?? 0;
@@ -313,10 +313,10 @@ if(isset($_GET['ajax_familia_diario'])) {
             $granTotalMes += $cat['total'];
         }
 
-        // Fila de Totales Generales diarios abajo
+        // Fila de Totales Generales diarios abajo ordenados de mayor a menor
         $htmlOutput .= '<tr class="total-row">';
         $htmlOutput .= '<td class="sticky-col-cell" style="background:#f8f9fa; font-weight:bold;">TOTALES DÍA</td>';
-        for($i=1; $i<=$diaLimiteMax; $i++) {
+        for($i = $diaLimiteMax; $i >= 1; $i--) {
             $d = str_pad($i, 2, "0", STR_PAD_LEFT);
             $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
             $valTotDia = $totalesPorDia[$fechaDia] ?? 0;
