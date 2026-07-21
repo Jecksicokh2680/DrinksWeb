@@ -195,7 +195,7 @@ function obtenerMovimientoMesDiaADia($db, $anio, $mes, $listaSkus) {
     while($rp && $row = $rp->fetch_assoc()) {
         $fRaw = $row['fecha_corta'];
         $fechaKey = substr($fRaw, 0, 4) . '-' . substr($fRaw, 4, 2) . '-' . substr($fRaw, 6, 2);
-        if(isset($diasSemana[$fechaKey]) || isset($diasMes[$fechaKey])) {
+        if(isset($diasMes[$fechaKey])) {
             $diasMes[$fechaKey]['cant'] += (float)$row['cant'];
             $diasMes[$fechaKey]['pesos'] += (float)($row['subtotal'] ?? 0);
             $diasMes[$fechaKey]['costo'] += (float)($row['totalcosto'] ?? 0);
@@ -258,6 +258,7 @@ if(isset($_GET['ajax_familia_diario'])) {
 
         $diasFila = [];
         $totalCatMes = 0;
+        $diasConVentaCount = 0;
 
         for($i=1; $i<=$diaLimiteMax; $i++) {
             $d = str_pad($i, 2, "0", STR_PAD_LEFT);
@@ -277,13 +278,20 @@ if(isset($_GET['ajax_familia_diario'])) {
             $diasFila[$fechaDia] = $c;
             $totalCatMes += $c;
             $totalesPorDia[$fechaDia] += $c;
+
+            if ($c > 0) {
+                $diasConVentaCount++;
+            }
         }
+
+        $promedioCat = ($diasConVentaCount > 0) ? ($totalCatMes / $diasConVentaCount) : 0;
 
         if($totalCatMes > 0 || $diaLimiteMax == 0) {
             $matrizCategorias[] = [
                 'nombre' => strtoupper($nomCat),
                 'dias' => $diasFila,
-                'total' => $totalCatMes
+                'total' => $totalCatMes,
+                'promedio' => $promedioCat
             ];
         }
     }
@@ -315,7 +323,7 @@ if(isset($_GET['ajax_familia_diario'])) {
         $granTotalMes = 0;
         foreach($matrizCategorias as $cat) {
             $htmlOutput .= '<tr>';
-            $htmlOutput .= '<td class="sticky-col-cell">' . $cat['nombre'] . '</td>';
+            $htmlOutput .= '<td class="sticky-col-cell">' . $cat['nombre'] . ' <span style="font-size:10px; color:#00838f; font-weight:normal;">(Prom: ' . number_format($cat['promedio'], 1) . ')</span></td>';
             
             for($i = $diaLimiteMax; $i >= 1; $i--) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
@@ -387,8 +395,8 @@ $familiasGlobal = obtenerFamilias($mysqli);
         .modal-table th, .modal-table td { padding: 5px 8px; white-space: nowrap; }
         
         /* Celdas fijas responsivas para la columna de categorías */
-        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
-        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 220px; max-width: 280px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
+        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 220px; max-width: 280px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
         .day-col-header { text-align: center; min-width: 38px; font-size: 11px; }
         .total-col-header { text-align: center; background: #eef2f3; min-width: 70px; font-size: 11px; }
 
