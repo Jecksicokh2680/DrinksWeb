@@ -383,12 +383,7 @@ body {
                     </h6>
                     <div class="menu-seccion ps-2">
                         <a class="nav-link" href="Conteo.php" target="contentFrame">🧮 Grabar Conteo Web</a>
-                        
-                         <a class="nav-link" href="AuditoriaPedido.php"
-                        onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
-                        🧮 Auditoria de Pedidos
-                        </a>
-                        
+                        <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🧮 Auditoria de Pedidos</a>
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🧮 Ver Tunel</a>     
                         <!-- <a class="nav-link" href="recibir_mercancia.php" target="contentFrame">🧮 Recibir Mercancia</a> -->
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">🧮 Chat Interno </a>
