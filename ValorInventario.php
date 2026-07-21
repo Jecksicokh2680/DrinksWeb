@@ -205,7 +205,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         .ranking-user { width: 30%; font-weight: 600; min-width: 110px; }
         .ranking-bar-bg { flex-grow: 1; background: #e5e7eb; height: 100%; min-height: 8px; max-height: 8px; border-radius: 4px; overflow: hidden; }
         .ranking-bar-fill { background: #8b5cf6; height: 8px; border-radius: 4px; }
-        .ranking-total { width: 25%; text-align: right; font-weight: bold; min-width: 90px; }
+        .ranking-total { width: 30%; text-align: right; font-weight: bold; min-width: 140px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
         @media (max-width: 768px) {
             .sections-grid { grid-template-columns: 1fr; }
@@ -222,7 +222,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             .ranking-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; }
             .ranking-user { width: 100%; }
             .ranking-bar-bg { width: 100%; height: 6px; }
-            .ranking-total { width: 100%; text-align: left; }
+            .ranking-total { width: 100%; text-align: left; justify-content: space-between; }
         }
     </style>
 </head>
@@ -331,8 +331,8 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                             <div class="ranking-bar-fill" style="width: <?= $porcentaje ?>%;"></div>
                         </div>
                         <div class="ranking-total">
+                            <span style="color: #6b7280; font-weight: 600;"><?= number_format($porcentaje, 1) ?>%</span>
                             <span><?= moneda($caj['total']) ?></span>
-                            <small style="display:block; color:#6b7280; font-size:10px; font-weight: normal;"><?= number_format($porcentaje, 1) ?>% del total</small>
                         </div>
                     </div>
                     <?php endforeach; ?>
