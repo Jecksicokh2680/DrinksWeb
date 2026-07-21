@@ -215,12 +215,22 @@ if(isset($_GET['ajax_familia_diario'])) {
     $nombreFamAjax = $_GET['nombre_fam'] ?? '';
     
     $categoriasFamilia = obtenerCategoriasPorFamilia($mysqli, $idFamAjax);
-    $totalDiasMes = cal_days_in_month(CAL_GREGORIAN, (int)$mesFiltroNum, (int)$anioFiltro);
+    
+    // Validar si el mes seleccionado es el actual o anterior para limitar los días hasta la fecha seleccionada
+    $diaLimiteMax = cal_days_in_month(CAL_GREGORIAN, (int)$mesFiltroNum, (int)$anioFiltro);
+    $mesActualFiltroStr = $anioFiltro . '-' . $mesFiltroNum;
+    $mesHoyStr = date('Y-m');
+    
+    if ($mesActualFiltroStr === $mesHoyStr) {
+        $diaLimiteMax = (int)date('d', strtotime($fechaFiltro));
+    } elseif ($mesFiltroNum > date('m') && $anioFiltro >= date('Y')) {
+        $diaLimiteMax = 0; // Si el mes es futuro respecto a hoy
+    }
 
     $matrizCategorias = [];
     $totalesPorDia = [];
 
-    for($i=1; $i<=$totalDiasMes; $i++) {
+    for($i=1; $i<=$diaLimiteMax; $i++) {
         $d = str_pad($i, 2, "0", STR_PAD_LEFT);
         $totalesPorDia["$anioFiltro-$mesFiltroNum-$d"] = 0;
     }
@@ -235,7 +245,7 @@ if(isset($_GET['ajax_familia_diario'])) {
         $diasFila = [];
         $totalCatMes = 0;
 
-        for($i=1; $i<=$totalDiasMes; $i++) {
+        for($i=1; $i<=$diaLimiteMax; $i++) {
             $d = str_pad($i, 2, "0", STR_PAD_LEFT);
             $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
 
@@ -255,7 +265,7 @@ if(isset($_GET['ajax_familia_diario'])) {
             $totalesPorDia[$fechaDia] += $c;
         }
 
-        if($totalCatMes > 0) {
+        if($totalCatMes > 0 || $diaLimiteMax == 0) {
             $matrizCategorias[] = [
                 'nombre' => strtoupper($nomCat),
                 'dias' => $diasFila,
@@ -264,31 +274,31 @@ if(isset($_GET['ajax_familia_diario'])) {
         }
     }
 
-    $htmlOutput = '<h3 style="color:#006064; margin-top:0; font-size: 18px;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
-    $htmlOutput .= '<div style="overflow-x:auto; max-height:70vh;"><table>';
+    $htmlOutput = '<h3 style="color:#006064; margin-top:0; font-size: 16px; word-break: break-word;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
+    $htmlOutput .= '<div class="table-responsive-wrapper"><table class="modal-table">';
     
-    // Encabezado horizontal con los días del mes
+    // Encabezado horizontal con los días del mes hasta la fecha filtro
     $htmlOutput .= '<thead><tr>';
-    $htmlOutput .= '<th style="text-align:left; position:sticky; left:0; background:#f8f9fa; z-index:2; min-width:200px;">Categoría</th>';
-    for($i=1; $i<=$totalDiasMes; $i++) {
-        $htmlOutput .= '<th style="text-align:center; min-width:80px;">' . $i . '</th>';
+    $htmlOutput .= '<th class="sticky-col-header">Categoría</th>';
+    for($i=1; $i<=$diaLimiteMax; $i++) {
+        $htmlOutput .= '<th class="day-col-header">' . $i . '</th>';
     }
-    $htmlOutput .= '<th style="text-align:center; background:#eef2f3; min-width:110px;">TOTAL MES</th>';
+    $htmlOutput .= '<th class="total-col-header">TOTAL</th>';
     $htmlOutput .= '</tr></thead><tbody>';
 
-    if(empty($matrizCategorias)) {
-        $colSpanTotal = $totalDiasMes + 2;
-        $htmlOutput .= '<tr><td colspan="'.$colSpanTotal.'" style="text-align:center; color:#666; padding:20px;">No hay registros para esta familia en este mes.</td></tr>';
+    if(empty($matrizCategorias) || $diaLimiteMax <= 0) {
+        $colSpanTotal = $diaLimiteMax + 2;
+        $htmlOutput .= '<tr><td colspan="'.$colSpanTotal.'" style="text-align:center; color:#666; padding:20px;">No hay registros para esta familia en este período.</td></tr>';
     } else {
         $granTotalMes = 0;
         foreach($matrizCategorias as $cat) {
             $htmlOutput .= '<tr>';
-            $htmlOutput .= '<td style="text-align:left; position:sticky; left:0; background:#fff; z-index:1; font-weight:600; color:#333; font-size:12px;">' . $cat['nombre'] . '</td>';
+            $htmlOutput .= '<td class="sticky-col-cell">' . $cat['nombre'] . '</td>';
             
-            for($i=1; $i<=$totalDiasMes; $i++) {
+            for($i=1; $i<=$diaLimiteMax; $i++) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
                 $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
-                $valDia = $cat['dias'][$fechaDia];
+                $valDia = $cat['dias'][$fechaDia] ?? 0;
                 $estiloCelda = ($valDia > 0) ? 'color:#006064; font-weight:600;' : 'color:#ccc;';
                 $htmlOutput .= '<td style="text-align:center; font-size:12px; ' . $estiloCelda . '">' . ($valDia > 0 ? number_format($valDia, 0) : '-') . '</td>';
             }
@@ -300,11 +310,11 @@ if(isset($_GET['ajax_familia_diario'])) {
 
         // Fila de Totales Generales diarios abajo
         $htmlOutput .= '<tr class="total-row">';
-        $htmlOutput .= '<td style="text-align:left; position:sticky; left:0; background:#f8f9fa; z-index:1;">TOTALES DÍA</td>';
-        for($i=1; $i<=$totalDiasMes; $i++) {
+        $htmlOutput .= '<td class="sticky-col-cell" style="background:#f8f9fa; font-weight:bold;">TOTALES DÍA</td>';
+        for($i=1; $i<=$diaLimiteMax; $i++) {
             $d = str_pad($i, 2, "0", STR_PAD_LEFT);
             $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
-            $valTotDia = $totalesPorDia[$fechaDia];
+            $valTotDia = $totalesPorDia[$fechaDia] ?? 0;
             $htmlOutput .= '<td style="text-align:center; font-size:12px;">' . ($valTotDia > 0 ? number_format($valTotDia, 0) : '-') . '</td>';
         }
         $htmlOutput .= '<td style="text-align:center; font-size:12px; background:#eef2f3;">' . number_format($granTotalMes, 0) . '</td>';
@@ -344,17 +354,28 @@ $familiasGlobal = obtenerFamilias($mysqli);
         .familia-link{color:#006064; cursor:pointer; text-decoration: underline;}
         .familia-link:hover{color:#00838f;}
 
-        /* Estilos Modal */
-        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; padding: 15px; box-sizing: border-box; }
-        .modal-content { background: #fff; border-radius: 15px; width: 100%; max-width: 98vw; max-height: 90vh; overflow-y: auto; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; }
-        .modal-close { position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; color: #888; cursor: pointer; }
+        /* Estilos Modal 100% Responsive y Ajustado */
+        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; }
+        .modal-content { background: #fff; border-radius: 15px; width: 100%; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; box-sizing: border-box; }
+        .modal-close { position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; color: #888; cursor: pointer; z-index: 10; }
         .modal-close:hover { color: #333; }
+        
+        .table-responsive-wrapper { width: 100%; overflow-x: auto; overflow-y: auto; max-height: calc(85vh - 80px); margin-top: 10px; -webkit-overflow-scrolling: touch; }
+        .modal-table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        .modal-table th, .modal-table td { padding: 8px 10px; white-space: nowrap; }
+        
+        /* Celdas fijas responsivas para la columna de categorías */
+        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 160px; max-width: 220px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 12px; min-width: 160px; max-width: 220px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .day-col-header { text-align: center; min-width: 45px; }
+        .total-col-header { text-align: center; background: #eef2f3; min-width: 80px; position: sticky; right: 0; z-index: 3; }
 
         @media(max-width: 768px) {
             body { padding: 10px; }
             .header-filter { padding: 15px; flex-direction: column; align-items: stretch; }
             select, input[type="date"] { width: 100%; }
             .card { padding: 15px; }
+            .modal-content { padding: 15px; max-width: 100vw; height: 95vh; max-height: 95vh; }
         }
     </style>
 </head>
@@ -501,7 +522,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
     <div id="modalFamilia" class="modal-overlay" onclick="if(event.target === this) cerrarModalFamilia();">
         <div class="modal-content">
             <span class="modal-close" onclick="cerrarModalFamilia()">&times;</span>
-            <div id="modalBodyContent">
+            <div id="modalBodyContent" style="display: flex; flex-direction: column; overflow: hidden; height: 100%;">
                 <p style="text-align:center; color:#666;">Cargando matriz de días y categorías...</p>
             </div>
         </div>

@@ -558,7 +558,7 @@ body {
 
                                     <a class="nav-link" href="Estadistica_Familias.php" target="contentFrame">Lo más Vendido por Familia</a>
 
-                                    <a class="nav-link" href="Estadistica_FamiliasXdia.php" target="contentFrame">Lo más Vendido por Familia/dia</a>
+                                    <a class="nav-link" href="Estadistica_FamiliasXdia.php" target="contentFrame">Ventas por Familia/dia</a>
 
                                 </div>
 
