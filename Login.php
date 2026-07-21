@@ -20,7 +20,7 @@ $empresas = $mysqli->query("SELECT Nit, RazonSocial
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Iniciar Sesión | Portal de Distribución </title>
+<title>Drinks Depot - Distribuidora de Bebidas Central | Iniciar Sesión </title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
