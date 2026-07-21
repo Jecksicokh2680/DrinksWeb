@@ -1,33 +1,38 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
-
-
-// Iniciar sesión si no se ha iniciado antes
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-    require 'auth_check.php';
 }
 
+$sesionExpirada = false;
+if (!isset($_SESSION['Usuario']) || empty($_SESSION['Usuario'])) {
+    $sesionExpirada = true;
+}
+$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+?>
+<?php if ($sesionExpirada): ?>
+<script>
+    window.addEventListener("DOMContentLoaded", function() {
+        // Muestra un aviso opcional y cierra la ventana emergente actual
+        alert("La sesión ha expirado.");
+        window.close();
+    });
+</script>
+<?php 
+    exit; // Detiene la ejecución del resto del script en la ventana emergente
+endif;
 
 // Establecer la zona horaria de Bogotá para PHP
 date_default_timezone_set('America/Bogota');
-
 // 1. Incluir e implementar el archivo de conexión existente
 require_once __DIR__ . '/Conexion.php';
-
 if (isset($conn_error)) {
     die("<div class='alert alert-danger text-center m-3'>" . htmlspecialchars($conn_error) . "</div>");
 }
-
 if (!isset($mysqliWeb)) {
     die("<div class='alert alert-danger text-center m-3'>❌ Error: La variable de conexión \$mysqliWeb no está definida.</div>");
 }
-
 $mysqliWeb->query("SET time_zone = '-05:00'");
-
 // --- DATOS DE SESIÓN ACTUAL ---
 $usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
 $nit_empresa    = isset($_SESSION['NitEmpresa']) ? trim($_SESSION['NitEmpresa']) : 'No asignado';
