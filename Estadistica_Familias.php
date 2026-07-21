@@ -160,6 +160,9 @@ if(isset($_GET['ajax_familia'])) {
     $listaCatsData = [];
     $totalPesosMesFam = 0;
 
+    $t_diaCant = 0; $t_diaPesos = 0; $t_diaUtil = 0;
+    $t_mesCant = 0; $t_mesPesos = 0; $t_mesUtil = 0;
+
     foreach($cats as $codCat => $nombreCat) {
         $skusCat = obtenerSkusPorCategoria($mysqli, $codCat);
         if(empty($skusCat)) continue;
@@ -173,13 +176,9 @@ if(isset($_GET['ajax_familia'])) {
         if ($sedeFiltro == 'central') {
             $pDia = $diaC_Cat['pesos']; $cDia = $diaC_Cat['cant']; $costoDia = $diaC_Cat['costo'];
             $pMes = $vC_Cat[$mesActualNum]['pesos']; $cMes = $vC_Cat[$mesActualNum]['cant']; $costoMes = $vC_Cat[$mesActualNum]['costo'];
-            $totPesos = 0; $totCosto = 0; $totCant = 0;
-            foreach($vC_Cat as $m => $val) { $totPesos += $val['pesos']; $totCant += $val['cant']; $totCosto += $val['costo']; }
         } elseif ($sedeFiltro == 'drinks') {
             $pDia = $diaD_Cat['pesos']; $cDia = $diaD_Cat['cant']; $costoDia = $diaD_Cat['costo'];
             $pMes = $vD_Cat[$mesActualNum]['pesos']; $cMes = $vD_Cat[$mesActualNum]['cant']; $costoMes = $vD_Cat[$mesActualNum]['costo'];
-            $totPesos = 0; $totCosto = 0; $totCant = 0;
-            foreach($vD_Cat as $m => $val) { $totPesos += $val['pesos']; $totCant += $val['cant']; $totCosto += $val['costo']; }
         } else {
             $pDia = $diaC_Cat['pesos'] + $diaD_Cat['pesos'];
             $cDia = $diaC_Cat['cant'] + $diaD_Cat['cant'];
@@ -187,29 +186,27 @@ if(isset($_GET['ajax_familia'])) {
             $pMes = $vC_Cat[$mesActualNum]['pesos'] + $vD_Cat[$mesActualNum]['pesos'];
             $cMes = $vC_Cat[$mesActualNum]['cant'] + $vD_Cat[$mesActualNum]['cant'];
             $costoMes = $vC_Cat[$mesActualNum]['costo'] + $vD_Cat[$mesActualNum]['costo'];
-            $totPesos = 0; $totCosto = 0; $totCant = 0;
-            foreach($vC_Cat as $m => $val) { 
-                $totPesos += $val['pesos'] + $vD_Cat[$m]['pesos']; 
-                $totCant += $val['cant'] + $vD_Cat[$m]['cant']; 
-                $totCosto += $val['costo'] + $vD_Cat[$m]['costo']; 
-            }
         }
 
         $utilDia = $pDia - $costoDia;
         $porcUtilDia = ($pDia > 0) ? ($utilDia / $pDia) * 100 : 0;
         $utilMes = $pMes - $costoMes;
         $porcUtilMes = ($pMes > 0) ? ($utilMes / $pMes) * 100 : 0;
-        $totUtil = $totPesos - $totCosto;
-        $porcUtilAnio = ($totPesos > 0) ? ($totUtil / $totPesos) * 100 : 0;
 
-        if($totPesos > 0 || $totCant > 0 || $pDia > 0) {
+        if(($pMes > 0 || $cMes > 0 || $pDia > 0)) {
             $listaCatsData[] = [
                 'nombre' => strtoupper($nombreCat),
                 'diaCant' => $cDia, 'diaPesos' => $pDia, 'diaUtil' => $utilDia, 'diaPorcUtil' => $porcUtilDia,
-                'mesCant' => $cMes, 'mesPesos' => $pMes, 'mesUtil' => $utilMes, 'mesPorcUtil' => $porcUtilMes,
-                'totCant' => $totCant, 'totPesos' => $totPesos, 'totUtil' => $totUtil, 'totPorcUtil' => $porcUtilAnio
+                'mesCant' => $cMes, 'mesPesos' => $pMes, 'mesUtil' => $utilMes, 'mesPorcUtil' => $porcUtilMes
             ];
             $totalPesosMesFam += $pMes;
+
+            $t_diaCant += $cDia;
+            $t_diaPesos += $pDia;
+            $t_diaUtil += $utilDia;
+            $t_mesCant += $cMes;
+            $t_mesPesos += $pMes;
+            $t_mesUtil += $utilMes;
         }
     }
 
@@ -250,6 +247,23 @@ if(isset($_GET['ajax_familia'])) {
         echo '<td><span class="badge-part">'.number_format($partMesFam, 1).'%</span></td>';
         echo '</tr>';
     }
+
+    // Fila de Totales del Modal
+    $t_porcUtilDiaGen = ($t_diaPesos > 0) ? ($t_diaUtil / $t_diaPesos) * 100 : 0;
+    $t_porcUtilMesGen = ($t_mesPesos > 0) ? ($t_mesUtil / $t_mesPesos) * 100 : 0;
+    echo '<tr class="total-row">';
+    echo '<td style="text-align:left;">TOTALES</td>';
+    echo '<td>'.number_format($t_diaCant, 0).'</td>';
+    echo '<td>$'.number_format($t_diaPesos, 0).'</td>';
+    echo '<td>$'.number_format($t_diaUtil, 0).'</td>';
+    echo '<td>'.number_format($t_porcUtilDiaGen, 1).'%</td>';
+    echo '<td>'.number_format($t_mesCant, 0).'</td>';
+    echo '<td>$'.number_format($t_mesPesos, 0).'</td>';
+    echo '<td>$'.number_format($t_mesUtil, 0).'</td>';
+    echo '<td>'.number_format($t_porcUtilMesGen, 1).'%</td>';
+    echo '<td>100.0%</td>';
+    echo '</tr>';
+
     echo '</tbody></table></div>';
     exit;
 }
@@ -271,6 +285,9 @@ if(isset($_GET['ajax_familia'])) {
         table{width:100%; border-collapse:collapse; min-width: 900px;}
         th{background:#f8f9fa; padding:12px; text-align:right; font-size:11px; color:#888; border-bottom:2px solid #eee; text-transform: uppercase;}
         td{padding:12px; border-bottom:1px solid #f1f1f1; text-align:right; font-weight:600; font-size: 13px;}
+        .total-row { background: #f8f9fa; border-top: 2px solid #00838f; font-weight: bold; color: #006064; }
+        .total-row td { font-size: 13px; text-align: right; }
+        .total-row td:first-child { text-align: left; }
         .badge-part{background: #e0f7fa; color: #006064; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;}
         .badge-util{background: #e3f2fd; color: #1565c0; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;}
         .badge-porc{background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;}
@@ -314,6 +331,9 @@ if(isset($_GET['ajax_familia'])) {
     $detalleFamilias = [];
     $totalGeneralPesosMes = 0;
 
+    $totGen_diaCant = 0; $totGen_diaPesos = 0; $totGen_diaUtil = 0;
+    $totGen_mesCant = 0; $totGen_mesPesos = 0; $totGen_mesUtil = 0;
+
     foreach($familias as $idFamilia => $nombreFam) {
         $skusFam = obtenerSkusPorFamilia($mysqli, $idFamilia);
         if(empty($skusFam)) continue;
@@ -327,13 +347,9 @@ if(isset($_GET['ajax_familia'])) {
         if ($sedeFiltro == 'central') {
             $pDiaFam = $diaC_Fam['pesos']; $cDiaFam = $diaC_Fam['cant']; $costoDiaFam = $diaC_Fam['costo'];
             $pMesFam = $vC_Fam[$mesActualNum]['pesos']; $cMesFam = $vC_Fam[$mesActualNum]['cant']; $costoMesFam = $vC_Fam[$mesActualNum]['costo'];
-            $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vC_Fam as $m => $val) { $totPesosFam += $val['pesos']; $totCantFam += $val['cant']; $totCostoFam += $val['costo']; }
         } elseif ($sedeFiltro == 'drinks') {
             $pDiaFam = $diaD_Fam['pesos']; $cDiaFam = $diaD_Fam['cant']; $costoDiaFam = $diaD_Fam['costo'];
             $pMesFam = $vD_Fam[$mesActualNum]['pesos']; $cMesFam = $vD_Fam[$mesActualNum]['cant']; $costoMesFam = $vD_Fam[$mesActualNum]['costo'];
-            $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vD_Fam as $m => $val) { $totPesosFam += $val['pesos']; $totCantFam += $val['cant']; $totCostoFam += $val['costo']; }
         } else {
             $pDiaFam = $diaC_Fam['pesos'] + $diaD_Fam['pesos'];
             $cDiaFam = $diaC_Fam['cant'] + $diaD_Fam['cant'];
@@ -341,30 +357,28 @@ if(isset($_GET['ajax_familia'])) {
             $pMesFam = $vC_Fam[$mesActualNum]['pesos'] + $vD_Fam[$mesActualNum]['pesos'];
             $cMesFam = $vC_Fam[$mesActualNum]['cant'] + $vD_Fam[$mesActualNum]['cant'];
             $costoMesFam = $vC_Fam[$mesActualNum]['costo'] + $vD_Fam[$mesActualNum]['costo'];
-            $totPesosFam = 0; $totCantFam = 0; $totCostoFam = 0;
-            foreach($vC_Fam as $m => $val) { 
-                $totPesosFam += $val['pesos'] + $vD_Fam[$m]['pesos']; 
-                $totCantFam += $val['cant'] + $vD_Fam[$m]['cant']; 
-                $totCostoFam += $val['costo'] + $vD_Fam[$m]['costo']; 
-            }
         }
 
         $utilDiaFam = $pDiaFam - $costoDiaFam;
         $porcUtilDia = ($pDiaFam > 0) ? ($utilDiaFam / $pDiaFam) * 100 : 0;
         $utilMesFam = $pMesFam - $costoMesFam;
         $porcUtilMes = ($pMesFam > 0) ? ($utilMesFam / $pMesFam) * 100 : 0;
-        $totUtilFam = $totPesosFam - $totCostoFam;
-        $porcUtilAnio = ($totPesosFam > 0) ? ($totUtilFam / $totPesosFam) * 100 : 0;
 
-        if($totPesosFam > 0 || $totCantFam > 0 || $pDiaFam > 0) {
+        if(($pMesFam > 0 || $cMesFam > 0 || $pDiaFam > 0)) {
             $detalleFamilias[] = [
                 'id' => $idFamilia,
                 'nombre' => strtoupper($nombreFam),
                 'diaCant' => $cDiaFam, 'diaPesos' => $pDiaFam, 'diaUtil' => $utilDiaFam, 'diaPorcUtil' => $porcUtilDia,
-                'mesCant' => $cMesFam, 'mesPesos' => $pMesFam, 'mesUtil' => $utilMesFam, 'mesPorcUtil' => $porcUtilMes,
-                'totCant' => $totCantFam, 'totPesos' => $totPesosFam, 'totUtil' => $totUtilFam, 'totPorcUtil' => $porcUtilAnio
+                'mesCant' => $cMesFam, 'mesPesos' => $pMesFam, 'mesUtil' => $utilMesFam, 'mesPorcUtil' => $porcUtilMes
             ];
             $totalGeneralPesosMes += $pMesFam;
+
+            $totGen_diaCant += $cDiaFam;
+            $totGen_diaPesos += $pDiaFam;
+            $totGen_diaUtil += $utilDiaFam;
+            $totGen_mesCant += $cMesFam;
+            $totGen_mesPesos += $pMesFam;
+            $totGen_mesUtil += $utilMesFam;
         }
     }
 
@@ -412,6 +426,24 @@ if(isset($_GET['ajax_familia'])) {
                     <td><span class="badge-part"><?= number_format($partMes, 1) ?>%</span></td>
                 </tr>
                 <?php endforeach; ?>
+
+                <!-- Fila de Totales Generales -->
+                <?php 
+                    $totGen_porcUtilDia = ($totGen_diaPesos > 0) ? ($totGen_diaUtil / $totGen_diaPesos) * 100 : 0;
+                    $totGen_porcUtilMes = ($totGen_mesPesos > 0) ? ($totGen_mesUtil / $totGen_mesPesos) * 100 : 0;
+                ?>
+                <tr class="total-row">
+                    <td style="text-align:left;">TOTALES</td>
+                    <td><?= number_format($totGen_diaCant, 0) ?></td>
+                    <td>$<?= number_format($totGen_diaPesos, 0) ?></td>
+                    <td>$<?= number_format($totGen_diaUtil, 0) ?></td>
+                    <td><?= number_format($totGen_porcUtilDia, 1) ?>%</td>
+                    <td><?= number_format($totGen_mesCant, 0) ?></td>
+                    <td>$<?= number_format($totGen_mesPesos, 0) ?></td>
+                    <td>$<?= number_format($totGen_mesUtil, 0) ?></td>
+                    <td><?= number_format($totGen_porcUtilMes, 1) ?>%</td>
+                    <td>100.0%</td>
+                </tr>
             </tbody>
         </table>
     </div>
