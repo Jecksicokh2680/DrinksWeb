@@ -106,6 +106,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
     <meta charset="utf-8">
     <title>Informe Gerencial Valorizado</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Plugin chartjs-plugin-datalabels para mostrar los porcentajes directamente en la gráfica -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:20px;}
@@ -204,7 +205,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
     <?php endif; ?>
 
     <?php
-    $datosEmpresas = [];
+    $labelsEmps = []; $pesosEmps = []; $cantEmps = [];
     foreach($listaEmpresas as $idE => $nomE) {
         $skusE = obtenerSkusPorEmpresa($mysqli, $idE);
         if(empty($skusE)) continue;
@@ -212,23 +213,8 @@ $listaEmpresas = obtenerEmpresas($mysqli);
         $vD = obtenerMovimientoValorizado($mysqliPos, $anioActual, $skusE);
         $pMes = $vC[$mesActualNum]['pesos'] + $vD[$mesActualNum]['pesos'];
         $cMes = $vC[$mesActualNum]['cant'] + $vD[$mesActualNum]['cant'];
-        if($pMes > 0) {
-            $datosEmpresas[] = [
-                'nombre' => $nomE,
-                'pesos' => $pMes,
-                'cant' => $cMes
-            ];
-        }
+        if($pMes > 0) { $labelsEmps[] = $nomE; $pesosEmps[] = $pMes; $cantEmps[] = $cMes; }
     }
-
-    // Ordenar de mayor a menor participación según las ventas en pesos
-    usort($datosEmpresas, function($a, $b) {
-        return $b['pesos'] <=> $a['pesos'];
-    });
-
-    $labelsEmps = array_column($datosEmpresas, 'nombre');
-    $pesosEmps = array_column($datosEmpresas, 'pesos');
-    $cantEmps = array_column($datosEmpresas, 'cant');
     $totalPesosMes = array_sum($pesosEmps);
     ?>
 
@@ -245,7 +231,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
             </div>
         </div>
 
-        <!-- Tabla detallada de participación ordenada -->
+        <!-- Tabla detallada de participación -->
         <div style="margin-top: 30px;">
             <table>
                 <thead>
@@ -257,13 +243,13 @@ $listaEmpresas = obtenerEmpresas($mysqli);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach($datosEmpresas as $item): 
-                        $valPesos = $item['pesos'];
-                        $valCant = $item['cant'];
+                    <?php foreach($labelsEmps as $index => $empName): 
+                        $valPesos = $pesosEmps[$index];
+                        $valCant = $cantEmps[$index];
                         $porcent = ($totalPesosMes > 0) ? ($valPesos / $totalPesosMes) * 100 : 0;
                     ?>
                     <tr>
-                        <td style="text-align:left"><?= strtoupper($item['nombre']) ?></td>
+                        <td style="text-align:left"><?= strtoupper($empName) ?></td>
                         <td>$<?= number_format($valPesos, 0) ?></td>
                         <td style="color: #d84315; font-weight: bold;"><?= number_format($porcent, 1) ?>%</td>
                         <td><?= number_format($valCant, 0) ?></td>
@@ -277,7 +263,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
     <script>
     const colors = ['#1a237e','#2e7d32','#c62828','#f9a825','#6a1b9a','#00838f','#ef6c00','#4e342e'];
     
-    // Gráfica de Dona ordenada por mayor participación
+    // Gráfica de Dona mostrando los porcentajes impresos en cada sector
     new Chart(document.getElementById('finalPesos'), {
         type: 'doughnut',
         data: { 
@@ -299,6 +285,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
                     formatter: (value, ctx) => {
                         let total = <?= $totalPesosMes > 0 ? $totalPesosMes : 1; ?>;
                         let percentage = ((value / total) * 100).toFixed(1) + '%';
+                        // Oculta etiquetas menores al 3% para evitar saturación visual
                         return ((value / total) * 100) > 3 ? percentage : '';
                     }
                 },
