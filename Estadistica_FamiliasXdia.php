@@ -323,7 +323,7 @@ if(isset($_GET['ajax_familia_diario'])) {
         $granTotalMes = 0;
         foreach($matrizCategorias as $cat) {
             $htmlOutput .= '<tr>';
-            $htmlOutput .= '<td class="sticky-col-cell">' . $cat['nombre'] . ' <span style="font-size:10px; color:#00838f; font-weight:normal;">(Prom: ' . number_format($cat['promedio'], 1) . ')</span></td>';
+            $htmlOutput .= '<td class="sticky-col-cell"><div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><span>' . $cat['nombre'] . '</span><span style="font-size:10px; color:#00838f; font-weight:normal; margin-left:8px; white-space:nowrap;">(Prom: ' . number_format($cat['promedio'], 0) . ')</span></div></td>';
             
             for($i = $diaLimiteMax; $i >= 1; $i--) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
@@ -395,8 +395,8 @@ $familiasGlobal = obtenerFamilias($mysqli);
         .modal-table th, .modal-table td { padding: 5px 8px; white-space: nowrap; }
         
         /* Celdas fijas responsivas para la columna de categorías */
-        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 220px; max-width: 280px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
-        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 220px; max-width: 280px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 250px; max-width: 310px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
+        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 250px; max-width: 310px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
         .day-col-header { text-align: center; min-width: 38px; font-size: 11px; }
         .total-col-header { text-align: center; background: #eef2f3; min-width: 70px; font-size: 11px; }
 
