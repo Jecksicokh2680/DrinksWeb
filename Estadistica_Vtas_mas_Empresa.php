@@ -106,6 +106,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
     <meta charset="utf-8">
     <title>Informe Gerencial Valorizado</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:20px;}
         .container{max-width:1450px; margin:auto;}
@@ -203,7 +204,7 @@ $listaEmpresas = obtenerEmpresas($mysqli);
     <?php endif; ?>
 
     <?php
-    $labelsEmps = []; $pesosEmps = []; $cantEmps = [];
+    $datosEmpresas = [];
     foreach($listaEmpresas as $idE => $nomE) {
         $skusE = obtenerSkusPorEmpresa($mysqli, $idE);
         if(empty($skusE)) continue;
@@ -211,31 +212,110 @@ $listaEmpresas = obtenerEmpresas($mysqli);
         $vD = obtenerMovimientoValorizado($mysqliPos, $anioActual, $skusE);
         $pMes = $vC[$mesActualNum]['pesos'] + $vD[$mesActualNum]['pesos'];
         $cMes = $vC[$mesActualNum]['cant'] + $vD[$mesActualNum]['cant'];
-        if($pMes > 0) { $labelsEmps[] = $nomE; $pesosEmps[] = $pMes; $cantEmps[] = $cMes; }
+        if($pMes > 0) {
+            $datosEmpresas[] = [
+                'nombre' => $nomE,
+                'pesos' => $pMes,
+                'cant' => $cMes
+            ];
+        }
     }
+
+    // Ordenar de mayor a menor participación según las ventas en pesos
+    usort($datosEmpresas, function($a, $b) {
+        return $b['pesos'] <=> $a['pesos'];
+    });
+
+    $labelsEmps = array_column($datosEmpresas, 'nombre');
+    $pesosEmps = array_column($datosEmpresas, 'pesos');
+    $cantEmps = array_column($datosEmpresas, 'cant');
+    $totalPesosMes = array_sum($pesosEmps);
     ?>
 
     <div class="card" style="border-top: 6px solid #ff5722; margin-top: 40px; background: #fffcfb;">
         <h2 style="text-align:center; color:#d84315;">📊 Participación por Empresa - <?= nombreMes($mesActualNum) ?></h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
-            <div style="height: 350px;">
-                <h4 style="text-align:center;">Ventas en Pesos ($)</h4>
+            <div style="height: 380px;">
+                <h4 style="text-align:center;">Participación en Ventas (%)</h4>
                 <canvas id="finalPesos"></canvas>
             </div>
-            <div style="height: 350px;">
+            <div style="height: 380px;">
                 <h4 style="text-align:center;">Volumen en Unidades</h4>
                 <canvas id="finalCant"></canvas>
             </div>
+        </div>
+
+        <!-- Tabla detallada de participación ordenada -->
+        <div style="margin-top: 30px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align:left">Empresa Productora</th>
+                        <th>Ventas Mes ($)</th>
+                        <th>Participación (%)</th>
+                        <th>Unidades</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach($datosEmpresas as $item): 
+                        $valPesos = $item['pesos'];
+                        $valCant = $item['cant'];
+                        $porcent = ($totalPesosMes > 0) ? ($valPesos / $totalPesosMes) * 100 : 0;
+                    ?>
+                    <tr>
+                        <td style="text-align:left"><?= strtoupper($item['nombre']) ?></td>
+                        <td>$<?= number_format($valPesos, 0) ?></td>
+                        <td style="color: #d84315; font-weight: bold;"><?= number_format($porcent, 1) ?>%</td>
+                        <td><?= number_format($valCant, 0) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
     const colors = ['#1a237e','#2e7d32','#c62828','#f9a825','#6a1b9a','#00838f','#ef6c00','#4e342e'];
+    
+    // Gráfica de Dona ordenada por mayor participación
     new Chart(document.getElementById('finalPesos'), {
-        type: 'pie',
-        data: { labels: <?= json_encode($labelsEmps) ?>, datasets: [{ data: <?= json_encode($pesosEmps) ?>, backgroundColor: colors }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+        type: 'doughnut',
+        data: { 
+            labels: <?= json_encode($labelsEmps) ?>, 
+            datasets: [{ data: <?= json_encode($pesosEmps) ?>, backgroundColor: colors }] 
+        },
+        plugins: [ChartDataLabels],
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            plugins: { 
+                legend: { position: 'right' },
+                datalabels: {
+                    color: '#fff',
+                    font: {
+                        weight: 'bold',
+                        size: 12
+                    },
+                    formatter: (value, ctx) => {
+                        let total = <?= $totalPesosMes > 0 ? $totalPesosMes : 1; ?>;
+                        let percentage = ((value / total) * 100).toFixed(1) + '%';
+                        return ((value / total) * 100) > 3 ? percentage : '';
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let value = context.raw;
+                            let total = <?= $totalPesosMes > 0 ? $totalPesosMes : 1; ?>;
+                            let percentage = ((value / total) * 100).toFixed(1) + '%';
+                            return ' $' + value.toLocaleString() + ' (' + percentage + ')';
+                        }
+                    }
+                }
+            } 
+        }
     });
+
     new Chart(document.getElementById('finalCant'), {
         type: 'bar',
         data: { labels: <?= json_encode($labelsEmps) ?>, datasets: [{ label: 'Unidades', data: <?= json_encode($cantEmps) ?>, backgroundColor: '#ff5722cc' }] },

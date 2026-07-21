@@ -75,9 +75,9 @@ function obtenerMovimientoValorizado($db, $anio, $listaSkus) {
     $inClause = implode(",", $listaSkus);
 
     $sqlFac = "SELECT SUBSTRING(F.FECHA, 5, 2) as mes, 
-                    SUM(D.CANTIDAD) as cant, 
-                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                SUM(D.CANTIDAD) as cant, 
+                SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM FACTURAS F
                INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -92,9 +92,9 @@ function obtenerMovimientoValorizado($db, $anio, $listaSkus) {
     }
 
     $sqlPed = "SELECT SUBSTRING(P.FECHA, 5, 2) as mes, 
-                    SUM(D.CANTIDAD) as cant, 
-                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                SUM(D.CANTIDAD) as cant, 
+                SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM PEDIDOS P
                INNER JOIN DETPEDIDOS D ON D.IDPEDIDO = P.IDPEDIDO
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -116,8 +116,8 @@ function obtenerMovimientoDia($db, $fechaSql, $listaSkus) {
     $fechaLimpia = str_replace('-', '', $fechaSql);
 
     $sqlFac = "SELECT SUM(D.CANTIDAD) as cant, 
-                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM FACTURAS F
                INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -131,8 +131,8 @@ function obtenerMovimientoDia($db, $fechaSql, $listaSkus) {
     }
 
     $sqlPed = "SELECT SUM(D.CANTIDAD) as cant, 
-                    SUM(D.CANTIDAD * PR.precioventa) as subtotal,
-                    SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
+                SUM(D.CANTIDAD * PR.precioventa) as subtotal,
+                SUM(D.CANTIDAD * COALESCE(PR.costo, 0)) as totalcosto
                FROM PEDIDOS P
                INNER JOIN DETPEDIDOS D ON D.IDPEDIDO = P.IDPEDIDO
                INNER JOIN PRODUCTOS PR ON PR.IDPRODUCTO = D.IDPRODUCTO
@@ -219,18 +219,18 @@ if(isset($_GET['ajax_familia'])) {
         echo '<p style="text-align:center; color:#666;">No hay registros para esta familia en la fecha seleccionada.</p>';
         exit;
     }
-    echo '<div style="overflow-x:auto;"><table>';
+    echo '<div style="overflow-x:auto;"><table id="tablaModalCategorias">';
     echo '<thead><tr>
-            <th style="text-align:left">Categoría</th>
-            <th>Unid. Día</th>
-            <th>Ventas Día</th>
-            <th>Util. Día</th>
-            <th>% Util. Día</th>
-            <th>Unid. Mes</th>
-            <th>Ventas Mes</th>
-            <th>Util. Mes</th>
-            <th>% Util. Mes</th>
-            <th>Part. Mes</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 0)" style="text-align:left">Categoría 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 1)">Unid. Día 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 2)">Ventas Día 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 3)">Util. Día 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 4)">% Util. Día 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 5)">Unid. Mes 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 6)">Ventas Mes 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 7)">Util. Mes 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 8)">% Util. Mes 🔽</th>
+            <th onclick="ordenarTablaPorColumna(\'tablaModalCategorias\', 9)">Part. Mes 🔽</th>
           </tr></thead><tbody>';
     foreach($listaCatsData as $cat) {
         $partMesFam = ($totalPesosMesFam > 0) ? ($cat['mesPesos'] / $totalPesosMesFam) * 100 : 0;
@@ -248,10 +248,10 @@ if(isset($_GET['ajax_familia'])) {
         echo '</tr>';
     }
 
-    // Fila de Totales del Modal
+    // Fila de Totales del Modal (excluida del ordenamiento dinámico)
     $t_porcUtilDiaGen = ($t_diaPesos > 0) ? ($t_diaUtil / $t_diaPesos) * 100 : 0;
     $t_porcUtilMesGen = ($t_mesPesos > 0) ? ($t_mesUtil / $t_mesPesos) * 100 : 0;
-    echo '<tr class="total-row">';
+    echo '<tr class="total-row" data-total="true">';
     echo '<td style="text-align:left;">TOTALES</td>';
     echo '<td>'.number_format($t_diaCant, 0).'</td>';
     echo '<td>$'.number_format($t_diaPesos, 0).'</td>';
@@ -283,7 +283,8 @@ if(isset($_GET['ajax_familia'])) {
         .card{background:#fff; padding:20px; border-radius:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05); border-top: 6px solid #00838f; margin-bottom: 25px; overflow-x: auto;}
         select, input[type="date"]{padding:10px 12px; border-radius:10px; border:1px solid #ddd; font-size:15px; font-weight: bold; color: #006064;}
         table{width:100%; border-collapse:collapse; min-width: 900px;}
-        th{background:#f8f9fa; padding:12px; text-align:right; font-size:11px; color:#888; border-bottom:2px solid #eee; text-transform: uppercase;}
+        th{background:#f8f9fa; padding:12px; text-align:right; font-size:11px; color:#888; border-bottom:2px solid #eee; text-transform: uppercase; cursor: pointer; user-select: none;}
+        th:hover { background: #e2e8f0; color: #006064; }
         td{padding:12px; border-bottom:1px solid #f1f1f1; text-align:right; font-weight:600; font-size: 13px;}
         .total-row { background: #f8f9fa; border-top: 2px solid #00838f; font-weight: bold; color: #006064; }
         .total-row td { font-size: 13px; text-align: right; }
@@ -390,19 +391,19 @@ if(isset($_GET['ajax_familia'])) {
     <?php if(!empty($detalleFamilias)): ?>
     <div class="card">
         <h2 style="color:#006064; margin-top:0; font-size: 18px;">📊 Ventas y Utilidad por Familia - Detalle Día (<?= $fechaFiltro ?>)</h2>
-        <table>
+        <table id="tablaFamiliasPrincipal">
             <thead>
                 <tr>
-                    <th style="text-align:left">Familia</th>
-                    <th>Unid. Día</th>
-                    <th>Ventas Día</th>
-                    <th>Util. Día</th>
-                    <th>% Util. Día</th>
-                    <th>Unid. Mes</th>
-                    <th>Ventas Mes</th>
-                    <th>Util. Mes</th>
-                    <th>% Util. Mes</th>
-                    <th>Part. Mes</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 0)" style="text-align:left">Familia 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 1)">Unid. Día 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 2)">Ventas Día 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 3)">Util. Día 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 4)">% Util. Día 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 5)">Unid. Mes 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 6)">Ventas Mes 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 7)">Util. Mes 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 8)">% Util. Mes 🔽</th>
+                    <th onclick="ordenarTablaPorColumna('tablaFamiliasPrincipal', 9)">Part. Mes 🔽</th>
                 </tr>
             </thead>
             <tbody>
@@ -427,12 +428,12 @@ if(isset($_GET['ajax_familia'])) {
                 </tr>
                 <?php endforeach; ?>
 
-                <!-- Fila de Totales Generales -->
+                <!-- Fila de Totales Generales (excluida del ordenamiento dinámico) -->
                 <?php 
                     $totGen_porcUtilDia = ($totGen_diaPesos > 0) ? ($totGen_diaUtil / $totGen_diaPesos) * 100 : 0;
                     $totGen_porcUtilMes = ($totGen_mesPesos > 0) ? ($totGen_mesUtil / $totGen_mesPesos) * 100 : 0;
                 ?>
-                <tr class="total-row">
+                <tr class="total-row" data-total="true">
                     <td style="text-align:left;">TOTALES</td>
                     <td><?= number_format($totGen_diaCant, 0) ?></td>
                     <td>$<?= number_format($totGen_diaPesos, 0) ?></td>
@@ -459,6 +460,45 @@ if(isset($_GET['ajax_familia'])) {
     </div>
 
     <script>
+    function ordenarTablaPorColumna(idTabla, columnaIndex) {
+        const tabla = document.getElementById(idTabla);
+        if (!tabla) return;
+        const tbody = tabla.tBodies[0];
+        const filas = Array.from(tbody.rows);
+
+        // Separar la fila de totales (si existe) para que siempre quede al final
+        let filaTotales = null;
+        const filasDatos = filas.filter(fila => {
+            if (fila.getAttribute('data-total') === 'true') {
+                filaTotales = fila;
+                return false;
+            }
+            return true;
+        });
+
+        // Ordenar filas de manera descendente
+        filasDatos.sort((a, b) => {
+            let celdaA = a.cells[columnaIndex].textContent.trim();
+            let celdaB = b.cells[columnaIndex].textContent.trim();
+
+            // Limpiar símbolos de moneda, porcentajes, comas y badges de texto extra para convertir a número si aplica
+            let valA = parseFloat(celdaA.replace(/[^0-9.-]+/g, ""));
+            let valB = parseFloat(celdaB.replace(/[^0-9.-]+/g, ""));
+
+            if (!isNaN(valA) && !isNaN(valB)) {
+                return valB - valA; // Descendente numérico
+            } else {
+                return celdaB.localeCompare(celdaA); // Descendente texto
+            }
+        });
+
+        // Reinsertar filas ordenadas y al final agregar la fila de totales si existía
+        filasDatos.forEach(fila => tbody.appendChild(fila));
+        if (filaTotales) {
+            tbody.appendChild(filaTotales);
+        }
+    }
+
     function abrirModalFamilia(idFamilia, nombreFamilia) {
         const modal = document.getElementById('modalFamilia');
         const content = document.getElementById('modalBodyContent');
