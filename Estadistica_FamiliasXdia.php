@@ -274,7 +274,12 @@ if(isset($_GET['ajax_familia_diario'])) {
         }
     }
 
-    $htmlOutput = '<h3 style="color:#006064; margin-top:0; font-size: 16px; word-break: break-word;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
+    // Ordenar las categorías de mayor a menor según el total del mes acumulado
+    usort($matrizCategorias, function($a, $b) {
+        return $b['total'] <=> $a['total'];
+    });
+
+    $htmlOutput = '<h3 style="color:#006064; margin:0 0 8px 0; font-size: 15px; word-break: break-word; flex-shrink: 0;">📅 Matriz Día a Día en Cantidades por Categoría ('.nombreMes($mesFiltroNum) . " " . $anioFiltro.') - Familia: <b>'.htmlspecialchars($nombreFamAjax).'</b></h3>';
     $htmlOutput .= '<div class="table-responsive-wrapper"><table class="modal-table">';
     
     // Encabezado horizontal con los días del mes hasta la fecha filtro
@@ -300,10 +305,10 @@ if(isset($_GET['ajax_familia_diario'])) {
                 $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
                 $valDia = $cat['dias'][$fechaDia] ?? 0;
                 $estiloCelda = ($valDia > 0) ? 'color:#006064; font-weight:600;' : 'color:#ccc;';
-                $htmlOutput .= '<td style="text-align:center; font-size:12px; ' . $estiloCelda . '">' . ($valDia > 0 ? number_format($valDia, 0) : '-') . '</td>';
+                $htmlOutput .= '<td style="text-align:center; font-size:11px; ' . $estiloCelda . '">' . ($valDia > 0 ? number_format($valDia, 0) : '-') . '</td>';
             }
             
-            $htmlOutput .= '<td style="text-align:center; background:#f8f9fa; font-weight:bold; color:#006064; font-size:12px;">' . number_format($cat['total'], 0) . '</td>';
+            $htmlOutput .= '<td style="text-align:center; background:#f8f9fa; font-weight:bold; color:#006064; font-size:11px;">' . number_format($cat['total'], 0) . '</td>';
             $htmlOutput .= '</tr>';
             $granTotalMes += $cat['total'];
         }
@@ -315,9 +320,9 @@ if(isset($_GET['ajax_familia_diario'])) {
             $d = str_pad($i, 2, "0", STR_PAD_LEFT);
             $fechaDia = "$anioFiltro-$mesFiltroNum-$d";
             $valTotDia = $totalesPorDia[$fechaDia] ?? 0;
-            $htmlOutput .= '<td style="text-align:center; font-size:12px;">' . ($valTotDia > 0 ? number_format($valTotDia, 0) : '-') . '</td>';
+            $htmlOutput .= '<td style="text-align:center; font-size:11px;">' . ($valTotDia > 0 ? number_format($valTotDia, 0) : '-') . '</td>';
         }
-        $htmlOutput .= '<td style="text-align:center; font-size:12px; background:#eef2f3;">' . number_format($granTotalMes, 0) . '</td>';
+        $htmlOutput .= '<td style="text-align:center; font-size:11px; background:#eef2f3;">' . number_format($granTotalMes, 0) . '</td>';
         $htmlOutput .= '</tr>';
     }
 
@@ -346,7 +351,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
         th{background:#f8f9fa; padding:12px; text-align:right; font-size:11px; color:#888; border-bottom:2px solid #eee; text-transform: uppercase;}
         td{padding:12px; border-bottom:1px solid #f1f1f1; text-align:right; font-weight:600; font-size: 13px;}
         .total-row { background: #f8f9fa; border-top: 2px solid #00838f; font-weight: bold; color: #006064; }
-        .total-row td { font-size: 13px; text-align: right; }
+        .total-row td { font-size: 12px; text-align: right; }
         .total-row td:first-child { text-align: left; }
         .badge-part{background: #e0f7fa; color: #006064; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;}
         .badge-util{background: #e3f2fd; color: #1565c0; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;}
@@ -354,28 +359,28 @@ $familiasGlobal = obtenerFamilias($mysqli);
         .familia-link{color:#006064; cursor:pointer; text-decoration: underline;}
         .familia-link:hover{color:#00838f;}
 
-        /* Estilos Modal 100% Responsive y Ajustado */
+        /* Estilos Modal Compacto y 100% Pantalla */
         .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; }
-        .modal-content { background: #fff; border-radius: 15px; width: 100%; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; box-sizing: border-box; }
-        .modal-close { position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; color: #888; cursor: pointer; z-index: 10; }
+        .modal-content { background: #fff; border-radius: 12px; width: 98vw; height: 94vh; max-width: 98vw; max-height: 94vh; display: flex; flex-direction: column; padding: 15px 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); position: relative; box-sizing: border-box; }
+        .modal-close { position: absolute; top: 12px; right: 18px; font-size: 22px; font-weight: bold; color: #888; cursor: pointer; z-index: 10; }
         .modal-close:hover { color: #333; }
         
-        .table-responsive-wrapper { width: 100%; overflow-x: auto; overflow-y: auto; max-height: calc(85vh - 80px); margin-top: 10px; -webkit-overflow-scrolling: touch; }
+        .table-responsive-wrapper { width: 100%; flex: 1; overflow: auto; margin-top: 6px; border: 1px solid #e1e4e8; border-radius: 8px; -webkit-overflow-scrolling: touch; }
         .modal-table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        .modal-table th, .modal-table td { padding: 8px 10px; white-space: nowrap; }
+        .modal-table th, .modal-table td { padding: 5px 8px; white-space: nowrap; }
         
         /* Celdas fijas responsivas para la columna de categorías */
-        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 160px; max-width: 220px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
-        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 12px; min-width: 160px; max-width: 220px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
-        .day-col-header { text-align: center; min-width: 45px; }
-        .total-col-header { text-align: center; background: #eef2f3; min-width: 80px; position: sticky; right: 0; z-index: 3; }
+        .sticky-col-header { text-align: left; position: sticky; left: 0; background: #f8f9fa; z-index: 3; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); font-size: 11px; }
+        .sticky-col-cell { text-align: left; position: sticky; left: 0; background: #fff; z-index: 2; font-weight: 600; color: #333; font-size: 11px; min-width: 150px; max-width: 200px; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .day-col-header { text-align: center; min-width: 35px; font-size: 11px; }
+        .total-col-header { text-align: center; background: #eef2f3; min-width: 70px; font-size: 11px; }
 
         @media(max-width: 768px) {
             body { padding: 10px; }
             .header-filter { padding: 15px; flex-direction: column; align-items: stretch; }
             select, input[type="date"] { width: 100%; }
             .card { padding: 15px; }
-            .modal-content { padding: 15px; max-width: 100vw; height: 95vh; max-height: 95vh; }
+            .modal-content { width: 100vw; height: 98vh; max-width: 100vw; max-height: 98vh; padding: 10px; border-radius: 8px; }
         }
     </style>
 </head>
