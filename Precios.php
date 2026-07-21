@@ -26,7 +26,6 @@ if ($is_ajax_save) {
     if (!empty($barcode)) {
         if ($connCentral) {
             $stmtC = $connCentral->prepare("UPDATE productos SET precioventa = ?, precioespecial1 = ?, precioespecial2 = ?, estado = ? WHERE barcode = ?");
-            $typeStr = "dddis" . (is_numeric($barcode) ? "" : ""); // Simplificado bind_param
             $stmtC->bind_param("dddis", $precioventa_c, $precioespecial1_c, $precioespecial2_c, $estado, $barcode);
             $msgs[] = $stmtC->execute() ? "Cen: OK" : "Cen: Error";
             $stmtC->close();
@@ -45,7 +44,6 @@ if ($is_ajax_save) {
 if ($is_ajax_filter) {
     header('Content-Type: application/json');
     $filtro = trim($_POST['filtro'] ?? '');
-    // CAMBIO 1: Se define '1' como valor por defecto si no viene en el POST
     $estado_filtro = $_POST['estado'] ?? '1'; 
     
     $sql = "SELECT barcode, descripcion, costo, precioventa, precioespecial1, precioespecial2, estado FROM productos WHERE 1=1";
@@ -112,7 +110,10 @@ if ($is_ajax_filter) {
                     <option value="0" '.($p['estado']==0?'selected':'').'>I</option>
                 </select>
             </td>
-            <td class="text-center"><button class="btn btn-success btn-sm btn-save px-1"><i class="bi bi-save"></i></button></td>
+            <td class="text-center text-nowrap">
+                <button type="button" class="btn btn-info btn-sm btn-round-100 px-1 text-white" title="Subir precios al siguiente 100"><i class="bi bi-calculator"></i></button>
+                <button type="button" class="btn btn-success btn-sm btn-save px-1" title="Guardar cambios"><i class="bi bi-save"></i></button>
+            </td>
         </tr>';
     }
     echo json_encode(['html' => $html]);
@@ -177,7 +178,7 @@ if ($is_ajax_filter) {
                         <th colspan="3" class="h-d">DRINKS</th>
                         <th colspan="2">MK%</th>
                         <th rowspan="2">EST</th>
-                        <th rowspan="2">OK</th>
+                        <th rowspan="2">ACCIONES</th>
                     </tr>
                     <tr>
                         <th class="h-c small">VTA</th> <th class="h-c small">P1</th> <th class="h-c small">P2</th>
@@ -204,6 +205,20 @@ $(document).ready(function() {
     }
     $('#busqueda').on('keyup', function() { clearTimeout(t); t = setTimeout(load, 400); });
     $('#filtro-est').on('change', load);
+
+    // Botón para redondear SIEMPRE HACIA ARRIBA al siguiente 100
+    $(document).on('click', '.btn-round-100', function() {
+        const tr = $(this).closest('tr');
+        tr.find('input[type="number"]').each(function() {
+            let val = parseFloat($(this).val()) || 0;
+            if (val > 0) {
+                // Math.ceil divide entre 100 y multiplica por 100 hacia arriba
+                let redondeado = Math.ceil(val / 100) * 100;
+                $(this).val(redondeado);
+            }
+        });
+        $('#msg').text('Precios ajustados al siguiente 100').css('background', '#0dcaf0').fadeIn().delay(1200).fadeOut();
+    });
 
     $(document).on('click', '.btn-save', function() {
         const tr = $(this).closest('tr');

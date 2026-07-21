@@ -22,35 +22,35 @@ $accionManual = false;
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['reset_0'])) {
-        if ($dbWeb->query("UPDATE categorias SET SegWebT = '0'")) {
-            $msgAccion = "🧹 TODAS las categorías han sido puestas en 0 (Inactivas).";
+        if ($dbWeb->query("UPDATE familias SET SegWebT = '0'")) {
+            $msgAccion = "🧹 TODAS las familias han sido puestas en 0 (Inactivas).";
             $accionManual = true;
         }
     }
     if (isset($_POST['set_1'])) {
-        if ($dbWeb->query("UPDATE categorias SET SegWebT = '1'")) {
-            $msgAccion = "🚀 TODAS las categorías han sido puestas en 1 (Activas).";
+        if ($dbWeb->query("UPDATE familias SET SegWebT = '1'")) {
+            $msgAccion = "🚀 TODAS las familias han sido puestas en 1 (Activas).";
             $accionManual = true;
         }
     }
 }
 
 /* =====================================================
-    2. FUNCIONES DE DATOS
+    2. FUNCIONES DE DATOS (ADAPTADAS A FAMILIAS)
 ===================================================== */
 
 function cargarMapeoCompleto($dbWeb){
     $map = [];
-    $sql = "SELECT cp.sku, c.codcat, c.nombre AS categoria, e.Nombre AS empresa
-            FROM catproductos cp
-            INNER JOIN categorias c ON c.codcat = cp.codcat
-            LEFT JOIN empresas_productoras e ON e.IdEmpresa = c.IdEmpresa";
+    // Relacionamos los productos directamente con la tabla familias mediante familia_id
+    $sql = "SELECT p.barcode, f.id AS familia_id, f.nombre AS familia
+            FROM productos p
+            INNER JOIN familias f ON f.id = p.familia_id
+            WHERE p.barcode IS NOT NULL AND p.barcode != ''";
     $res = $dbWeb->query($sql);
     while($res && $r = $res->fetch_assoc()){
-        $map[trim($r['sku'])] = [
-            'codcat'    => $r['codcat'],
-            'categoria' => trim($r['categoria']),
-            'empresa'   => trim($r['empresa'] ?? 'SIN EMPRESA')
+        $map[trim($r['barcode'])] = [
+            'familia_id' => $r['familia_id'],
+            'familia'    => trim($r['familia'])
         ];
     }
     return $map;
@@ -115,22 +115,22 @@ $resD = obtenerProductosHoy($dbDrinks);
 $topDrinks  = obtenerTop($resD['lista']);
 $globalD = $resD['global'];
 
-// Logica de Actualización Automática (SegWebT)
+// Logica de Actualización Automática (SegWebT en familias)
 $logUpdate = "";
 if (!$accionManual) {
-    $categoriasParaActualizar = [];
+    $familiasParaActualizar = [];
     foreach (array_merge($topCentral, $topDrinks) as $p) {
         if (isset($mapeo[$p['barcode']])) {
-            $categoriasParaActualizar[] = $mapeo[$p['barcode']]['codcat'];
+            $familiasParaActualizar[] = $mapeo[$p['barcode']]['familia_id'];
         }
     }
-    $categoriasParaActualizar = array_unique($categoriasParaActualizar);
+    $familiasParaActualizar = array_unique($familiasParaActualizar);
 
-    if (!empty($categoriasParaActualizar)) {
-        $dbWeb->query("UPDATE categorias SET SegWebT = '0'");
-        $listaIds = "'" . implode("','", $categoriasParaActualizar) . "'";
-        $dbWeb->query("UPDATE categorias SET SegWebT = '1' WHERE CodCat IN ($listaIds)");
-        $logUpdate = "✅ Sincronización automática: " . count($categoriasParaActualizar) . " categorías del Top actualizadas.";
+    if (!empty($familiasParaActualizar)) {
+        $dbWeb->query("UPDATE familias SET SegWebT = '0'");
+        $listaIds = implode(",", $familiasParaActualizar);
+        $dbWeb->query("UPDATE familias SET SegWebT = '1' WHERE id IN ($listaIds)");
+        $logUpdate = "✅ Sincronización automática: " . count($familiasParaActualizar) . " familias del Top actualizadas.";
     }
 }
 ?>
@@ -139,7 +139,7 @@ if (!$accionManual) {
 <html lang="es">
 <head>
     <meta charset="utf-8">
-    <title>Sincronizador Top Ventas</title>
+    <title>Sincronizador Top Ventas por Familia</title>
     <style>
         body{font-family:'Segoe UI', sans-serif; background:#f0f2f5; margin:0; padding:20px; font-size:12px;}
         .container{max-width:1200px; margin:auto; background:#fff; padding:20px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.1);}
@@ -169,12 +169,12 @@ if (!$accionManual) {
 
 <div class="container">
     <div class="header-flex">
-        <h2>🏆 Panel de Control: Top 25</h2>
+        <h2>🏆 Panel de Control: Top 25 por Familia</h2>
         <div class="actions-group">
-            <form method="POST" onsubmit="return confirm('¿Poner TODAS las categorías en 1?')">
+            <form method="POST" onsubmit="return confirm('¿Poner TODAS las familias en 1?')">
                 <button type="submit" name="set_1" class="btn btn-green">🚀 ACTIVAR TODAS (SET 1)</button>
             </form>
-            <form method="POST" onsubmit="return confirm('¿Poner TODAS las categorías en 0?')">
+            <form method="POST" onsubmit="return confirm('¿Poner TODAS las familias en 0?')">
                 <button type="submit" name="reset_0" class="btn btn-red">🗑️ RESETEAR TODAS (SET 0)</button>
             </form>
         </div>
@@ -207,11 +207,11 @@ if (!$accionManual) {
                 </thead>
                 <tbody>
                     <?php foreach($topCentral as $p): 
-                        $info = $mapeo[$p['barcode']] ?? ['categoria'=>'N/A','empresa'=>'N/A'];
+                        $info = $mapeo[$p['barcode']] ?? ['familia'=>'SIN FAMILIA'];
                         $p_perc = ($globalC > 0) ? ($p['total'] / $globalC) * 100 : 0;
                     ?>
                     <tr>
-                        <td><strong><?= $p['producto'] ?></strong><br><small><?= $info['categoria'] ?> | <?= $info['empresa'] ?></small></td>
+                        <td><strong><?= $p['producto'] ?></strong><br><small>📁 <?= $info['familia'] ?></small></td>
                         <td class="cant"><?= $p['cant'] ?></td>
                         <td class="monto">$ <?= money($p['total']) ?></td>
                         <td><span class="part-badge"><?= number_format($p_perc, 1) ?>%</span></td>
@@ -239,11 +239,11 @@ if (!$accionManual) {
                 </thead>
                 <tbody>
                     <?php foreach($topDrinks as $p): 
-                        $info = $mapeo[$p['barcode']] ?? ['categoria'=>'N/A','empresa'=>'N/A'];
+                        $info = $mapeo[$p['barcode']] ?? ['familia'=>'SIN FAMILIA'];
                         $p_perc = ($globalD > 0) ? ($p['total'] / $globalD) * 100 : 0;
                     ?>
                     <tr>
-                        <td><strong><?= $p['producto'] ?></strong><br><small><?= $info['categoria'] ?> | <?= $info['empresa'] ?></small></td>
+                        <td><strong><?= $p['producto'] ?></strong><br><small>📁 <?= $info['familia'] ?></small></td>
                         <td class="cant"><?= $p['cant'] ?></td>
                         <td class="monto">$ <?= money($p['total']) ?></td>
                         <td><span class="part-badge"><?= number_format($p_perc, 1) ?>%</span></td>

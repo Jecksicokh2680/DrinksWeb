@@ -556,6 +556,8 @@ body {
 
                                     <a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">Lo más Vendido por Empresa</a>
 
+                                    <a class="nav-link" href="Estadistica_Familias.php" target="contentFrame">Lo más Vendido por Familia</a>
+
                                 </div>
 
                             </div>
