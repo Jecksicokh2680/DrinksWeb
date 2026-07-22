@@ -278,6 +278,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         *{box-sizing:border-box;}
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
         
+        /* Contenedor adaptado al 100% responsive */
         .card{width:100%; max-width:100%; margin:0; background:#fff; padding:15px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);}
         
         .sede-selector { display:flex; gap:8px; margin-bottom:15px; background:#e9ecef; padding:8px; border-radius:8px; align-items:center; flex-wrap: wrap; }
@@ -300,10 +301,9 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:8px; font-size:18px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
         
-        /* CORRECCIÓN: Ajuste estricto responsive para la tabla de historial */
-        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; display: block; }
-        table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 480px;}
-        th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left; white-space: nowrap;}
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 100%;}
+        th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
@@ -356,12 +356,10 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
 
         <div style="background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef;">
-            <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?>
-                <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
-                    <span>📖 Stock Teórico (Sistema):</span>
-                    <strong style="font-size:16px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
-                </div>
-            <?php endif; ?>
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
+                <span>📖 Stock Teórico (Sistema):</span>
+                <strong style="font-size:16px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
+            </div>
 
             <form method="POST">
                 <input type="hidden" name="CodCat" value="<?= $categoriaSel ?>">
@@ -393,13 +391,9 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <th>Sede</th>
                             <th>Hora</th>
                             <th>Categoría</th>
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <th>Sistemas</th>
-                            <?php endif; ?>
+                            <th>Sistemas</th>
                             <th>Físico</th>
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <th>Dif.</th>
-                            <?php endif; ?>
+                            <th>Dif.</th>
                             <th>Edo.</th>
                             <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
                         </tr>
@@ -416,17 +410,13 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
                             <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
                             
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
-                            <?php endif; ?>
+                            <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
 
                             <td style="font-size:14px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
 
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
-                                <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
-                                    <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
-                                </td>
-                            <?php endif; ?>
+                            <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
+                                <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
+                            </td>
 
                             <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
                             
