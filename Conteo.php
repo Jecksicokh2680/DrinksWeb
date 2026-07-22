@@ -166,6 +166,41 @@ if (isset($_POST['borrar_conteo'])) {
     $mensaje = "🗑️ Conteo anulado correctamente";
 }
 
+// Guardar Conteo
+if (isset($_POST['guardar_conteo'])) {
+    $codCat        = $_POST['CodCat'];
+    $cajas         = floatval($_POST['cajas']);
+    $unidades      = floatval($_POST['unidades']);
+    $unicaja       = floatval($_POST['unicaja']);
+    $stockSistema  = floatval($_POST['stock_sistema']);
+    $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
+    $diferencia    = $stockFisico - $stockSistema;
+    $estadoActivo  = 'A';
+
+    $stmt_check = $mysqli->prepare("
+        SELECT id FROM conteoweb 
+        WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = CURDATE()
+        LIMIT 1
+    ");
+    $stmt_check->bind_param("sss", $codCat, $nitSesion, $estadoActivo);
+    $stmt_check->execute();
+    $res_check = $stmt_check->get_result();
+
+    if ($res_check->num_rows > 0) {
+        $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
+    } else {
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
+        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        
+        if ($stmt->execute()) {
+            $mensaje = "✅ Conteo guardado correctamente";
+            $categoriaSel = "";
+        } else {
+            $mensaje = "⚠️ Error al guardar el conteo: " . htmlspecialchars($mysqli->error);
+        }
+    }
+}
+
 // Cargar Categorías Contadas Hoy
 $contados = [];
 $resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
@@ -176,7 +211,7 @@ while ($r = $resResult->fetch_assoc()) {
     $contados[] = $r['CodCat'];
 }
 
-// Cargar TODAS las Categorías ordenadas por Familia y luego por Nombre (sin filtrar las contadas para poder mostrarlas marcadas)
+// Cargar TODAS las Categorías ordenadas por Familia y excluir las que ya estén en $contados
 $categorias = [];
 $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
                         FROM categorias c 
@@ -184,6 +219,9 @@ $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_
                         WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 
                         ORDER BY f.nombre ASC, c.Nombre ASC");
 while ($r = $res->fetch_assoc()) {
+    if (in_array($r['CodCat'], $contados)) {
+        continue;
+    }
     $familia = !empty($r['nombre_familia']) ? $r['nombre_familia'] : 'OTRAS FAMILIAS';
     $categorias[$familia][$r['CodCat']] = $r;
 }
@@ -221,43 +259,6 @@ if ($categoriaSel && $categoriaEncontrada) {
     }
 }
 
-// Guardar Conteo
-if (isset($_POST['guardar_conteo'])) {
-    $codCat        = $_POST['CodCat'];
-    $cajas         = floatval($_POST['cajas']);
-    $unidades      = floatval($_POST['unidades']);
-    $unicaja       = floatval($_POST['unicaja']);
-    $stockSistema  = floatval($_POST['stock_sistema']);
-    $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
-    $diferencia    = $stockFisico - $stockSistema;
-    $estadoActivo  = 'A';
-
-    $stmt_check = $mysqli->prepare("
-        SELECT id FROM conteoweb 
-        WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = CURDATE()
-        LIMIT 1
-    ");
-    $stmt_check->bind_param("sss", $codCat, $nitSesion, $estadoActivo);
-    $stmt_check->execute();
-    $res_check = $stmt_check->get_result();
-
-    if ($res_check->num_rows > 0) {
-        $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
-    } else {
-        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
-        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
-        
-        if ($stmt->execute()) {
-            $mensaje = "✅ Conteo guardado correctamente";
-            $categoriaSel = "";
-            // Actualizar array de contados tras guardar
-            $contados[] = $codCat;
-        } else {
-            $mensaje = "⚠️ Error al guardar el conteo: " . htmlspecialchars($mysqli->error);
-        }
-    }
-}
-
 // Historial del día
 $conteos = [];
 $resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE TRIM(c.NitEmpresa)=TRIM(?) AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
@@ -274,32 +275,35 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIA | Inventario <?= $nombreSede ?></title>
     <style>
-        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:15px; color:#333;}
-        .card{max-width:800px; margin:auto; background:#fff; padding:25px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.05);}
+        *{box-sizing:border-box;}
+        body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
         
-        .sede-selector { display:flex; gap:10px; margin-bottom:20px; background:#e9ecef; padding:10px; border-radius:10px; align-items:center; flex-wrap: wrap; }
-        .sede-btn { text-decoration:none; padding:8px 15px; border-radius:8px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
+        /* Contenedor adaptado al 100% responsive */
+        .card{width:100%; max-width:100%; margin:0; background:#fff; padding:15px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);}
+        
+        .sede-selector { display:flex; gap:8px; margin-bottom:15px; background:#e9ecef; padding:8px; border-radius:8px; align-items:center; flex-wrap: wrap; }
+        .sede-btn { text-decoration:none; padding:8px 12px; border-radius:6px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
-        .btn-refresh { text-decoration:none; padding:8px; border-radius:8px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:16px; margin-left: auto; }
+        .btn-refresh { text-decoration:none; padding:8px 12px; border-radius:6px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:15px; margin-left: auto; }
         
-        .select-categoria{ width:100%; padding:15px; font-size:18px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
+        .select-categoria{ width:100%; padding:14px; font-size:16px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
         
-        .grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;}
+        .grid{display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;}
         @media (max-width: 600px) {
             .grid { grid-template-columns: 1fr; }
-            .card { padding: 15px; }
-            input[type="number"] { font-size: 24px !important; }
+            .card { padding: 10px; }
+            input[type="number"] { font-size: 22px !important; }
         }
 
-        label{display:block; font-weight:bold; margin-bottom:5px; font-size: 14px;}
-        input[type="number"] { width:100%; padding:15px; font-size:28px; border-radius:10px; border:2px solid #eee; text-align:center; box-sizing:border-box;}
+        label{display:block; font-weight:bold; margin-bottom:5px; font-size: 13px;}
+        input[type="number"] { width:100%; padding:12px; font-size:24px; border-radius:8px; border:2px solid #eee; text-align:center;}
         
-        .btn-save { width:100%; background:#28a745; color:white; padding:18px; border:none; border-radius:10px; font-size:20px; cursor:pointer; font-weight:bold;}
-        .btn-info { background:#17a2b8; color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
+        .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:8px; font-size:18px; cursor:pointer; font-weight:bold;}
+        .btn-info { background:#17a2b8; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
         
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table{width:100%; border-collapse:collapse; margin-top:20px; min-width: 600px;}
-        th,td{padding:10px; border-bottom:1px solid #f0f0f0; text-align:left;}
+        table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 100%;}
+        th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
@@ -310,8 +314,8 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .bg-drinks { background:#e67e22; }
         
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
-        .modal-content { background:#fff; margin:5% auto; padding:25px; width:95%; max-width:700px; border-radius:15px; max-height:85vh; overflow-y:auto; position:relative;}
-        .close-modal { position:absolute; right:20px; top:15px; font-size:30px; cursor:pointer; color:#999; }
+        .modal-content { background:#fff; margin:5% auto; padding:20px; width:95%; max-width:800px; border-radius:12px; max-height:85vh; overflow-y:auto; position:relative;}
+        .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#999; }
     </style>
 </head>
 <body>
@@ -324,10 +328,10 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄</button>
     </div>
 
-    <h3 style="margin:0 0 20px 0;">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
+    <h3 style="margin:0 0 15px 0;">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
     
     <?php if($mensaje): ?>
-        <div style="background:#d4edda; color:#155724; padding:15px; border-radius:10px; margin-bottom:20px; border-left:5px solid #28a745;">
+        <div style="background:#d4edda; color:#155724; padding:12px; border-radius:8px; margin-bottom:15px; border-left:5px solid #28a745; font-size: 14px;">
             <?= $mensaje ?>
         </div>
     <?php endif; ?>
@@ -338,12 +342,9 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
             <option value="">-- Buscar Categoría --</option>
             <?php foreach($categorias as $nombreFamilia => $listaCategorias): ?>
                 <optgroup label="<?= htmlspecialchars($nombreFamilia) ?>">
-                    <?php foreach($listaCategorias as $c): 
-                        $esContado = in_array($c['CodCat'], $contados);
-                        $textoOp = $c['CodCat'].' - '.$c['Nombre'] . ($esContado ? ' [CONTADO ✔️]' : '');
-                    ?>
-                    <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $esContado ? 'disabled style="background:#e9ecef; color:#888;"' : '' ?>>
-                        <?= $textoOp ?>
+                    <?php foreach($listaCategorias as $c): ?>
+                    <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?>>
+                        <?= $c['CodCat'].' - '.$c['Nombre'] ?>
                     </option>
                     <?php endforeach; ?>
                 </optgroup>
@@ -354,11 +355,11 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php if($categoriaSel): ?>
         <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
 
-        <div style="background:#f8f9fa; padding:25px; border-radius:15px; border:1px solid #e9ecef;">
+        <div style="background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef;">
             <?php if($AUT_VERSTOCK==='SI' || $AUT_CORREGIR==='SI'): ?>
-                <div style="display:flex; justify-content:space-between; margin-bottom:20px; background:#fff; padding:15px; border-radius:10px; border:1px solid #eee;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
                     <span>📖 Stock Teórico (Sistema):</span>
-                    <strong style="font-size:18px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
+                    <strong style="font-size:16px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
                 </div>
             <?php endif; ?>
 
@@ -383,8 +384,8 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php endif; ?>
 
     <?php if($conteos): ?>
-        <div style="margin-top:40px;">
-            <h4 style="margin-bottom:15px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
+        <div style="margin-top:30px;">
+            <h4 style="margin-bottom:12px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
             <div class="table-responsive">
                 <table>
                     <thead>
@@ -419,7 +420,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
                             <?php endif; ?>
 
-                            <td style="font-size:15px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
+                            <td style="font-size:14px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
 
                             <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
                                 <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
@@ -490,23 +491,19 @@ function actualizarCategoriasContadas() {
             const esContado = contados.includes(cod) || contados.includes(String(parseInt(cod)));
             
             if (esContado) {
-                option.disabled = true;
-                option.style.background = '#e9ecef';
-                option.style.color = '#888';
-                if (!option.text.includes('[CONTADO')) {
-                    option.text += ' [CONTADO ✔️]';
+                if (valorActual === cod) {
+                    select.value = "";
+                    document.getElementById('form-main').submit();
                 }
-            } else {
-                option.disabled = false;
-                option.style.background = '';
-                option.style.color = '';
-                option.text = option.text.replace(' [CONTADO ✔️]', '');
+                option.remove();
             }
         });
-        
-        if (contados.includes(valorActual) || contados.includes(String(parseInt(valorActual)))) {
-            select.value = "";
-        }
+
+        document.querySelectorAll('optgroup').forEach(group => {
+            if (group.children.length === 0) {
+                group.remove();
+            }
+        });
     }).catch(err => console.error("Error actualizando categorías:", err));
 }
 
