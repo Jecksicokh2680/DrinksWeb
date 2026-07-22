@@ -19,6 +19,25 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
             INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA 
             INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO 
             INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR 
+            INNER JOIN TERCEROS CLI ON CLI.IDTERCERO=FACTURAS.IDTOSCLI_ESTA_OMITIDO_O_SIMILAR (O CLI.IDTERCERO=FACTURAS.IDTERCERO)
+            WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura 
+            UNION ALL 
+            SELECT '$nombreSucursal' AS SUCURSAL, PEDIDOS.FECHA, PEDIDOS.HORA, T2.NOMBRES AS FACTURADOR, CLI.nombres AS CLIENTE, PEDIDOS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETPEDIDOS.CANTIDAD, DETPEDIDOS.VALORPROD 
+            FROM PEDIDOS 
+            INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO=DETPEDIDOS.IDPEDIDO 
+            INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETPEDIDOS.IDPRODUCTO 
+            INNER JOIN USUVENDEDOR V ON V.IDUSUARIO=PEDIDOS.IDUSUARIO 
+            INNER JOIN TERCEROS T2 ON T2.IDTERCERO=V.IDTERCERO 
+            INNER JOIN TERCEROS CLI ON CLI.IDTERCERO=PEDIDOS.IDTERCERO
+            WHERE PEDIDOS.ESTADO='0' AND PEDIDOS.FECHA BETWEEN ? AND ? $condPedido 
+            ORDER BY FECHA DESC, HORA DESC, DOCUMENTO DESC";
+
+    // Nota: Se ajusta la consulta conservando estrictamente la estructura original del código base proporcionado
+    $sql = "SELECT '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR, CLI.nombres AS CLIENTE, FACTURAS.NUMERO AS DOCUMENTO, PRODUCTOS.Barcode, PRODUCTOS.Descripcion AS PRODUCTO, DETFACTURAS.CANTIDAD, DETFACTURAS.VALORPROD 
+            FROM FACTURAS 
+            INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA=FACTURAS.IDFACTURA 
+            INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO=DETFACTURAS.IDPRODUCTO 
+            INNER JOIN TERCEROS T1 ON T1.IDTERCERO=FACTURAS.IDVENDEDOR 
             INNER JOIN TERCEROS CLI ON CLI.IDTERCERO=FACTURAS.IDTERCERO
             WHERE FACTURAS.ESTADO='0' AND FACTURAS.FECHA BETWEEN ? AND ? $condFactura 
             UNION ALL 
@@ -38,13 +57,37 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
+// Función auxiliar para obtener únicamente los vendedores que han facturado u operado hoy
+function obtenerVendedoresHoy($cnx, $f_hoy) {
+    $vendedores = [];
+    if (!$cnx || $cnx->connect_error) return $vendedores;
+    $res = $cnx->query("SELECT DISTINCT T.NOMBRES FROM FACTURAS F INNER JOIN TERCEROS T ON T.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$f_hoy' AND T.NOMBRES IS NOT NULL AND T.NOMBRES != '' UNION SELECT DISTINCT T2.NOMBRES FROM PEDIDOS P INNER JOIN USUVENDEDOR V ON V.IDUSUARIO = P.IDUSUARIO INNER JOIN TERCEROS T2 ON T2.IDTERCERO = V.IDTERCERO WHERE P.FECHA = '$f_hoy' AND T2.NOMBRES IS NOT NULL AND T2.NOMBRES != '' ORDER BY NOMBRES ASC");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            if (!empty($row['NOMBRES'])) {
+                $vendedores[] = $row['NOMBRES'];
+            }
+        }
+    }
+    return $vendedores;
+}
+
 $f_ini = str_replace('-', '', $_GET['fecha_ini'] ?? date('Y-m-d'));
 $f_fin = str_replace('-', '', $_GET['fecha_fin'] ?? date('Y-m-d'));
 $fSuc = $_GET['sucursal'] ?? ''; 
+$fVend = $_GET['facturador'] ?? '';
+$f_hoy = date('Ymd'); // Formato YYYYMMDD para comparar con las fechas del sistema
+
+// Obtener lista consolidada de vendedores que han facturado hoy para el select
+$listaVendedores = [];
+if (isset($mysqliCentral)) $listaVendedores = array_merge($listaVendedores, obtenerVendedoresHoy($mysqliCentral, $f_hoy));
+if (isset($mysqliDrinks)) $listaVendedores = array_merge($listaVendedores, obtenerVendedoresHoy($mysqliDrinks, $f_hoy));
+$listaVendedores = array_unique($listaVendedores);
+sort($listaVendedores);
 
 $rows = [];
-if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
-if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $_GET['facturador'] ?? ''));
+if ($fSuc == '' || $fSuc == 'CENTRAL') $rows = array_merge($rows, obtenerDatos($mysqliCentral, 'CENTRAL', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $fVend));
+if ($fSuc == '' || $fSuc == 'DRINKS') $rows = array_merge($rows, obtenerDatos($mysqliDrinks, 'DRINKS', $f_ini, $f_fin, $_GET['filtro_prod'] ?? '', $fVend));
 
 $auditados = [];
 $estados_doc = [];
@@ -114,6 +157,12 @@ unset($p);
             <option value="">Todas</option>
             <option value="CENTRAL" <?= $fSuc=='CENTRAL'?'selected':'' ?>>CENTRAL</option>
             <option value="DRINKS" <?= $fSuc=='DRINKS'?'selected':'' ?>>DRINKS</option>
+        </select>
+        <select name="facturador">
+            <option value="">Vendedores que han facturado hoy</option>
+            <?php foreach($listaVendedores as $nombreVendedor): ?>
+                <option value="<?= htmlspecialchars($nombreVendedor) ?>" <?= $fVend == $nombreVendedor ? 'selected' : '' ?>><?= htmlspecialchars($nombreVendedor) ?></option>
+            <?php endforeach; ?>
         </select>
         <button type="submit">Filtrar</button>
     </form>
