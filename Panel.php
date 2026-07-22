@@ -292,6 +292,7 @@ body {
                             <div id="adminInv" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
+                                    <a class="nav-link" href="Activacion_categorias_conteo.php" target="contentFrame">Activar Categorias Conteo</a>
                                     <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
                                     <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
                                     <a class="nav-link" href="ajustesdeInventario.php" target="contentFrame">Ajustes de Inventario</a>

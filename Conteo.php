@@ -19,7 +19,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'obtener_contados') {
     $nit = $_POST['nit'] ?? '';
     $contados = [];
     if ($nit) {
-        // Se ajusta para comparar ignorando posibles espacios o variaciones en el NIT
         $stmt = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
         $stmt->bind_param("s", $nit);
         $stmt->execute();
@@ -155,7 +154,7 @@ if (isset($_POST['borrar_conteo'])) {
     $mensaje = "🗑️ Conteo anulado correctamente";
 }
 
-// Cargar Categorías Contadas Hoy (Validación robusta con TRIM)
+// Cargar Categorías Contadas Hoy
 $contados = [];
 $resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
 $resCont->bind_param("s", $nitSesion);
@@ -165,23 +164,36 @@ while ($r = $resResult->fetch_assoc()) {
     $contados[] = $r['CodCat'];
 }
 
-// Cargar Todas las Categorías Disponibles con su Familia (Excluyendo las ya contadas)
+// Cargar Categorías ordenadas por Familia y luego por Nombre
 $categorias = [];
 $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
-                       FROM categorias c 
-                       LEFT JOIN familias f ON c.Tipo = f.id 
-                       WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 ORDER BY c.CodCat");
+                        FROM categorias c 
+                        LEFT JOIN familias f ON c.Tipo = f.id 
+                        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 
+                        ORDER BY f.nombre ASC, c.Nombre ASC");
 while ($r = $res->fetch_assoc()) {
     if (!in_array($r['CodCat'], $contados)) {
-        $categorias[$r['CodCat']] = $r;
+        $familia = !empty($r['nombre_familia']) ? $r['nombre_familia'] : 'OTRAS FAMILIAS';
+        $categorias[$familia][$r['CodCat']] = $r;
     }
 }
 
 // Cálculo Stock Sistema
 $totalCategoria = 0;
 $unicajaSel = 0;
-if ($categoriaSel && isset($categorias[$categoriaSel])) {
-    $unicajaSel = $categorias[$categoriaSel]['unicaja'];
+$categoriaEncontrada = null;
+
+if ($categoriaSel) {
+    foreach ($categorias as $fam => $cats) {
+        if (isset($cats[$categoriaSel])) {
+            $categoriaEncontrada = $cats[$categoriaSel];
+            break;
+        }
+    }
+}
+
+if ($categoriaSel && $categoriaEncontrada) {
+    $unicajaSel = $categoriaEncontrada['unicaja'];
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $categoriaSel);
     $stmt->execute();
@@ -199,7 +211,7 @@ if ($categoriaSel && isset($categorias[$categoriaSel])) {
     }
 }
 
-// Guardar Conteo con Validación Duplicada limitada al día de hoy
+// Guardar Conteo
 if (isset($_POST['guardar_conteo'])) {
     $codCat        = $_POST['CodCat'];
     $cajas         = floatval($_POST['cajas']);
@@ -312,10 +324,14 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <label>Seleccionar Categoría:</label>
         <select name="categoria" id="select-categoria" class="select-categoria" onchange="this.form.submit()">
             <option value="">-- Buscar Categoría --</option>
-            <?php foreach($categorias as $c): ?>
-            <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?>>
-                <?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $c['nombre_familia'] ? " (Fam: ".$c['nombre_familia'].")" : "" ?>
-            </option>
+            <?php foreach($categorias as $nombreFamilia => $listaCategorias): ?>
+                <optgroup label="<?= htmlspecialchars($nombreFamilia) ?>">
+                    <?php foreach($listaCategorias as $c): ?>
+                    <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?>>
+                        <?= $c['CodCat'].' - '.$c['Nombre'] ?>
+                    </option>
+                    <?php endforeach; ?>
+                </optgroup>
             <?php endforeach; ?>
         </select>
     </form>
@@ -440,7 +456,6 @@ function verDetalleProductos(codCat) {
 function cerrarModal() { document.getElementById('modalProductos').style.display = 'none'; }
 window.onclick = e => { if (e.target.className === 'modal') cerrarModal(); }
 
-// Actualización dinámica eliminando completamente del select las categorías contadas
 function actualizarCategoriasContadas() {
     const formData = new FormData();
     formData.append('action', 'obtener_contados');
@@ -457,7 +472,6 @@ function actualizarCategoriasContadas() {
         Array.from(select.options).forEach(option => {
             if (option.value === "") return;
             const cod = option.value;
-            // Verificación limpia de ceros a la izquierda (ej: '0000' vs '0')
             if (contados.includes(cod) || contados.includes(String(parseInt(cod)))) {
                 option.remove();
             }
