@@ -5,7 +5,6 @@ error_reporting(E_ALL);
 
 session_start();
 
-
 $session_timeout   = 3600;
 $inactive_timeout  = 1800;
 
@@ -23,7 +22,7 @@ if ($cedula=="" || $nit=="" || $sucursal=="" || $pass=="") {
 }
 
 $stmt = $mysqli->prepare("
-    SELECT u.PasswordHash, u.Bloqueado, u.DebeCambiarClave,
+    SELECT u.PasswordHash, u.Bloqueado, u.DebeCambiarClave, u.Estado AS UsuarioActivo,
            e.Estado AS EmpresaActiva,
            s.Estado AS SucursalActiva
     FROM usuarios_Seguridad u
@@ -40,6 +39,12 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 if ($row = $result->fetch_assoc()) {
+
+    // Validar si el estado del usuario es distinto de 1
+    if ($row['UsuarioActivo'] != 1) {
+        header("Location: login.php?msg=Usuario inactivo");
+        exit;
+    }
 
     if ($row['EmpresaActiva'] != 1) {
         header("Location: login.php?msg=Empresa inactiva");

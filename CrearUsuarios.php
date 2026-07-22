@@ -8,6 +8,7 @@ session_start();
 ============================================================ */
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
+    
     if ($_GET['ajax'] === 'usuarios') {
         $term = "%" . ($_GET['term'] ?? '') . "%";
         $stmt = $mysqliPos->prepare("SELECT nit, nombres, apellidos FROM terceros WHERE inactivo = 0 AND (nit LIKE ? OR nombres LIKE ? OR apellidos LIKE ?) LIMIT 10");
@@ -21,12 +22,43 @@ if (isset($_GET['ajax'])) {
         echo json_encode($data);
         exit;
     }
+    
     if ($_GET['ajax'] === 'sucursales') {
         $nit = $_GET['nit'] ?? '';
         $stmt = $mysqli->prepare("SELECT NroSucursal, Direccion FROM empresa_sucursal WHERE Nit = ? AND Estado = 1");
         $stmt->bind_param("s", $nit);
         $stmt->execute();
         echo json_encode($stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+        exit;
+    }
+
+    // ACTUALIZAR ESTADO SIMULTÁNEAMENTE EN 'terceros' Y 'usuarios_Seguridad'
+    if ($_GET['ajax'] === 'cambiar_estado') {
+        $cedula   = $_POST['CedulaNit'] ?? '';
+        $empresa  = $_POST['NitEmpresa'] ?? '';
+        $sucursal = $_POST['NroSucursal'] ?? '';
+        $estado   = isset($_POST['Estado']) ? intval($_POST['Estado']) : 0; // 1 = Activo, 0 = Inactivo
+
+        // 1. Actualizar tabla 'terceros' (Base Central - $mysqliPos)
+        // Si el switch está Activo (1), inactivo = 0. Si está Inactivo (0), inactivo = 1.
+        $inactivoVal = ($estado === 1) ? 0 : 1;
+        $stmtTerceros = $mysqliPos->prepare("UPDATE terceros SET inactivo = ? WHERE nit = ?");
+        $stmtTerceros->bind_param("is", $inactivoVal, $cedula);
+        $resTerceros = $stmtTerceros->execute();
+        $stmtTerceros->close();
+
+        // 2. Actualizar tabla 'usuarios_Seguridad' (Base Local - $mysqli)
+        // Usamos la llave primaria compuesta: CedulaNit, NitEmpresa, NroSucursal
+        $stmtSeguridad = $mysqli->prepare("UPDATE usuarios_Seguridad SET Estado = ? WHERE CedulaNit = ? AND NitEmpresa = ? AND NroSucursal = ?");
+        $stmtSeguridad->bind_param("isss", $estado, $cedula, $empresa, $sucursal);
+        $resSeguridad = $stmtSeguridad->execute();
+        $stmtSeguridad->close();
+
+        if ($resTerceros && $resSeguridad) {
+            echo json_encode(['success' => true, 'message' => 'Estados actualizados correctamente']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Error al actualizar los estados en las bases de datos']);
+        }
         exit;
     }
 }
@@ -59,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarUsuario'])) {
                 $stmt = $mysqli->prepare("UPDATE usuarios_Seguridad SET PasswordHash=? WHERE CedulaNit=? AND NitEmpresa=? AND NroSucursal=?");
                 $stmt->bind_param("ssss", $hash, $CedulaNit, $NitEmpresa, $NroSucursal);
             } else {
-                // Si no hay clave nueva, solo confirmamos que ya existe (o podrías actualizar el Estado)
                 $msg = "ℹ El acceso ya existe para este usuario en esta sucursal.";
                 $stmt = null;
             }
@@ -69,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarUsuario'])) {
                 $stmt->close();
             }
         } else {
-            // CREAR NUEVO ACCESO (Permite misma cédula en otra empresa o sucursal)
+            // CREAR NUEVO ACCESO
             if ($Password === '') {
                 $msg = "⚠ Debe asignar contraseña para este nuevo acceso.";
             } else {
@@ -126,7 +157,18 @@ foreach ($usuariosLocal as $k => $u) {
                     <td><?= $u['CedulaNit'] ?></td>
                     <td><?= $u['NombreCompleto'] ?></td>
                     <td><?= $u['NombreComercial'] ?> (S-<?= $u['NroSucursal'] ?>)</td>
-                    <td><span class="badge <?= $u['Estado']==1?'bg-success':'bg-danger' ?>"><?= $u['Estado']==1?'Activo':'Inactivo' ?></span></td>
+                    <td>
+                        <!-- SWITCH DE BOOTSTRAP -->
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" 
+                                id="switch_<?= $u['CedulaNit'] ?>_<?= $u['NitEmpresa'] ?>_<?= $u['NroSucursal'] ?>"
+                                <?= $u['Estado'] == 1 ? 'checked' : '' ?>
+                                onchange="cambiarEstado('<?= $u['CedulaNit'] ?>', '<?= $u['NitEmpresa'] ?>', '<?= $u['NroSucursal'] ?>', this)">
+                            <label class="form-check-label small" for="switch_<?= $u['CedulaNit'] ?>_<?= $u['NitEmpresa'] ?>_<?= $u['NroSucursal'] ?>">
+                                <?= $u['Estado'] == 1 ? 'Activo' : 'Inactivo' ?>
+                            </label>
+                        </div>
+                    </td>
                     <td><button class="btn btn-outline-primary btn-sm" onclick="editarUser('<?= $u['CedulaNit'] ?>','<?= $u['NitEmpresa'] ?>','<?= $u['NroSucursal'] ?>')">Editar</button></td>
                 </tr>
                 <?php endforeach; ?>
@@ -179,6 +221,7 @@ function buscarEnCentral(val){
         ul.style.display='block';
     });
 }
+
 function cargarSucursales(nit, preseleccionar = ''){
     fetch('?ajax=sucursales&nit='+nit).then(r=>r.json()).then(d=>{
         let s=document.getElementById('NroSucursalModal');
@@ -189,6 +232,7 @@ function cargarSucursales(nit, preseleccionar = ''){
         });
     });
 }
+
 function editarUser(nit, nitEmpresa, sucursal){
     document.getElementById('busquedaTercero').value = nit;
     document.getElementById('CedulaNitModal').value = nit;
@@ -196,6 +240,36 @@ function editarUser(nit, nitEmpresa, sucursal){
     cargarSucursales(nitEmpresa, sucursal);
     document.getElementById('terceroSeleccionado').innerText = 'Editando acceso: ' + nit;
     new bootstrap.Modal(document.getElementById('modalUsuario')).show();
+}
+
+// Función AJAX para actualizar simultáneamente ambas bases de datos
+function cambiarEstado(nit, nitEmpresa, sucursal, element) {
+    let nuevoEstado = element.checked ? 1 : 0; // 1 = Activo, 0 = Inactivo
+    let label = element.nextElementSibling;
+    
+    let formData = new URLSearchParams();
+    formData.append('CedulaNit', nit);
+    formData.append('NitEmpresa', nitEmpresa);
+    formData.append('NroSucursal', sucursal);
+    formData.append('Estado', nuevoEstado);
+
+    fetch('?ajax=cambiar_estado', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if(data.success) {
+            label.innerText = nuevoEstado === 1 ? 'Activo' : 'Inactivo';
+        } else {
+            alert('Error: ' + data.message);
+            element.checked = !element.checked; // Revertir visualmente si hay error
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        element.checked = !element.checked; // Revertir visualmente si hay fallo de red
+    });
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
