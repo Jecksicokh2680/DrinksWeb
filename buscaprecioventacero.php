@@ -10,7 +10,7 @@ $alertas_precios_cero = [];
 if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
     $sql_central = "SELECT codigo, barcode, descripcion, 'Central' AS origen 
                     FROM productos 
-                    WHERE estado = 1 AND precioventa = 0.00";
+                    WHERE estado = 1 AND precioventa <= 50.00";
     
     if ($res_central = $mysqliCentral->query($sql_central)) {
         while ($row = $res_central->fetch_assoc()) {
@@ -23,7 +23,7 @@ if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
 if (isset($mysqliDrinks) && !$mysqliDrinks->connect_error) {
     $sql_drinks = "SELECT codigo, barcode, descripcion, 'Drinks' AS origen 
                    FROM productos 
-                   WHERE estado = 1 AND precioventa = 0.00";
+                   WHERE estado = 1 AND precioventa <= 50.00";
     
     if ($res_drinks = $mysqliDrinks->query($sql_drinks)) {
         while ($row = $res_drinks->fetch_assoc()) {
