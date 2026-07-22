@@ -8,6 +8,20 @@ require_once("Conexion.php");    // ADM ($mysqli)
 
 session_start();
 
+// Forzar zona horaria de Bogotá en PHP
+date_default_timezone_set('America/Bogota');
+
+// Forzar zona horaria de Bogotá (-05:00) en las conexiones MySQL
+if (isset($mysqli) && $mysqli instanceof mysqli) {
+    $mysqli->query("SET time_zone = '-05:00'");
+}
+if (isset($mysqliCentral) && $mysqliCentral instanceof mysqli) {
+    $mysqliCentral->query("SET time_zone = '-05:00'");
+}
+if (isset($mysqliDrinks) && $mysqliDrinks instanceof mysqli) {
+    $mysqliDrinks->query("SET time_zone = '-05:00'");
+}
+
 // Definición de las sedes
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
@@ -111,8 +125,6 @@ if (isset($_GET['cambiar_nit'])) {
 if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida. Por favor inicie sesión.");
 }
-
-date_default_timezone_set('America/Bogota');
 
 $usuario    = $_SESSION['Usuario'] ?? 'SISTEMA';
 $nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL; 
@@ -234,6 +246,8 @@ if (isset($_POST['guardar_conteo'])) {
     if ($res_check->num_rows > 0) {
         $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
     } else {
+        // Al insertar, si la columna fecha_conteo tiene por defecto CURRENT_TIMESTAMP, 
+        // ahora tomará automáticamente la hora de Bogotá configurada arriba.
         $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
         $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
         
