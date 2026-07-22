@@ -176,7 +176,7 @@ while ($r = $resResult->fetch_assoc()) {
     $contados[] = $r['CodCat'];
 }
 
-// Cargar Categorías ordenadas por Familia y luego por Nombre
+// Cargar TODAS las Categorías ordenadas por Familia y luego por Nombre (sin filtrar las contadas para poder mostrarlas marcadas)
 $categorias = [];
 $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
                         FROM categorias c 
@@ -184,10 +184,8 @@ $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_
                         WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 
                         ORDER BY f.nombre ASC, c.Nombre ASC");
 while ($r = $res->fetch_assoc()) {
-    if (!in_array($r['CodCat'], $contados)) {
-        $familia = !empty($r['nombre_familia']) ? $r['nombre_familia'] : 'OTRAS FAMILIAS';
-        $categorias[$familia][$r['CodCat']] = $r;
-    }
+    $familia = !empty($r['nombre_familia']) ? $r['nombre_familia'] : 'OTRAS FAMILIAS';
+    $categorias[$familia][$r['CodCat']] = $r;
 }
 
 // Cálculo Stock Sistema
@@ -246,14 +244,14 @@ if (isset($_POST['guardar_conteo'])) {
     if ($res_check->num_rows > 0) {
         $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
     } else {
-        // Al insertar, si la columna fecha_conteo tiene por defecto CURRENT_TIMESTAMP, 
-        // ahora tomará automáticamente la hora de Bogotá configurada arriba.
         $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
         $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
         
         if ($stmt->execute()) {
             $mensaje = "✅ Conteo guardado correctamente";
             $categoriaSel = "";
+            // Actualizar array de contados tras guardar
+            $contados[] = $codCat;
         } else {
             $mensaje = "⚠️ Error al guardar el conteo: " . htmlspecialchars($mysqli->error);
         }
@@ -340,9 +338,12 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
             <option value="">-- Buscar Categoría --</option>
             <?php foreach($categorias as $nombreFamilia => $listaCategorias): ?>
                 <optgroup label="<?= htmlspecialchars($nombreFamilia) ?>">
-                    <?php foreach($listaCategorias as $c): ?>
-                    <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?>>
-                        <?= $c['CodCat'].' - '.$c['Nombre'] ?>
+                    <?php foreach($listaCategorias as $c): 
+                        $esContado = in_array($c['CodCat'], $contados);
+                        $textoOp = $c['CodCat'].' - '.$c['Nombre'] . ($esContado ? ' [CONTADO ✔️]' : '');
+                    ?>
+                    <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $esContado ? 'disabled style="background:#e9ecef; color:#888;"' : '' ?>>
+                        <?= $textoOp ?>
                     </option>
                     <?php endforeach; ?>
                 </optgroup>
@@ -486,8 +487,20 @@ function actualizarCategoriasContadas() {
         Array.from(select.options).forEach(option => {
             if (option.value === "") return;
             const cod = option.value;
-            if (contados.includes(cod) || contados.includes(String(parseInt(cod)))) {
-                option.remove();
+            const esContado = contados.includes(cod) || contados.includes(String(parseInt(cod)));
+            
+            if (esContado) {
+                option.disabled = true;
+                option.style.background = '#e9ecef';
+                option.style.color = '#888';
+                if (!option.text.includes('[CONTADO')) {
+                    option.text += ' [CONTADO ✔️]';
+                }
+            } else {
+                option.disabled = false;
+                option.style.background = '';
+                option.style.color = '';
+                option.text = option.text.replace(' [CONTADO ✔️]', '');
             }
         });
         
