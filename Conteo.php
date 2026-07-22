@@ -13,6 +13,27 @@ define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 
 /* ============================================
+   LÓGICA AJAX: CONSULTAR CATEGORÍAS CONTADAS HOY (DINÁMICO)
+============================================ */
+if (isset($_POST['action']) && $_POST['action'] === 'obtener_contados') {
+    $nit = $_POST['nit'] ?? '';
+    $contados = [];
+    if ($nit) {
+        // Se ajusta para comparar ignorando posibles espacios o variaciones en el NIT
+        $stmt = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
+        $stmt->bind_param("s", $nit);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($r = $res->fetch_assoc()) {
+            $contados[] = $r['CodCat'];
+        }
+    }
+    header('Content-Type: application/json');
+    echo json_encode($contados);
+    exit;
+}
+
+/* ============================================
    LÓGICA AJAX: CONSULTAR PRODUCTOS POR CATEGORÍA
 ============================================ */
 if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
@@ -58,8 +79,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
         
         while($p = $resP->fetch_assoc()){
             $html .= "<tr>
-                        <td style='padding:8px; border:1px solid #ddd;'>{$p['barcode']}</td>
-                        <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>";
+                    <td style='padding:8px; border:1px solid #ddd;'>{$p['barcode']}</td>
+                    <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>";
             
             if ($esAdminStock) {
                 $html .= "<td style='padding:8px; border:1px solid #ddd;' align='right'><strong>".number_format($p['stock'],2)."</strong></td>";
@@ -134,21 +155,27 @@ if (isset($_POST['borrar_conteo'])) {
     $mensaje = "🗑️ Conteo anulado correctamente";
 }
 
-// Cargar Categorías Contadas Hoy
+// Cargar Categorías Contadas Hoy (Validación robusta con TRIM)
 $contados = [];
-$resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND NitEmpresa=?");
+$resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
 $resCont->bind_param("s", $nitSesion);
 $resCont->execute();
 $resResult = $resCont->get_result();
-while ($r = $resResult->fetch_assoc()) $contados[] = $r['CodCat'];
+while ($r = $resResult->fetch_assoc()) {
+    $contados[] = $r['CodCat'];
+}
 
-// Cargar Todas las Categorías Disponibles con su Familia
+// Cargar Todas las Categorías Disponibles con su Familia (Excluyendo las ya contadas)
 $categorias = [];
 $res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
                        FROM categorias c 
                        LEFT JOIN familias f ON c.Tipo = f.id 
                        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 ORDER BY c.CodCat");
-while ($r = $res->fetch_assoc()) $categorias[$r['CodCat']] = $r;
+while ($r = $res->fetch_assoc()) {
+    if (!in_array($r['CodCat'], $contados)) {
+        $categorias[$r['CodCat']] = $r;
+    }
+}
 
 // Cálculo Stock Sistema
 $totalCategoria = 0;
@@ -172,7 +199,7 @@ if ($categoriaSel && isset($categorias[$categoriaSel])) {
     }
 }
 
-// Guardar Conteo
+// Guardar Conteo con Validación Duplicada limitada al día de hoy
 if (isset($_POST['guardar_conteo'])) {
     $codCat        = $_POST['CodCat'];
     $cajas         = floatval($_POST['cajas']);
@@ -181,18 +208,35 @@ if (isset($_POST['guardar_conteo'])) {
     $stockSistema  = floatval($_POST['stock_sistema']);
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
     $diferencia    = $stockFisico - $stockSistema;
+    $estadoActivo  = 'A';
 
-    $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
-    $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
-    if ($stmt->execute()) {
-        $mensaje = "✅ Conteo guardado correctamente";
-        $categoriaSel = "";
+    $stmt_check = $mysqli->prepare("
+        SELECT id FROM conteoweb 
+        WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = CURDATE()
+        LIMIT 1
+    ");
+    $stmt_check->bind_param("sss", $codCat, $nitSesion, $estadoActivo);
+    $stmt_check->execute();
+    $res_check = $stmt_check->get_result();
+
+    if ($res_check->num_rows > 0) {
+        $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
+    } else {
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
+        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        
+        if ($stmt->execute()) {
+            $mensaje = "✅ Conteo guardado correctamente";
+            $categoriaSel = "";
+        } else {
+            $mensaje = "⚠️ Error al guardar el conteo: " . htmlspecialchars($mysqli->error);
+        }
     }
 }
 
 // Historial del día
 $conteos = [];
-$resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE c.NitEmpresa=? AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
+$resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE TRIM(c.NitEmpresa)=TRIM(?) AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
 $resH->bind_param("s", $nitSesion);
 $resH->execute();
 $resultConteos = $resH->get_result();
@@ -266,13 +310,11 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 
     <form method="POST" id="form-main">
         <label>Seleccionar Categoría:</label>
-        <select name="categoria" class="select-categoria" onchange="this.form.submit()">
+        <select name="categoria" id="select-categoria" class="select-categoria" onchange="this.form.submit()">
             <option value="">-- Buscar Categoría --</option>
-            <?php foreach($categorias as $c): 
-                $ya = in_array($c['CodCat'], $contados);
-            ?>
-            <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?> <?= $ya?'disabled':'' ?>>
-                <?= $c['CodCat'].' - '.$c['Nombre'] ?> <?= $c['nombre_familia'] ? " (Fam: ".$c['nombre_familia'].")" : "" ?><?= $ya?' (CONTEO REALIZADO)':'' ?>
+            <?php foreach($categorias as $c): ?>
+            <option value="<?= $c['CodCat'] ?>" <?= $categoriaSel==$c['CodCat']?'selected':'' ?>>
+                <?= $c['CodCat'].' - '.$c['Nombre'] ?><?= $c['nombre_familia'] ? " (Fam: ".$c['nombre_familia'].")" : "" ?>
             </option>
             <?php endforeach; ?>
         </select>
@@ -397,6 +439,37 @@ function verDetalleProductos(codCat) {
 }
 function cerrarModal() { document.getElementById('modalProductos').style.display = 'none'; }
 window.onclick = e => { if (e.target.className === 'modal') cerrarModal(); }
+
+// Actualización dinámica eliminando completamente del select las categorías contadas
+function actualizarCategoriasContadas() {
+    const formData = new FormData();
+    formData.append('action', 'obtener_contados');
+    formData.append('nit', '<?= $nitSesion ?>');
+    
+    fetch(window.location.href, { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(contados => {
+        const select = document.getElementById('select-categoria');
+        if (!select) return;
+        
+        const valorActual = select.value;
+        
+        Array.from(select.options).forEach(option => {
+            if (option.value === "") return;
+            const cod = option.value;
+            // Verificación limpia de ceros a la izquierda (ej: '0000' vs '0')
+            if (contados.includes(cod) || contados.includes(String(parseInt(cod)))) {
+                option.remove();
+            }
+        });
+        
+        if (contados.includes(valorActual) || contados.includes(String(parseInt(valorActual)))) {
+            select.value = "";
+        }
+    }).catch(err => console.error("Error actualizando categorías:", err));
+}
+
+setInterval(actualizarCategoriasContadas, 30000);
 </script>
 </body>
 </html>
