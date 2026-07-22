@@ -27,6 +27,18 @@ define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 
 /* ============================================
+   AUTORIZACIONES
+============================================ */
+function Autorizacion($User, $Solicitud) {
+    global $mysqli;
+    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
+    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    return ($row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
+}
+
+/* ============================================
    LÓGICA AJAX: CONSULTAR CATEGORÍAS CONTADAS HOY (DINÁMICO)
 ============================================ */
 if (isset($_POST['action']) && $_POST['action'] === 'obtener_contados') {
@@ -54,7 +66,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $nit = $_POST['nit'];
     $dbSede = ($nit == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
     
-    $esAdminStock = (Autorizacion($_SESSION['Usuario'], '9999') === 'SI');
+    $esAdminStock = (Autorizacion($_SESSION['Usuario'] ?? '', '9999') === 'SI');
     
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $cat);
@@ -139,18 +151,6 @@ $mensaje = "";
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
-/* ============================================
-   AUTORIZACIONES
-============================================ */
-function Autorizacion($User, $Solicitud) {
-    global $mysqli;
-    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
-    $stmt->bind_param("ss", $User, $Solicitud);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    return ($row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
 $AUT_BORRAR   = Autorizacion($usuario, '1810');
@@ -352,10 +352,12 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
 
         <div style="background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
-                <span>📖 Stock Teórico (Sistema):</span>
-                <strong style="font-size:16px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
-            </div>
+            <?php if($AUT_CORREGIR === 'SI'): ?>
+                <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
+                    <span>📖 Stock Teórico (Sistema):</span>
+                    <strong style="font-size:16px; color:#2c3e50;"><?= number_format($totalCategoria,2) ?></strong>
+                </div>
+            <?php endif; ?>
 
             <form method="POST">
                 <input type="hidden" name="CodCat" value="<?= $categoriaSel ?>">
@@ -386,11 +388,11 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                         <tr>
                             <th>Hora</th>
                             <th>Categoría</th>
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                            <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <th>Sistemas</th>
                             <?php endif; ?>
                             <th>Físico</th>
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                            <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <th>Dif.</th>
                             <?php endif; ?>
                             <th>Edo.</th>
@@ -406,13 +408,13 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
                             <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
                             
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                            <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
                             <?php endif; ?>
 
                             <td style="font-size:14px;"><strong><?= number_format($c['stock_fisico'],2) ?></strong></td>
 
-                            <?php if($AUT_CORREGIR==='SI' || $AUT_VERSTOCK==='SI'): ?>
+                            <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <td style="font-size:13px; font-weight:bold; color: <?= ($dif <= -0.1) ? '#dc3545' : '#28a745' ?>;">
                                     <?= ($dif > 0 ? '+' : '') . number_format($dif, 2) ?>
                                 </td>
