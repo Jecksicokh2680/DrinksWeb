@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (!empty($_POST['cats_activas']) && is_array($_POST['cats_activas'])) {
             $idsSeleccionados = array_map([$dbWeb, 'real_escape_string'], $_POST['cats_activas']);
             $listaIds = "'" . implode("','", $idsSeleccionados) . "'";
-            $dbWeb->query("UPDATE categorias SET SegWebT = '1' WHERE codcat IN ($listaIds)");
+            $dbWeb->query("UPDATE categorias SET SegWebT = '1' WHERE CodCat IN ($listaIds)");
         }
         $msgAccion = "✅ Selección de categorías actualizada correctamente.";
     }
@@ -47,14 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     2. FUNCIONES DE DATOS
 ===================================================== */
 
-// Obtener categorías agrupadas por su Familia/Tipo relacionada
-function obtenerCategoriasPorFamilia($dbWeb){
+// Obtener únicamente categorías con Estado = '1' y SegWebT = '1' agrupadas por Familia
+function obtenerCategoriasActivasPorFamilia($dbWeb){
     $familias = [];
     $sql = "SELECT f.id AS id_familia, f.nombre AS nombre_familia, 
-                   c.codcat, c.nombre AS nombre_categoria, c.SegWebT
+                   c.CodCat, c.Nombre AS nombre_categoria, c.SegWebT
             FROM familias f
-            LEFT JOIN categorias c ON c.tipo = f.id
-            ORDER BY f.nombre ASC, c.nombre ASC";
+            LEFT JOIN categorias c ON c.Tipo = f.id AND c.Estado = '1'
+            ORDER BY f.nombre ASC, c.Nombre ASC";
     $res = $dbWeb->query($sql);
     while($res && $r = $res->fetch_assoc()){
         $famId = $r['id_familia'];
@@ -64,9 +64,9 @@ function obtenerCategoriasPorFamilia($dbWeb){
                 'categorias' => []
             ];
         }
-        if ($r['codcat'] !== null) {
+        if ($r['CodCat'] !== null) {
             $familias[$famId]['categorias'][] = [
-                'codcat' => $r['codcat'],
+                'codcat' => $r['CodCat'],
                 'nombre' => $r['nombre_categoria'],
                 'SegWebT' => $r['SegWebT']
             ];
@@ -78,7 +78,7 @@ function obtenerCategoriasPorFamilia($dbWeb){
 /* =====================================================
     3. PROCESAMIENTO
 ===================================================== */
-$familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
+$familiasCategorias = obtenerCategoriasActivasPorFamilia($dbWeb);
 ?>
 
 <!DOCTYPE html>
@@ -86,12 +86,11 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Activación por Tipo / Familia</title>
+    <title>Panel de Activación - Categorías Activas</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; padding: 10px; font-size: 13px; color: #333; }
         
-        /* Contenedor ampliado al 100% con márgenes mínimos seguros */
         .container { width: 100%; margin: 0; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
         
         .header-flex { display: flex; flex-direction: column; gap: 15px; border-bottom: 2px solid #eee; margin-bottom: 15px; padding-bottom: 15px; }
@@ -109,7 +108,6 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
         .btn-green { background: #2e7d32; } .btn-green:hover { background: #1b5e20; }
         .btn-blue { background: #1976d2; } .btn-blue:hover { background: #115293; width: 100%; padding: 12px; font-size: 13px; }
         
-        /* Estilos Panel por Familias adaptado a pantalla completa */
         .category-panel { background: #fafafa; border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .family-section { margin-bottom: 12px; background: #fff; padding: 12px; border: 1px solid #e0e0e0; border-radius: 6px; }
         
@@ -117,7 +115,6 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
         .family-title { font-weight: bold; color: #263238; font-size: 13px; display: flex; align-items: center; gap: 6px; }
         .select-all-label { font-size: 11px; color: #1976d2; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px; user-select: none; }
         
-        /* Cuadrícula adaptativa amplia para aprovechar todo el ancho */
         .family-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
         .category-item { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; background: #fdfdfd; padding: 6px 8px; border-radius: 4px; border: 1px solid #f0f0f0; }
         .category-item:hover { background: #f0f4f8; border-color: #d0d7de; }
@@ -129,7 +126,7 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
 
 <div class="container">
     <div class="header-flex">
-        <h2>🎛️ Panel de Activación por Tipo / Familia</h2>
+        <h2>🎛️ Panel de Activación - Categorías Activas</h2>
         <div class="actions-group">
             <form method="POST" onsubmit="return confirm('¿Poner TODAS las categorías en 1?')" style="flex: 1; min-width: 150px;">
                 <button type="submit" name="set_1" class="btn btn-green" style="width:100%;">🚀 ACTIVAR TODAS</button>
@@ -144,7 +141,7 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
         <div class="alert-action"><?= $msgAccion ?></div>
     <?php endif; ?>
 
-    <!-- PANEL DE SELECCIÓN MANUAL AGRUPADO POR FAMILIAS -->
+    <!-- PANEL DE SELECCIÓN MANUAL (SOLO CATEGORÍAS ACTIVAS Y ESTADO 1) -->
     <div class="category-panel">
         <form method="POST">
             <div class="families-container">
@@ -169,7 +166,7 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
                                 <?php endforeach; ?>
                             </div>
                         <?php else: ?>
-                            <small style="color: #888;">Sin categorías asociadas a esta familia.</small>
+                            <small style="color: #888;">No hay categorías activas en esta familia.</small>
                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
@@ -180,7 +177,6 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
 </div>
 
 <script>
-    // Función para marcar o desmarcar todas las categorías de una familia específica
     function toggleFamilia(source) {
         let famId = source.getAttribute('data-fam');
         let checkboxes = document.querySelectorAll('.cat-checkbox-' + famId);
@@ -189,7 +185,6 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
         });
     }
 
-    // Actualiza el estado visual del checkbox principal de la familia si se marcan/desmarcan individualmente
     function actualizarEstadoFamilia(famId) {
         let checkboxes = document.querySelectorAll('.cat-checkbox-' + famId);
         let masterCheckbox = document.querySelector('.check-familia[data-fam="' + famId + '"]');
@@ -210,7 +205,6 @@ $familiasCategorias = obtenerCategoriasPorFamilia($dbWeb);
         masterCheckbox.indeterminate = algunaMarcada && !todasMarcadas;
     }
 
-    // Inicializar estado de los checkboxes de familia al cargar la página
     window.addEventListener('DOMContentLoaded', (event) => {
         let masterCheckboxes = document.querySelectorAll('.check-familia');
         masterCheckboxes.forEach(function(master) {
