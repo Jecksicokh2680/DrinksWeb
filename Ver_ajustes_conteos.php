@@ -142,7 +142,7 @@ if (isset($_POST['accion'])) {
                                 <?php 
                                 $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c 
                                                       INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
-                                                      WHERE c.estado = 'A' AND c.diferencia <> 0 
+                                                      WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2
                                                       AND DATE(c.fecha_conteo) = '$hoy' 
                                                       AND c.NitEmpresa $filtroNit 
                                                       ORDER BY cat.CodCat ASC");

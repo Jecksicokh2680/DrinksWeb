@@ -91,8 +91,7 @@ if (isset($_POST['accion'])) {
                         // 2. Cerrar el conteo (Estado 'C' de Cerrado/Completado)
                         $mysqli->query("UPDATE conteoweb SET estado='C' WHERE id=$idConteo");
                         
-                        // 3. CAMBIAR ESTADO DE LA CATEGORÍA (Ejemplo: Estado = '0' o el valor que requieras para inhabilitarla/actualizarla)
-                        // Ajusta 'Estado' y el valor '0' según la estructura de tu tabla 'categorias' o 'catproductos'
+                        // 3. CAMBIAR ESTADO DE LA CATEGORÍA
                         $updCat = $mysqli->prepare("UPDATE categorias SET Estado = '0' WHERE CodCat = ?");
                         $updCat->bind_param("s", $CodCat);
                         $updCat->execute();
@@ -121,15 +120,13 @@ if (isset($_POST['accion'])) {
         }
         
         // ---------------------------------------------------------
-        // ACCIÓN: BORRAR / RECHAZAR (Marcar conteo como eliminado/cancelado y cambiar estado de categoría)
+        // ACCIÓN: BORRAR / RECHAZAR
         // ---------------------------------------------------------
         elseif ($_POST['accion'] === 'borrar') {
             $mysqli->begin_transaction();
             try {
-                // Cambiar estado del conteo a 'X' (Cancelado/Borrado) o el que prefieras
                 $mysqli->query("UPDATE conteoweb SET estado='X' WHERE id=$idConteo");
 
-                // Cambiar estado de la categoría (ejemplo: Estado = '0')
                 $updCat = $mysqli->prepare("UPDATE categorias SET Estado = '0' WHERE CodCat = ?");
                 $updCat->bind_param("s", $CodCat);
                 $updCat->execute();
@@ -146,13 +143,14 @@ if (isset($_POST['accion'])) {
 }
 
 /* ============================================================
-   3. CONSULTA DE PENDIENTES
+   3. CONSULTA DE PENDIENTES (FILTRANDO RANGO -0.1 A +0.1)
    ============================================================ */
 $res = $mysqli->query("SELECT c.*, cat.Nombre 
                         FROM conteoweb c 
                         INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                         WHERE c.estado = 'A' 
                         AND DATE(c.fecha_conteo) = '$hoy'
+                        AND ABS(c.diferencia) > 1
                         ORDER BY c.fecha_conteo DESC");
 ?>
 
