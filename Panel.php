@@ -293,9 +293,7 @@ body {
                                 <div class="accordion-body">
                                     <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
                                     <a class="nav-link" href="Activacion_categorias_conteo.php" target="contentFrame">Activar Categorias Conteo</a>
-                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>
-                                    <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">Traslados</a>
-                                    <a class="nav-link" href="ajustesdeInventario.php" target="contentFrame">Ajustes de Inventario</a>
+                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>                                                                   
                                     <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Ver Ajustes Conteos</a>
                                     <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
                                     <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            

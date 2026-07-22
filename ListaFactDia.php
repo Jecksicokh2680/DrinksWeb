@@ -153,8 +153,9 @@ if ($skus && isset($mysqliWeb)) {
     <meta charset="UTF-8">
     <title>Reporte Ejecutivo - Sistema Drinks</title>
     <style>
-        body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; margin: 20px;}
-        .card{background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);}
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; padding: 15px; box-sizing: border-box; display: flex; flex-direction: column;}
+        .card{background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); flex: 1; display: flex; flex-direction: column; box-sizing: border-box;}
         .filter-box{ background: #f8f9fa; padding: 15px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; border: 1px solid #dee2e6;}
         .filter-group{ display: flex; flex-direction: column; gap: 5px; }
         label{ font-size: 11px; font-weight: bold; color: #546e7a; text-transform: uppercase;}
@@ -162,7 +163,7 @@ if ($skus && isset($mysqliWeb)) {
         button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold;}
         .btn-excel{ background: #2e7d32 !important; }
         .btn-print{ background: #455a64 !important; }
-        .table-container { max-height: 600px; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
+        .table-container { flex: 1; max-height: none; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
         table{ border-collapse: collapse; width: 100%; background: white; }
         th{ position: sticky; top: 0; background: #263238; color: white; padding: 12px; text-align: left; z-index: 2; }
         td{ padding: 10px; border-bottom: 1px solid #eee; }
