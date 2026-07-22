@@ -278,7 +278,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         *{box-sizing:border-box;}
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
         
-        /* Contenedor adaptado al 100% responsive */
         .card{width:100%; max-width:100%; margin:0; background:#fff; padding:15px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);}
         
         .sede-selector { display:flex; gap:8px; margin-bottom:15px; background:#e9ecef; padding:8px; border-radius:8px; align-items:center; flex-wrap: wrap; }
@@ -301,9 +300,10 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:8px; font-size:18px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
         
-        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 100%;}
-        th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left;}
+        /* CORRECCIÓN: Ajuste estricto responsive para la tabla de historial */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; display: block; }
+        table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 480px;}
+        th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left; white-space: nowrap;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
         
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
