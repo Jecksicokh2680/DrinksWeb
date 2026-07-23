@@ -103,14 +103,14 @@ if (isset($_GET['ajax_detalle_doc'])) {
                     INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO
                     INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO
                     LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO
-                    WHERE P.NUMERO = ?";
+                    WHERE P.NUMERO = ? order by PROD.BARCODE";
         } else {
             $sql = "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD 
                     FROM FACTURAS F
                     INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA
                     INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO
                     LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO
-                    WHERE F.NUMERO = ?";
+                    WHERE F.NUMERO = ? ORDER BY PROD.BARCODE";
         }
 
         $stmt = $db->prepare($sql);
