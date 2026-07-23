@@ -98,19 +98,21 @@ if (isset($_GET['ajax_detalle_doc'])) {
 
     if ($db) {
         if ($tipoDoc === 'P') {
-            $sql = "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD 
+            $sql = "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.barcode, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD 
                     FROM PEDIDOS P
                     INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO
                     INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO
                     LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO
-                    WHERE P.NUMERO = ? order by PROD.BARCODE";
+                    WHERE P.NUMERO = ?
+                    ORDER BY PROD.barcode ASC";
         } else {
-            $sql = "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD 
+            $sql = "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.barcode, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD 
                     FROM FACTURAS F
                     INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA
                     INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO
                     LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO
-                    WHERE F.NUMERO = ? ORDER BY PROD.BARCODE";
+                    WHERE F.NUMERO = ?
+                    ORDER BY PROD.barcode ASC";
         }
 
         $stmt = $db->prepare($sql);
@@ -128,6 +130,7 @@ if (isset($_GET['ajax_detalle_doc'])) {
                 $fecha = $row['FECHA'];
                 $total = $row['VALORTOTAL'];
                 $items[] = [
+                    'barcode' => $row['barcode'] ?? '',
                     'producto' => $row['PRODUCTO'],
                     'cantidad' => $row['CANTIDAD'],
                     'valor' => $row['VALORPROD']
@@ -146,8 +149,8 @@ if (isset($_GET['ajax_detalle_doc'])) {
                 ];
             } else {
                 $sqlAlt = ($tipoDoc === 'P') ? 
-                    "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD FROM FACTURAS F INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO WHERE F.NUMERO = ?" :
-                    "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO WHERE P.NUMERO = ?";
+                    "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.barcode, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD FROM FACTURAS F INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO WHERE F.NUMERO = ? ORDER BY PROD.barcode ASC" :
+                    "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.barcode, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO WHERE P.NUMERO = ? ORDER BY PROD.barcode ASC";
                 
                 $stmtAlt = $db->prepare($sqlAlt);
                 if ($stmtAlt) {
@@ -162,6 +165,7 @@ if (isset($_GET['ajax_detalle_doc'])) {
                         $fecha = $rowAlt['FECHA'];
                         $total = $rowAlt['VALORTOTAL'];
                         $itemsAlt[] = [
+                            'barcode' => $rowAlt['barcode'] ?? '',
                             'producto' => $rowAlt['PRODUCTO'],
                             'cantidad' => $rowAlt['CANTIDAD'],
                             'valor' => $rowAlt['VALORPROD']
@@ -313,7 +317,7 @@ if ($dbSede) {
         .floating-window {
             position: fixed;
             z-index: 1050;
-            width: 480px;
+            width: 520px;
             max-width: 95vw;
             background: #ffffff;
             border-radius: 8px;
@@ -448,14 +452,14 @@ if ($dbSede) {
                             </td>
                             <td><span class="badge <?= $tipoBadgeColor ?>"><?= $tipoTexto ?></span></td>
                             <td>
-                                <span class="doc-link" onclick="abrirVentanaFlotante('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>')">
+                                <span class="doc-link" onclick="abrirVentanaFlotante('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>', 'DOCUMENTO A ANULAR')">
                                     <?= $r['NroFactAnular'] ?>
                                 </span>
                             </td>
                             <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                             <td>
                                 <?php if (!empty($r['NroFactReemplaza']) && $r['NroFactReemplaza'] !== 'N/A'): ?>
-                                    <span class="reemplazo-link" onclick="abrirVentanaFlotante('<?= $r['NroFactReemplaza'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>')">
+                                    <span class="reemplazo-link" onclick="abrirVentanaFlotante('<?= $r['NroFactReemplaza'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>', 'DOCUMENTO DE REEMPLAZO')">
                                         <?= $r['NroFactReemplaza'] ?>
                                     </span>
                                 <?php else: ?>
@@ -535,18 +539,22 @@ if ($dbSede) {
 
     let contadorVentanas = 0;
 
-    function abrirVentanaFlotante(nroDoc, nitSede, tipoDoc) {
+    function abrirVentanaFlotante(nroDoc, nitSede, tipoDoc, rolDoc) {
         contadorVentanas++;
         const windowId = `floating_win_${contadorVentanas}`;
         
-        // Posicionamiento inteligente en cascada o disperso para poder ver varios a la vez
         const offsetX = 50 + ((contadorVentanas % 5) * 30);
         const offsetY = 80 + ((contadorVentanas % 5) * 30);
+
+        const badgeRolClass = (rolDoc === 'DOCUMENTO A ANULAR') ? 'bg-danger' : 'bg-success';
 
         const winHtml = `
             <div id="${windowId}" class="floating-window shadow" style="display: block; top: ${offsetY}px; left: ${offsetX}px;">
                 <div class="floating-header" onmousedown="iniciarArrastre(event, '${windowId}')">
-                    <span class="fw-bold">Doc: <span class="text-info">${nroDoc}</span></span>
+                    <div>
+                        <span class="badge ${badgeRolClass} me-2" style="font-size: 0.65rem;"><?= '${rolDoc}' ?></span>
+                        <span class="fw-bold">Doc: <span class="text-info">${nroDoc}</span></span>
+                    </div>
                     <button type="button" class="btn-close btn-close-white btn-sm" onclick="document.getElementById('${windowId}').remove()"></button>
                 </div>
                 <div class="floating-body">
@@ -559,6 +567,7 @@ if ($dbSede) {
                         <table class="table table-sm table-striped table-bordered text-center align-middle" style="font-size: 0.8rem;">
                             <thead class="table-secondary">
                                 <tr>
+                                    <th>Barcode</th>
                                     <th class="text-start">Producto</th>
                                     <th>Cant</th>
                                     <th class="text-end">V. Unit</th>
@@ -566,7 +575,7 @@ if ($dbSede) {
                                 </tr>
                             </thead>
                             <tbody class="win-tabla-items">
-                                <tr><td colspan="4" class="text-center">Cargando...</td></tr>
+                                <tr><td colspan="5" class="text-center">Cargando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -580,18 +589,16 @@ if ($dbSede) {
         document.getElementById('contenedorVentanasFlotantes').insertAdjacentHTML('beforeend', winHtml);
         const winElement = document.getElementById(windowId);
 
-        // Traer al frente al hacer clic en cualquier parte de la ventana
         winElement.addEventListener('mousedown', () => {
             document.querySelectorAll('.floating-window').forEach(w => w.style.zIndex = '1050');
             winElement.style.zIndex = '1055';
         });
 
-        // Petición AJAX para llenar la ventana
         fetch(`?ajax_detalle_doc=${nroDoc}&nit_sede=${nitSede}&tipo_doc=${tipoDoc}`)
             .then(res => res.json())
             .then(data => {
                 if (data.error) {
-                    winElement.querySelector('.win-tabla-items').innerHTML = `<tr><td colspan="4" class="text-center text-danger">${data.mensaje}</td></tr>`;
+                    winElement.querySelector('.win-tabla-items').innerHTML = `<tr><td colspan="5" class="text-center text-danger">${data.mensaje}</td></tr>`;
                     return;
                 }
 
@@ -605,6 +612,7 @@ if ($dbSede) {
                     let vTotalItem = item.cantidad * item.valor;
                     htmlItems += `
                         <tr>
+                            <td><small class="text-muted font-monospace">${item.barcode}</small></td>
                             <td class="text-start">${item.producto}</td>
                             <td>${item.cantidad}</td>
                             <td class="text-end">$${Number(item.valor).toLocaleString('es-CO')}</td>
@@ -615,13 +623,12 @@ if ($dbSede) {
                 winElement.querySelector('.win-tabla-items').innerHTML = htmlItems;
             })
             .catch(err => {
-                winElement.querySelector('.win-tabla-items').innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error al cargar.</td></tr>';
+                winElement.querySelector('.win-tabla-items').innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error al cargar.</td></tr>';
             });
     }
 
-    // Lógica para arrastrar las ventanas flotantes desde la cabecera
     function iniciarArrastre(e, windowId) {
-        if (e.target.tagName === 'BUTTON') return; // Evita interferir con el botón de cerrar
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
         const win = document.getElementById(windowId);
         let startX = e.clientX;
         let startY = e.clientY;
