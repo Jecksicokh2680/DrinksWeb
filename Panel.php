@@ -223,6 +223,7 @@ body {
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>  
+                        <a class="nav-link" href="pedidofact_X.php" target="contentFrame">💵 Prueba</a>  
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">

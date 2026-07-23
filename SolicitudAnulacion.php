@@ -85,8 +85,112 @@ function VerificarAnulacion($NroDoc, $nitSede) {
 }
 
 /* ============================================================
-    PROCESAR ACCIONES
+    PROCESAR ACCIONES / ENDPOINT AJAX PARA EL MODAL
 ============================================================ */
+if (isset($_GET['ajax_detalle_doc'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $nroDoc = $_GET['ajax_detalle_doc'];
+    $nitSede = $_GET['nit_sede'] ?? NIT_CENTRAL;
+    $tipoDoc = $_GET['tipo_doc'] ?? 'F';
+
+    $db = conectarPOS($nitSede);
+    $resultado = ['error' => true, 'mensaje' => 'No se pudo conectar a la base de datos'];
+
+    if ($db) {
+        if ($tipoDoc === 'P') {
+            $sql = "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD 
+                    FROM PEDIDOS P
+                    INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO
+                    INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO
+                    LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO
+                    WHERE P.NUMERO = ?";
+        } else {
+            $sql = "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD 
+                    FROM FACTURAS F
+                    INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA
+                    INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO
+                    LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO
+                    WHERE F.NUMERO = ?";
+        }
+
+        $stmt = $db->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("s", $nroDoc);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $items = [];
+            $cliente = 'CLIENTE MOSTRADOR';
+            $fecha = '';
+            $total = 0;
+
+            while ($row = $res->fetch_assoc()) {
+                if (!empty($row['CLIENTE'])) $cliente = $row['CLIENTE'];
+                $fecha = $row['FECHA'];
+                $total = $row['VALORTOTAL'];
+                $items[] = [
+                    'producto' => $row['PRODUCTO'],
+                    'cantidad' => $row['CANTIDAD'],
+                    'valor' => $row['VALORPROD']
+                ];
+            }
+
+            if (!empty($items)) {
+                $resultado = [
+                    'error' => false,
+                    'numero' => $nroDoc,
+                    'tipo' => ($tipoDoc === 'P' ? 'PEDIDO' : 'FACTURA'),
+                    'fecha' => $fecha,
+                    'cliente' => $cliente,
+                    'total' => $total,
+                    'items' => $items
+                ];
+            } else {
+                $sqlAlt = ($tipoDoc === 'P') ? 
+                    "SELECT F.NUMERO, F.FECHA, F.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DF.CANTIDAD, DF.VALORPROD FROM FACTURAS F INNER JOIN DETFACTURAS DF ON F.IDFACTURA = DF.IDFACTURA INNER JOIN PRODUCTOS PROD ON DF.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON F.IDTERCERO = CLI.IDTERCERO WHERE F.NUMERO = ?" :
+                    "SELECT P.NUMERO, P.FECHA, P.VALORTOTAL, CLI.nombres AS CLIENTE, PROD.Descripcion AS PRODUCTO, DP.CANTIDAD, DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON P.IDPEDIDO = DP.IDPEDIDO INNER JOIN PRODUCTOS PROD ON DP.IDPRODUCTO = PROD.IDPRODUCTO LEFT JOIN TERCEROS CLI ON P.IDTERCERO = CLI.IDTERCERO WHERE P.NUMERO = ?";
+                
+                $stmtAlt = $db->prepare($sqlAlt);
+                if ($stmtAlt) {
+                    $stmtAlt->bind_param("s", $nroDoc);
+                    $stmtAlt->execute();
+                    $resAlt = $stmtAlt->get_result();
+                    $itemsAlt = [];
+                    $tipoRealAlt = ($tipoDoc === 'P' ? 'FACTURA' : 'PEDIDO');
+
+                    while ($rowAlt = $resAlt->fetch_assoc()) {
+                        if (!empty($rowAlt['CLIENTE'])) $cliente = $rowAlt['CLIENTE'];
+                        $fecha = $rowAlt['FECHA'];
+                        $total = $rowAlt['VALORTOTAL'];
+                        $itemsAlt[] = [
+                            'producto' => $rowAlt['PRODUCTO'],
+                            'cantidad' => $rowAlt['CANTIDAD'],
+                            'valor' => $rowAlt['VALORPROD']
+                        ];
+                    }
+
+                    if (!empty($itemsAlt)) {
+                        $resultado = [
+                            'error' => false,
+                            'numero' => $nroDoc,
+                            'tipo' => $tipoRealAlt,
+                            'fecha' => $fecha,
+                            'cliente' => $cliente,
+                            'total' => $total,
+                            'items' => $itemsAlt
+                        ];
+                    } else {
+                        $resultado = ['error' => true, 'mensaje' => 'No se encontraron detalles para este documento en la base de datos.'];
+                    }
+                } else {
+                    $resultado = ['error' => true, 'mensaje' => 'No se encontraron detalles para este documento.'];
+                }
+            }
+        }
+    }
+    echo json_encode($resultado);
+    exit;
+}
+
 $puedeCambiarFecha = (Autorizacion($Usuario, '9999') === 'SI');
 $fechaConsulta = ($puedeCambiarFecha && isset($_GET['fConsulta'])) ? $_GET['fConsulta'] : (isset($_GET['fConsulta']) ? $_GET['fConsulta'] : date('Y-m-d'));
 $fPosFormat    = date('Ymd', strtotime($fechaConsulta));
@@ -96,13 +200,11 @@ if (isset($_GET['setSede'])) {
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
 }
 
-// Acción de borrar modificada para validar también si es el creador propio y no está autorizada
 if (isset($_GET['accion']) && $_GET['accion'] == 'borrar') {
     $facturaAEliminar = $_GET['factura'];
     $fechaAEliminar   = $_GET['f'];
     $sedeAEliminar    = $_GET['s'];
 
-    // Si no es administrador, verificamos detalladamente en la base de datos que sea suya y esté limpia
     if (!$puedeBorrarGlobal) {
         $stmtCheck = $mysqli->prepare("SELECT NitCajero, JefeBodCheck, GerenteCheck FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
         $stmtCheck->bind_param("sss", $facturaAEliminar, $fechaAEliminar, $sedeAEliminar);
@@ -202,6 +304,40 @@ if ($dbSede) {
         .uppercase-input { text-transform: uppercase; }
         .nombre-cajero { font-weight: bold; color: #212529; display: block; }
         .nit-cajero { font-size: 0.65rem; color: #6c757d; }
+        .doc-link { color: #0d6efd; text-decoration: underline; cursor: pointer; font-weight: bold; }
+        .doc-link:hover { color: #0a58ca; }
+        .reemplazo-link { color: #198754; text-decoration: underline; cursor: pointer; font-weight: bold; }
+        .reemplazo-link:hover { color: #146c43; }
+
+        /* Estilos para Ventanas Flotantes Arrastrables */
+        .floating-window {
+            position: fixed;
+            z-index: 1050;
+            width: 480px;
+            max-width: 95vw;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border: 1px solid rgba(0,0,0,0.15);
+            display: none;
+            resize: both;
+            overflow: hidden;
+        }
+        .floating-header {
+            background: #212529;
+            color: #fff;
+            padding: 10px 15px;
+            cursor: move;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .floating-body {
+            padding: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -299,7 +435,6 @@ if ($dbSede) {
                             $tipoBadgeColor = ($r['Tipo'] === 'P') ? 'bg-info text-dark' : 'bg-primary';
                             $tipoTexto      = ($r['Tipo'] === 'P') ? 'PEDIDO' : 'FACTURA';
 
-                            // CONDICIÓN NUEVA: El creador puede borrarla sólo si Bodega, Gerencia y POS están limpios/pendientes
                             $esCreador = ($r['NitCajero'] === $Usuario);
                             $estaLimpio = ($r['JefeBodCheck'] !== '1' && $r['GerenteCheck'] !== '1' && $anuladoPOS == 0);
                             $puedeBorrarPropio = ($esCreador && $estaLimpio);
@@ -312,9 +447,21 @@ if ($dbSede) {
                                 <span class="nit-cajero"><?= $r['NitCajero'] ?></span>
                             </td>
                             <td><span class="badge <?= $tipoBadgeColor ?>"><?= $tipoTexto ?></span></td>
-                            <td class="fw-bold text-danger"><?= $r['NroFactAnular'] ?></td>
+                            <td>
+                                <span class="doc-link" onclick="abrirVentanaFlotante('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>')">
+                                    <?= $r['NroFactAnular'] ?>
+                                </span>
+                            </td>
                             <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
-                            <td class="text-primary fw-bold"><?= $r['NroFactReemplaza'] ?></td>
+                            <td>
+                                <?php if (!empty($r['NroFactReemplaza']) && $r['NroFactReemplaza'] !== 'N/A'): ?>
+                                    <span class="reemplazo-link" onclick="abrirVentanaFlotante('<?= $r['NroFactReemplaza'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>')">
+                                        <?= $r['NroFactReemplaza'] ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-muted">N/A</span>
+                                <?php endif; ?>
+                            </td>
                             <td class="text-start small"><?= $r['MotivoAnulacion'] ?></td>
                             
                             <td><input class="form-check-input" type="checkbox" <?= ($r['JefeBodCheck']=='1') ? 'checked disabled' : (($esBodega) ? "onclick=\"confirmar('bodega', '{$r['NroFactAnular']}', '{$r['Nit_Empresa']}')\"" : 'disabled') ?>></td>
@@ -348,6 +495,10 @@ if ($dbSede) {
     </div>
 </div>
 
+<!-- Contenedor Dinámico para Ventanas Flotantes Múltiples -->
+<div id="contenedorVentanasFlotantes"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let timeLeft = 180;
     const timerDisplay = document.getElementById('timer-box');
@@ -380,6 +531,117 @@ if ($dbSede) {
         if (confirm(`¿Eliminar permanentemente la solicitud?`)) {
             window.location.href = `?accion=borrar&factura=${fact}&s=${nitSede}&f=${fecha}`;
         }
+    }
+
+    let contadorVentanas = 0;
+
+    function abrirVentanaFlotante(nroDoc, nitSede, tipoDoc) {
+        contadorVentanas++;
+        const windowId = `floating_win_${contadorVentanas}`;
+        
+        // Posicionamiento inteligente en cascada o disperso para poder ver varios a la vez
+        const offsetX = 50 + ((contadorVentanas % 5) * 30);
+        const offsetY = 80 + ((contadorVentanas % 5) * 30);
+
+        const winHtml = `
+            <div id="${windowId}" class="floating-window shadow" style="display: block; top: ${offsetY}px; left: ${offsetX}px;">
+                <div class="floating-header" onmousedown="iniciarArrastre(event, '${windowId}')">
+                    <span class="fw-bold">Doc: <span class="text-info">${nroDoc}</span></span>
+                    <button type="button" class="btn-close btn-close-white btn-sm" onclick="document.getElementById('${windowId}').remove()"></button>
+                </div>
+                <div class="floating-body">
+                    <div class="row mb-2 small">
+                        <div class="col-4"><strong>Tipo:</strong> <span class="win-tipo">-</span></div>
+                        <div class="col-4"><strong>Fecha:</strong> <span class="win-fecha">-</span></div>
+                        <div class="col-4"><strong>Cliente:</strong> <span class="win-cliente">-</span></div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-bordered text-center align-middle" style="font-size: 0.8rem;">
+                            <thead class="table-secondary">
+                                <tr>
+                                    <th class="text-start">Producto</th>
+                                    <th>Cant</th>
+                                    <th class="text-end">V. Unit</th>
+                                    <th class="text-end">V. Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="win-tabla-items">
+                                <tr><td colspan="4" class="text-center">Cargando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-end fw-bold mt-2 small">
+                        Total: $<span class="win-total">0</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('contenedorVentanasFlotantes').insertAdjacentHTML('beforeend', winHtml);
+        const winElement = document.getElementById(windowId);
+
+        // Traer al frente al hacer clic en cualquier parte de la ventana
+        winElement.addEventListener('mousedown', () => {
+            document.querySelectorAll('.floating-window').forEach(w => w.style.zIndex = '1050');
+            winElement.style.zIndex = '1055';
+        });
+
+        // Petición AJAX para llenar la ventana
+        fetch(`?ajax_detalle_doc=${nroDoc}&nit_sede=${nitSede}&tipo_doc=${tipoDoc}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    winElement.querySelector('.win-tabla-items').innerHTML = `<tr><td colspan="4" class="text-center text-danger">${data.mensaje}</td></tr>`;
+                    return;
+                }
+
+                winElement.querySelector('.win-tipo').textContent = data.tipo;
+                winElement.querySelector('.win-fecha').textContent = data.fecha;
+                winElement.querySelector('.win-cliente').textContent = data.cliente;
+                winElement.querySelector('.win-total').textContent = Number(data.total).toLocaleString('es-CO');
+
+                let htmlItems = '';
+                data.items.forEach(item => {
+                    let vTotalItem = item.cantidad * item.valor;
+                    htmlItems += `
+                        <tr>
+                            <td class="text-start">${item.producto}</td>
+                            <td>${item.cantidad}</td>
+                            <td class="text-end">$${Number(item.valor).toLocaleString('es-CO')}</td>
+                            <td class="text-end">$${Number(vTotalItem).toLocaleString('es-CO')}</td>
+                        </tr>
+                    `;
+                });
+                winElement.querySelector('.win-tabla-items').innerHTML = htmlItems;
+            })
+            .catch(err => {
+                winElement.querySelector('.win-tabla-items').innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error al cargar.</td></tr>';
+            });
+    }
+
+    // Lógica para arrastrar las ventanas flotantes desde la cabecera
+    function iniciarArrastre(e, windowId) {
+        if (e.target.tagName === 'BUTTON') return; // Evita interferir con el botón de cerrar
+        const win = document.getElementById(windowId);
+        let startX = e.clientX;
+        let startY = e.clientY;
+        let initialLeft = win.offsetLeft;
+        let initialTop = win.offsetTop;
+
+        function enMovimiento(e) {
+            let dx = e.clientX - startX;
+            let dy = e.clientY - startY;
+            win.style.left = (initialLeft + dx) + 'px';
+            win.style.top = (initialTop + dy) + 'px';
+        }
+
+        function soltar() {
+            window.removeEventListener('mousemove', enMovimiento);
+            window.removeEventListener('mouseup', soltar);
+        }
+
+        window.addEventListener('mousemove', enMovimiento);
+        window.addEventListener('mouseup', soltar);
     }
 </script>
 </body>
