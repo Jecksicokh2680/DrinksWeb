@@ -218,7 +218,7 @@ body {
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">🧮 Calculadora</a>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                         
-                        
+                        <a class="nav-link" href="Pruebas.php" target="contentFrame">🏷️ Pruebas</a>                         
                         
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
@@ -268,20 +268,20 @@ body {
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>
-                                    <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma</a>
-                                    <a class="nav-link" href="Conteo_2.php" target="contentFrame">Conteo Inventario Profesional</a>
-                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
-                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>                                   
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
+                                    <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
+                                    <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
+                                    <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
+                                    <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
+                                    <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma</a>
+                                    <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
+                                    <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
                                     <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
                                     <a class="nav-link" href="ComprasXProveedorXmeses.php" target="contentFrame">Compras Graficas</a>    
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
-                                    <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
-                                    <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
-                                    <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
+                                    
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
                                 </div>
@@ -294,10 +294,8 @@ body {
                             </button>
                             <div id="adminInv" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
-                                    <a class="nav-link" href="Precios.php" target="contentFrame">Precios</a>
-                                    <a class="nav-link" href="Activacion_categorias_conteo.php" target="contentFrame">Activar Categorias Conteo</a>
-                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Stock Bnma</a>                                                                   
-                                    <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Ver Ajustes Conteos</a>
+                                    <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Generar Ajustes Conteos</a>
+                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Modificar Stock Bnma</a> 
                                     <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
                                     <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            
                                     <a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
@@ -357,15 +355,17 @@ body {
                             </button>
                             <div id="adminConf" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
-                                    <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Usuarios</a>
-                                    <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Autorizaciones</a>
-                                    <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Auto por Usuario</a>
-                                    <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Empresas Productoras</a>
+                                    <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Crear Usuarios</a>
+                                    <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Crear Autorizaciones</a>
+                                    <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Crear Auto por Usuario</a>
+                                    <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Crear Empresas Productoras</a>                                    
+                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                   
                                     <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
-                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>
-                                    <a class="nav-link" href="Productos.php" target="contentFrame">Lista Productos</a>
-                                    <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Actualizar Productos en Categorias</a>
-                                    <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Categoria Producto</a>
+                                     <a class="nav-link" href="Productos.php" target="contentFrame">Listar y Modificar Productos</a>
+                                    <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Relacionar Producto/Categoria</a>                                    
+                                    <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Sincronizar Productos en Categorias</a>
+                                    <a class="nav-link" href="Precios.php" target="contentFrame">Modificar Precios en Productos</a>
+                                    <a class="nav-link" href="Activacion_categorias_conteo.php" target="contentFrame">Panel de activacion de Categorias para conteo</a>
                                 </div>
                             </div>
                         </div>
