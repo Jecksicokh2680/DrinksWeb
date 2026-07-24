@@ -222,8 +222,7 @@ body {
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
-                        <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>  
-                       
+                        <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>                         
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
@@ -239,7 +238,7 @@ body {
                         ⚙️ General / Compartido
                     </h6>
                     <div class="menu-seccion ps-2">
-                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Grabar Conteo Web</a>
+                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Inventario / Grabar Conteo Web</a>
                         <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🔍 Auditoria de Pedidos</a>
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🚇 Ver Tunel</a>    
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">💬 Chat Interno</a>

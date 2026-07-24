@@ -381,9 +381,12 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 
     <?php if($conteos): ?>
         <div style="margin-top:30px;">
-            <h4 style="margin-bottom:12px; color:#666; border-bottom:1px solid #eee; padding-bottom:8px;">HISTORIAL DE HOY</h4>
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <h4 style="margin:0; color:#666;">HISTORIAL DE HOY</h4>
+                <input type="text" id="buscador-historial" placeholder="🔍 Buscar en contados..." onkeyup="filtrarHistorial()" style="padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid #ddd; width:200px; max-width:100%;">
+            </div>
             <div class="table-responsive">
-                <table>
+                <table id="tabla-historial">
                     <thead>
                         <tr>
                             <th>Hora</th>
@@ -500,6 +503,24 @@ function actualizarCategoriasContadas() {
 }
 
 setInterval(actualizarCategoriasContadas, 30000);
+
+// Función para filtrar el historial de forma dinámica
+function filtrarHistorial() {
+    const input = document.getElementById('buscador-historial');
+    const filtro = input.value.toLowerCase();
+    const tabla = document.getElementById('tabla-historial');
+    if (!tabla) return;
+    const filas = tabla.getElementsByTagName('tr');
+
+    for (let i = 1; i < filas.length; i++) {
+        let textoFila = filas[i].textContent || filas[i].innerText;
+        if (textoFila.toLowerCase().indexOf(filtro) > -1) {
+            filas[i].style.display = "";
+        } else {
+            filas[i].style.display = "none";
+        }
+    }
+}
 </script>
 </body>
 </html>
