@@ -180,7 +180,7 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         
         .form-inline-traslado { display: flex; gap: 5px; align-items: center; justify-content: center; flex-wrap: wrap; }
 
-        /* Estilo tipo Botón para el Flujo del Historial */
+        /* Estilo tipo Botón para el Flujo del Historial con colores diferenciados por sede */
         .badge-flujo {
             display: inline-flex;
             align-items: center;
@@ -192,6 +192,15 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
             font-weight: bold;
             color: #333;
         }
+
+        .badge-sede {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            border: 1px solid transparent;
+        }
+        .badge-central { background: #cfe2ff; color: #084298; border-color: #b6d4fe; }
+        .badge-drink { background: #f8d7da; color: #842029; border-color: #f5c2c7; }
 
         @media (max-width: 768px) {
             body { padding: 5px; }
@@ -268,6 +277,9 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                 <?php while($r = $resMov->fetch_assoc()): 
                     $origText = ($nombresSedesMap[$r['NitEmpresa_Orig']] ?? $r['NitEmpresa_Orig']);
                     $destText = ($nombresSedesMap[$r['NitEmpresa_Dest']] ?? $r['NitEmpresa_Dest']);
+                    
+                    $classOrig = ($origText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
+                    $classDest = ($destText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
                 ?>
                 <tr style="<?= $r['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
                     <td><?= $r['fecha'] ?></td><td><?= $r['usuario_Orig'] ?></td>
@@ -275,9 +287,9 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
                     <td><?= number_format($r['cant'], 1) ?></td>
                     <td>
                         <div class="badge-flujo">
-                            <span><?= $origText ?></span>
+                            <span class="badge-sede <?= $classOrig ?>"><?= $origText ?></span>
                             <span>➔</span>
-                            <span><?= $destText ?></span>
+                            <span class="badge-sede <?= $classDest ?>"><?= $destText ?></span>
                         </div>
                     </td>
                     <td><?= $r['Observacion'] ?></td>
