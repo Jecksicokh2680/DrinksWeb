@@ -218,6 +218,8 @@ body {
                         <a class="nav-link" href="Calculadora.php" target="contentFrame">🧮 Calculadora</a>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                         
+                        
+                        
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🏦 Ver Transferencias Bre-B</a>

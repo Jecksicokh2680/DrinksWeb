@@ -1,7 +1,7 @@
 <?php
 require_once("ConnCentral.php");  
 require_once("ConnDrinks.php");    
-require_once("Conexion.php");     
+require_once("Conexion.php");    
 
 date_default_timezone_set('America/Bogota');
 session_start();
@@ -49,7 +49,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST'){
                 
                 // Registrar el log en la tabla global con Aprobado = 1
                 $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) 
-                           VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, NOW())";
+                            VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, NOW())";
                 $stmtLog = $mysqliWeb->prepare($sqlLog);
                 $stmtLog->bind_param("sssdss", $nitOrig, $UsuarioSesion, $barcode, $cantidad, $nitDest, $obs);
                 $stmtLog->execute();
@@ -181,7 +181,9 @@ function nombreSede($nit) {
         .btn-check:hover { background: #e0a800; transform: translateY(-1px); }
         .revisado { color: #198754; font-weight: bold; font-size: 13px; white-space: nowrap; }
         
-        .badge-sede { font-weight: bold; color: #212529; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 11px; border: 1px solid #ced4da; white-space: nowrap; }
+        .badge-sede { font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; border: 1px solid transparent; }
+        .badge-central { background: #cfe2ff; color: #084298; border-color: #b6d4fe; }
+        .badge-drinks { background: #f8d7da; color: #842029; border-color: #f5c2c7; }
 
         /* Media Queries para pantallas pequeñas */
         @media (max-width: 768px) {
@@ -242,6 +244,12 @@ function nombreSede($nit) {
                     <?php foreach($movimientos as $r): 
                         $nom = $nombresGlobales[$r['barcode']] ?? 'Producto Desconocido';
                         $revisado = (strpos($r['Observacion'], '[REVISADO POR BODEGA]') !== false);
+                        
+                        $sedeOrigNombre = nombreSede($r['NitEmpresa_Orig']);
+                        $sedeDestNombre = nombreSede($r['NitEmpresa_Dest']);
+                        
+                        $classOrig = ($sedeOrigNombre == 'CENTRAL') ? 'badge-central' : 'badge-drinks';
+                        $classDest = ($sedeDestNombre == 'CENTRAL') ? 'badge-central' : 'badge-drinks';
                     ?>
                     <tr>
                         <td style="font-size: 13px; color: #6c757d; white-space: nowrap;"><?= date("d/m/Y H:i", strtotime($r['fecha'])) ?></td>
@@ -251,9 +259,9 @@ function nombreSede($nit) {
                         </td>
                         <td><span style="font-size: 17px; font-weight: 800;"><?= number_format($r['cant'], 1) ?></span></td>
                         <td>
-                            <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Orig']) ?></span>
+                            <span class="badge-sede <?= $classOrig ?>"><?= $sedeOrigNombre ?></span>
                             <span style="color: #adb5bd; margin: 0 5px;">➔</span>
-                            <span class="badge-sede"><?= nombreSede($r['NitEmpresa_Dest']) ?></span>
+                            <span class="badge-sede <?= $classDest ?>"><?= $sedeDestNombre ?></span>
                         </td>
                         <td style="font-size: 13px; font-style: italic; color: #495057;"><?= $r['Observacion'] ?></td>
                         <td>
