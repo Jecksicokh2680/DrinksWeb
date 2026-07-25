@@ -1,5 +1,5 @@
 <?php
-require_once("ConnCentral.php");   
+require_once("ConnCentral.php");    
 require_once("ConnDrinks.php");    
 require_once("Conexion.php");      
 
@@ -68,6 +68,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
     <style>
         body{ font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
         .container{ max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th { background: #1a2a6c; color: white; padding: 12px; font-size: 13px; }
         td { border-bottom: 1px solid #eee; padding: 8px; text-align: center; }
@@ -85,14 +86,31 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         .badge-sede { font-size: 10px; padding: 3px 6px; border-radius: 4px; color: white; font-weight: bold; text-transform: uppercase; }
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
-        #filtro { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 6px; }
+        #filtro { flex: 2; min-width: 200px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .select-filtro { flex: 1; min-width: 140px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; }
+        .total-row { background: #e2e8f0; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>🛠️ Panel de Inventario con Precios</h2>
-    <input type="text" id="filtro" placeholder="🔍 Buscar por nombre o código..." onkeyup="filtrar()">
+    
+    <div class="filter-container">
+        <input type="text" id="filtro" placeholder="🔍 Buscar por nombre o código..." onkeyup="filtrar()">
+        
+        <select id="filtro-sede" class="select-filtro" onchange="filtrar()">
+            <option value="todos">🏢 Todas las sedes</option>
+            <option value="central">🔹 Central</option>
+            <option value="drinks">🔸 Drinks</option>
+        </select>
+
+        <select id="filtro-estado" class="select-filtro" onchange="filtrar()">
+            <option value="todos">⚡ Todos los estados</option>
+            <option value="1" selected>🟢 Activos</option>
+            <option value="0">🔴 Retirados</option>
+        </select>
+    </div>
 
     <table>
         <thead>
@@ -111,65 +129,129 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 $desc = ($c['descripcion'] !== '---') ? $c['descripcion'] : $d['descripcion'];
                 $pv = ($c['precioventa'] != 0) ? $c['precioventa'] : $d['precioventa'];
             ?>
-            <tr class="product-header">
+            <tr class="product-header" data-barcode="<?= $b ?>">
                 <td colspan="5" style="text-align:left;">
                     <span style="color:#666; font-size: 12px; margin-right: 10px;">[<?= $b ?>]</span>
                     <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
             </tr>
-            <tr class="row-drinks">
+            <tr class="row-drinks" data-sede="drinks" data-barcode="<?= $b ?>" data-estado="<?= $d['estado'] ?>">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-drinks">Drinks</span></td>
                 <td>
                     <label class="switch">
-                        <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Drinks', this)" <?= $d['estado']==1?'checked':'' ?>>
+                        <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Drinks', this); updateRowState(this, 'drinks', '<?= $b ?>')" <?= $d['estado']==1?'checked':'' ?>>
                         <span class="slider"></span>
                     </label>
                 </td>
                 <td>$<?= number_format($pv, 0) ?></td>
-                <td><input type="number" step="any" class="stock-input" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>"></td>
+                <td><input type="number" step="any" class="stock-input stock-val" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>" oninput="filtrar()"></td>
                 <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Drinks')">💾</button></td>
             </tr>
-            <tr class="row-central">
+            <tr class="row-central" data-sede="central" data-barcode="<?= $b ?>" data-estado="<?= $c['estado'] ?>">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-central">Central</span></td>
                 <td>
                     <label class="switch">
-                        <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Central', this)" <?= $c['estado']==1?'checked':'' ?>>
+                        <input type="checkbox" onchange="toggleStatus('<?= $b ?>', 'Central', this); updateRowState(this, 'central', '<?= $b ?>')" <?= $c['estado']==1?'checked':'' ?>>
                         <span class="slider"></span>
                     </label>
                 </td>
                 <td>$<?= number_format($pv, 0) ?></td>
-                <td><input type="number" step="any" class="stock-input" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>"></td>
+                <td><input type="number" step="any" class="stock-input stock-val" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>" oninput="filtrar()"></td>
                 <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Central')">💾</button></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
+                <td id="total-stock" style="text-align: center; font-size: 15px; color: #1a2a6c;">0</td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 
 <script>
 function filtrar() {
     const term = document.getElementById('filtro').value.toLowerCase();
+    const sedeSeleccionada = document.getElementById('filtro-sede').value;
+    const estadoSeleccionado = document.getElementById('filtro-estado').value;
     const headers = document.querySelectorAll('.product-header');
 
+    let stockTotal = 0;
+
     headers.forEach(header => {
+        const barcode = header.getAttribute('data-barcode');
         const codigo = header.querySelector('span').textContent.toLowerCase();
         const inputNombre = header.querySelector('.nombre-producto');
         const nombre = inputNombre ? inputNombre.value.toLowerCase() : "";
         
-        const visible = codigo.includes(term) || nombre.includes(term);
-        
-        header.style.display = visible ? '' : 'none';
-        if (header.nextElementSibling) header.nextElementSibling.style.display = visible ? '' : 'none';
-        if (header.nextElementSibling?.nextElementSibling) header.nextElementSibling.nextElementSibling.style.display = visible ? '' : 'none';
+        const coincideTexto = codigo.includes(term) || nombre.includes(term);
+
+        const rowDrinks = document.querySelector(`.row-drinks[data-barcode="${barcode}"]`);
+        const rowCentral = document.querySelector(`.row-central[data-barcode="${barcode}"]`);
+
+        // Sede check
+        let mostrarDrinksSede = (sedeSeleccionada === 'todos' || sedeSeleccionada === 'drinks');
+        let mostrarCentralSede = (sedeSeleccionada === 'todos' || sedeSeleccionada === 'central');
+
+        // Estado check
+        const estadoDrinks = rowDrinks.getAttribute('data-estado');
+        const estadoCentral = rowCentral.getAttribute('data-estado');
+
+        let mostrarDrinksEstado = (estadoSeleccionado === 'todos' || estadoDrinks === estadoSeleccionado);
+        let mostrarCentralEstado = (estadoSeleccionado === 'todos' || estadoCentral === estadoSeleccionado);
+
+        const mostrarFilaDrinks = coincideTexto && mostrarDrinksSede && mostrarDrinksEstado;
+        const mostrarFilaCentral = coincideTexto && mostrarCentralSede && mostrarCentralEstado;
+
+        if (rowDrinks) {
+            rowDrinks.style.display = mostrarFilaDrinks ? '' : 'none';
+            if (mostrarFilaDrinks) {
+                stockTotal += parseFloat(rowDrinks.querySelector('.stock-val').value) || 0;
+            }
+        }
+
+        if (rowCentral) {
+            rowCentral.style.display = mostrarFilaCentral ? '' : 'none';
+            if (mostrarFilaCentral) {
+                stockTotal += parseFloat(rowCentral.querySelector('.stock-val').value) || 0;
+            }
+        }
+
+        // Mostrar u ocultar la cabecera general del producto según si tiene al menos una de las dos sedes visibles
+        if (mostrarFilaDrinks || mostrarFilaCentral) {
+            header.style.display = '';
+        } else {
+            header.style.display = 'none';
+        }
     });
+
+    document.getElementById('total-stock').textContent = stockTotal.toLocaleString('es-CO', {maximumFractionDigits: 2});
+}
+
+function updateRowState(checkbox, sede, barcode) {
+    const row = document.querySelector(`.row-${sede}[data-barcode="${barcode}"]`);
+    if (row) {
+        row.setAttribute('data-estado', checkbox.checked ? '1' : '0');
+        filtrar(); // Recalcular filtros y totales al alternar el switch en tiempo real
+    }
 }
 
 function updateName(b, v) { fetch('', {method:'POST', body:new URLSearchParams({action:'update_name', barcode:b, nombre:v})}); }
 function saveStock(b, s) { 
     let v = document.getElementById(`input-${s.toLowerCase()}-${b}`).value;
-    fetch('', {method:'POST', body:new URLSearchParams({action:'update_stock', barcode:b, sede:s, cantidad:v})}).then(()=>alert('Actualizado')); 
+    fetch('', {method:'POST', body:new URLSearchParams({action:'update_stock', barcode:b, sede:s, cantidad:v})}).then(()=>{
+        alert('Actualizado');
+        filtrar();
+    }); 
 }
 function toggleStatus(b, s, e) { fetch('', {method:'POST', body:new URLSearchParams({action:'toggle_status', barcode:b, sede:s, estado:e.checked?1:0})}); }
+
+// Ejecutar al cargar la página para calcular el stock inicial con el filtro activo por defecto (Activos)
+window.onload = function() {
+    filtrar();
+};
 </script>
 </body>
 </html>
