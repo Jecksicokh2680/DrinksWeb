@@ -222,9 +222,8 @@ body {
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
-                        <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>                         
-                            
-                        <!-- <a class="nav-link" href="Pruebas.php" target="contentFrame">💵 Prueba</a> -->                    
+                        <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
+                        <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>                 
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
