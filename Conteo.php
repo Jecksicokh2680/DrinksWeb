@@ -266,6 +266,67 @@ $resH->bind_param("s", $nitSesion);
 $resH->execute();
 $resultConteos = $resH->get_result();
 while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
+
+/* ============================================================
+   FUNCIÓN PARA OBTENER MÉTRICAS DEL PANEL DOBLE (MODAL)
+============================================================ */
+function obtenerMetricasSedeModal($mysqliConn, $nitSede) {
+    $stmtCatTotal = $mysqliConn->prepare("
+        SELECT COUNT(*) as total 
+        FROM categorias c 
+        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
+    ");
+    $stmtCatTotal->execute();
+    $totalCategoriasHabilitadas = $stmtCatTotal->get_result()->fetch_assoc()['total'] ?? 0;
+
+    global $mysqli; // Base de datos general donde se guarda 'conteoweb'
+    $stmtCatContadas = $mysqli->prepare("
+        SELECT COUNT(DISTINCT CodCat) as total 
+        FROM conteoweb 
+        WHERE DATE(fecha_conteo) = CURDATE() 
+          AND estado = 'A' 
+          AND TRIM(NitEmpresa) = TRIM(?)
+    ");
+    $stmtCatContadas->bind_param("s", $nitSede);
+    $stmtCatContadas->execute();
+    $totalContadasHoy = $stmtCatContadas->get_result()->fetch_assoc()['total'] ?? 0;
+
+    $porcentajeAvance = ($totalCategoriasHabilitadas > 0) ? ($totalContadasHoy / $totalCategoriasHabilitadas) * 100 : 0;
+
+    $familiasResumen = [];
+    $sqlFamilias = "
+        SELECT 
+            f.id AS id_familia,
+            f.nombre AS nombre_familia,
+            COUNT(c.CodCat) AS total_cat,
+            SUM(CASE WHEN c.CodCat IN (
+                SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo) = CURDATE() AND estado = 'A' AND TRIM(NitEmpresa) = TRIM(?)
+            ) THEN 1 ELSE 0 END) AS contadas_cat
+        FROM familias f
+        INNER JOIN categorias c ON c.Tipo = f.id
+        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
+        GROUP BY f.id, f.nombre
+        ORDER BY f.nombre ASC
+    ";
+    $stmtFam = $mysqliConn->prepare($sqlFamilias);
+    $stmtFam->bind_param("s", $nitSede);
+    $stmtFam->execute();
+    $resFam = $stmtFam->get_result();
+    while ($row = $resFam->fetch_assoc()) {
+        $familiasResumen[] = $row;
+    }
+
+    return [
+        'total_categorias' => $totalCategoriasHabilitadas,
+        'contadas_hoy' => $totalContadasHoy,
+        'pendientes' => max(0, $totalCategoriasHabilitadas - $totalContadasHoy),
+        'porcentaje' => $porcentajeAvance,
+        'familias' => $familiasResumen
+    ];
+}
+
+$datosCentralModal = obtenerMetricasSedeModal($mysqli, NIT_CENTRAL);
+$datosDrinksModal  = obtenerMetricasSedeModal($mysqli, NIT_DRINKS);
 ?>
 
 <!DOCTYPE html>
@@ -285,6 +346,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .sede-btn { text-decoration:none; padding:8px 12px; border-radius:6px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
         .btn-refresh { text-decoration:none; padding:8px 12px; border-radius:6px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:15px; margin-left: auto; }
+        .btn-panel-modal { text-decoration:none; padding:8px 12px; border-radius:6px; background:#2c3e50; color:#fff; border:none; cursor:pointer; font-size:13px; font-weight:bold; }
         
         .select-categoria{ width:100%; padding:14px; font-size:16px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
         
@@ -311,7 +373,18 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:20px; width:95%; max-width:800px; border-radius:12px; max-height:85vh; overflow-y:auto; position:relative;}
-        .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#999; }
+        .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#999; z-index: 10; }
+
+        /* Estilos específicos para el doble panel responsive dentro del modal */
+        .panels-wrapper { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; margin-top: 15px; }
+        .panel-box-card { background: #f8f9fa; padding: 12px; border-radius: 10px; border: 1px solid #e9ecef; }
+        .metrics-grid-modal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+        .metric-box-modal { background: #fff; padding: 8px 4px; border-radius: 6px; border: 1px solid #e9ecef; text-align: center; }
+        .metric-box-modal h4 { margin: 0 0 3px 0; font-size: 9px; color: #666; text-transform: uppercase; }
+        .metric-box-modal span { font-size: 16px; font-weight: bold; color: #2c3e50; }
+        .progress-container-modal { background: #e9ecef; border-radius: 8px; height: 14px; width: 100%; overflow: hidden; margin-bottom: 12px; position: relative; }
+        .progress-bar-modal { background: #28a745; height: 100%; width: 0%; display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: bold; }
+        .badge-status-modal { padding: 2px 5px; border-radius: 4px; font-size: 9px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -321,6 +394,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         <span style="font-size:11px; font-weight:bold; color:#777;">📍 SEDE:</span>
         <a href="?cambiar_nit=<?= NIT_CENTRAL ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
         <a href="?cambiar_nit=<?= NIT_DRINKS ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
+        <button type="button" class="btn-panel-modal" onclick="abrirModalPanelDoble()">📊 Ver Avance Sedes</button>
         <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄</button>
     </div>
 
@@ -442,11 +516,142 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php endif; ?>
 </div>
 
+<!-- Modal de Productos -->
 <div id="modalProductos" class="modal">
     <div class="modal-content">
         <span class="close-modal" onclick="cerrarModal()">&times;</span>
         <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px;">Detalle de Productos</h3>
         <div id="tabla-productos">Cargando...</div>
+    </div>
+</div>
+
+<!-- Modal de Doble Panel de Progreso -->
+<div id="modalPanelDoble" class="modal">
+    <div class="modal-content" style="max-width: 1050px;">
+        <span class="close-modal" onclick="cerrarModalPanelDoble()">&times;</span>
+        <h3 style="border-bottom:2px solid #2c3e50; padding-bottom:10px; margin-top:0;">📊 Panel de Control de Inventario (Sedes Simultáneas)</h3>
+        
+        <div class="panels-wrapper">
+            <!-- PANEL CENTRAL -->
+            <div class="panel-box-card">
+                <h4 style="margin:0 0 3px 0; color:#2c3e50; font-size: 15px;">📊 Sede CENTRAL</h4>
+                <p style="margin:0 0 10px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
+                <div class="metrics-grid-modal">
+                    <div class="metric-box-modal">
+                        <h4>Total</h4>
+                        <span><?= $datosCentralModal['total_categorias'] ?></span>
+                    </div>
+                    <div class="metric-box-modal">
+                        <h4>Contadas</h4>
+                        <span style="color: #28a745;"><?= $datosCentralModal['contadas_hoy'] ?></span>
+                    </div>
+                    <div class="metric-box-modal">
+                        <h4>Pend.</h4>
+                        <span style="color: #dc3545;"><?= $datosCentralModal['pendientes'] ?></span>
+                    </div>
+                </div>
+                <label style="font-weight:bold; font-size:10px; margin-bottom:3px; display:block;">Progreso: <?= number_format($datosCentralModal['porcentaje'], 1) ?>%</label>
+                <div class="progress-container-modal">
+                    <div class="progress-bar-modal" style="width: <?= $datosCentralModal['porcentaje'] ?>%;">
+                        <?= number_format($datosCentralModal['porcentaje'], 1) ?>%
+                    </div>
+                </div>
+                <h5 style="margin:10px 0 5px 0; font-size:11px; color:#444;">Desglose por Familias</h5>
+                <div class="table-responsive" style="max-height: 250px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Familia</th>
+                                <th style="text-align:center;">Tot</th>
+                                <th style="text-align:center;">Cont</th>
+                                <th style="text-align:center;">Pend</th>
+                                <th style="text-align:center;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($datosCentralModal['familias'] as $f): 
+                                $pend = $f['total_cat'] - $f['contadas_cat'];
+                                $comp = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
+                            ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
+                                <td align="center"><?= $f['total_cat'] ?></td>
+                                <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
+                                <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pend ?></td>
+                                <td align="center">
+                                    <?php if($pend == 0): ?>
+                                        <span class="badge-status-modal" style="background:#d4edda; color:#155724;">Listo</span>
+                                    <?php else: ?>
+                                        <span class="badge-status-modal" style="background:#fff3cd; color:#856404;"><?= number_format($comp, 0) ?>%</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PANEL DRINKS -->
+            <div class="panel-box-card">
+                <h4 style="margin:0 0 3px 0; color:#2c3e50; font-size: 15px;">📊 Sede DRINKS</h4>
+                <p style="margin:0 0 10px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
+                <div class="metrics-grid-modal">
+                    <div class="metric-box-modal">
+                        <h4>Total</h4>
+                        <span><?= $datosDrinksModal['total_categorias'] ?></span>
+                    </div>
+                    <div class="metric-box-modal">
+                        <h4>Contadas</h4>
+                        <span style="color: #28a745;"><?= $datosDrinksModal['contadas_hoy'] ?></span>
+                    </div>
+                    <div class="metric-box-modal">
+                        <h4>Pend.</h4>
+                        <span style="color: #dc3545;"><?= $datosDrinksModal['pendientes'] ?></span>
+                    </div>
+                </div>
+                <label style="font-weight:bold; font-size:10px; margin-bottom:3px; display:block;">Progreso: <?= number_format($datosDrinksModal['porcentaje'], 1) ?>%</label>
+                <div class="progress-container-modal">
+                    <div class="progress-bar-modal" style="width: <?= $datosDrinksModal['porcentaje'] ?>%;">
+                        <?= number_format($datosDrinksModal['porcentaje'], 1) ?>%
+                    </div>
+                </div>
+                <h5 style="margin:10px 0 5px 0; font-size:11px; color:#444;">Desglose por Familias</h5>
+                <div class="table-responsive" style="max-height: 250px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Familia</th>
+                                <th style="text-align:center;">Tot</th>
+                                <th style="text-align:center;">Cont</th>
+                                <th style="text-align:center;">Pend</th>
+                                <th style="text-align:center;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($datosDrinksModal['familias'] as $f): 
+                                $pend = $f['total_cat'] - $f['contadas_cat'];
+                                $comp = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
+                            ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
+                                <td align="center"><?= $f['total_cat'] ?></td>
+                                <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
+                                <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pend ?></td>
+                                <td align="center">
+                                    <?php if($pend == 0): ?>
+                                        <span class="badge-status-modal" style="background:#d4edda; color:#155724;">Listo</span>
+                                    <?php else: ?>
+                                        <span class="badge-status-modal" style="background:#fff3cd; color:#856404;"><?= number_format($comp, 0) ?>%</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -465,7 +670,17 @@ function verDetalleProductos(codCat) {
     .catch(() => { contenedor.innerHTML = 'Error de conexión'; });
 }
 function cerrarModal() { document.getElementById('modalProductos').style.display = 'none'; }
-window.onclick = e => { if (e.target.className === 'modal') cerrarModal(); }
+
+// Funciones para el nuevo modal del panel doble
+function abrirModalPanelDoble() { document.getElementById('modalPanelDoble').style.display = 'block'; }
+function cerrarModalPanelDoble() { document.getElementById('modalPanelDoble').style.display = 'none'; }
+
+window.onclick = e => { 
+    if (e.target.className === 'modal') {
+        cerrarModal();
+        cerrarModalPanelDoble();
+    }
+}
 
 function actualizarCategoriasContadas() {
     const formData = new FormData();

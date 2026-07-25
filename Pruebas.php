@@ -1,355 +1,328 @@
 <?php
 /* ============================================================
-    CONFIGURACIÓN DE SESIÓN Y CONEXIONES
+   PANEL DE PROGRESO Y ESTADO DE CONTEO - DOBLE VISTA RESPONSIVE
 ============================================================ */
-$session_timeout  = 3600;
-$inactive_timeout = 2400;
-date_default_timezone_set('America/Bogota'); 
-ini_set('session.gc_maxlifetime', $session_timeout);
-session_set_cookie_params($session_timeout);
+require_once("ConnCentral.php"); // $mysqliCentral
+require_once("ConnDrinks.php");  // $mysqliDrinks
+require_once("Conexion.php");    // ADM ($mysqli)
 
 session_start();
-require 'auth_check.php';
-session_regenerate_id(true);
+date_default_timezone_set('America/Bogota');
 
-require("ConnCentral.php"); 
-require("Conexion.php");    
-require("ConnDrinks.php");  
+// Definición de sedes
+define('NIT_CENTRAL', '86057267-8');
+define('NIT_DRINKS',  '901724534-7');
 
-$sede_actual = $_GET['sede'] ?? 'central';
-
-if ($sede_actual === 'drinks') {
-    if ($mysqliDrinks->connect_error) die("Error Sede Drinks: " . $mysqliDrinks->connect_error);
-    $mysqliActiva = $mysqliDrinks;
-    $nombre_sede_display = "DRINKS (AWS)";
-    $nit_empresa_filtro = "901724534-7"; 
-} else {
-    $mysqliActiva = $mysqliCentral;
-    $nombre_sede_display = "CENTRAL";
-    $nit_empresa_filtro = "86057267-8";  
-}
-
-if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
-    header("Location: logout.php?msg=Sesion expirada");
-    exit;
-}
-$_SESSION['ultimo_acceso'] = time();
-
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
-if ($UsuarioSesion === '') { 
-    header("Location: logout.php?msg=Sesion expirada");
-    exit; 
+if (!isset($_SESSION['Usuario'])) {
+    die("Sesión no válida. Por favor inicie sesión.");
 }
 
 /* ============================================================
-    FUNCIÓN DE PERMISOS
+   FUNCIÓN PARA OBTENER MÉTRICAS POR SEDE
 ============================================================ */
-function Autorizacion($User, $Solicitud) {
-    global $mysqli; 
-    $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=?");
-    $stmt->bind_param("ss", $User, $Solicitud);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
-}
+function obtenerMetricasSede($mysqli, $nitSede) {
+    // 1. Total de categorías habilitadas para conteo web
+    $stmtCatTotal = $mysqli->prepare("
+        SELECT COUNT(*) as total 
+        FROM categorias c 
+        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
+    ");
+    $stmtCatTotal->execute();
+    $totalCategoriasHabilitadas = $stmtCatTotal->get_result()->fetch_assoc()['total'] ?? 0;
 
-$permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
-$permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
-$permiso0003 = Autorizacion($UsuarioSesion, '0003'); 
+    // 2. Categorías contadas hoy en la sede
+    $stmtCatContadas = $mysqli->prepare("
+        SELECT COUNT(DISTINCT CodCat) as total 
+        FROM conteoweb 
+        WHERE DATE(fecha_conteo) = CURDATE() 
+          AND estado = 'A' 
+          AND TRIM(NitEmpresa) = TRIM(?)
+    ");
+    $stmtCatContadas->bind_param("s", $nitSede);
+    $stmtCatContadas->execute();
+    $totalContadasHoy = $stmtCatContadas->get_result()->fetch_assoc()['total'] ?? 0;
 
-$fecha_input = $_GET['fecha'] ?? date('Y-m-d');
-$fecha       = str_replace('-', '', $fecha_input); 
-$fecha_esc   = $mysqliActiva->real_escape_string($fecha);
+    // Porcentaje de avance
+    $porcentajeAvance = ($totalCategoriasHabilitadas > 0) ? ($totalContadasHoy / $totalCategoriasHabilitadas) * 100 : 0;
 
-/* ============================================================
-    QUERIES DE DATOS: OBTENER TODOS LOS FACTURADORES DEL DÍA
-============================================================ */
-$qryFacturadores = "SELECT FACTURADOR_NIT, FACTURADOR FROM (
-    SELECT T1.NIT AS FACTURADOR_NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS FACTURADOR FROM FACTURAS F 
-    INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fecha_esc'
-    UNION 
-    SELECT V.NIT AS FACTURADOR_NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS FACTURADOR FROM PEDIDOS P 
-    INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fecha_esc'
-) X GROUP BY FACTURADOR_NIT ORDER BY FACTURADOR ASC";
-$resFactList = $mysqliActiva->query($qryFacturadores);
-
-$listadoCajeros = [];
-if ($resFactList) {
-    while ($rowF = $resFactList->fetch_assoc()) {
-        $nitCajero = $rowF['FACTURADOR_NIT'];
-        $nombreCajero = $rowF['FACTURADOR'];
-        $nitCajero_esc = $mysqliActiva->real_escape_string($nitCajero);
-
-        // 1. Validar Cierre (Arqueo) para este cajero
-        $cierreRealizado = false;
-        $qryCheckCierre = "SELECT T2.NIT FROM ARQUEO AS A1
-                            INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
-                            INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
-                            WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
-                            AND T2.NIT = '$nitCajero_esc' LIMIT 1";
-        $resCheck = $mysqliActiva->query($qryCheckCierre);
-        if ($resCheck && $resCheck->num_rows > 0) { $cierreRealizado = true; }
-
-        // 2. Ventas
-        $totalVentas = 0;
-        $qryV = "SELECT SUM(T) AS TOTAL FROM (
-            SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
-            INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
-            LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fecha_esc' AND T1.NIT='$nitCajero_esc' 
-            UNION ALL 
-            SELECT (DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
-            INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO=P.IDUSUARIO 
-            INNER JOIN TERCEROS V ON V.IDTERCERO=UV.IDTERCERO WHERE P.ESTADO='0' AND P.FECHA='$fecha_esc' AND V.NIT='$nitCajero_esc'
-        ) X";
-        $resV = $mysqliActiva->query($qryV);
-        if($vRow = $resV->fetch_assoc()){ $totalVentas = (float)($vRow['TOTAL'] ?? 0); }
-
-        // 3. Egresos
-        $totalEgresos = 0;
-        $listaEgresos = [];
-        $yaExisteTransferEnEgresos = false;
-        $resE = $mysqliActiva->query("SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
-            INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
-            WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$nitCajero_esc'");
-        if($resE){ 
-            while($eg = $resE->fetch_assoc()){ 
-                $totalEgresos += (float)$eg['VALOR']; 
-                $listaEgresos[] = $eg; 
-                if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false || stripos($eg['MOTIVO'], 'TRANSFER') !== false) {
-                    $yaExisteTransferEnEgresos = true;
-                }
-            } 
-        }
-
-        // 4. Transferencias Manuales
-        $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
-                                 WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
-        $stmtT->bind_param("sss", $fecha_input, $nitCajero, $nit_empresa_filtro);
-        $stmtT->execute();
-        $resT = $stmtT->get_result();
-        $totalTransfer = (float)($resT->fetch_assoc()['total'] ?? 0);
-
-        // 5. Transferencias Automáticas
-        $stmtTA = $mysqli->prepare("SELECT SUM(n.monto) AS total_auto 
-                                  FROM control_checks_nequi c
-                                  INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
-                                  WHERE DATE(c.fecha_hora_check) = ? 
-                                  AND c.usuario_cedula = ? 
-                                  AND c.nit_empresa = ?");
-        $stmtTA->bind_param("sss", $fecha_input, $nitCajero, $nit_empresa_filtro);
-        $stmtTA->execute();
-        $resTA = $stmtTA->get_result();
-        $totalTransferAuto = (float)($resTA->fetch_assoc()['total_auto'] ?? 0);
-
-        // Cálculo Total Físico
-        if ($yaExisteTransferEnEgresos) {
-            $efectivo_neto_final = $totalEgresos - $totalVentas;
-        } else {
-            $efectivo_neto_final = ($totalEgresos + $totalTransfer + $totalTransferAuto) - $totalVentas;
-        }
-
-        $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRealizado);
-
-        $listadoCajeros[] = [
-            'nit' => $nitCajero,
-            'nombre' => $nombreCajero,
-            'totalVentas' => $totalVentas,
-            'totalEgresos' => $totalEgresos,
-            'totalTransfer' => $totalTransfer,
-            'totalTransferAuto' => $totalTransferAuto,
-            'efectivo_neto_final' => $efectivo_neto_final,
-            'listaEgresos' => $listaEgresos,
-            'cierreRealizado' => $cierreRealizado,
-            'ocultarValores' => $ocultarValores
-        ];
+    // 3. Resumen detallado por Familia
+    $familiasResumen = [];
+    $sqlFamilias = "
+        SELECT 
+            f.id AS id_familia,
+            f.nombre AS nombre_familia,
+            COUNT(c.CodCat) AS total_cat,
+            SUM(CASE WHEN c.CodCat IN (
+                SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo) = CURDATE() AND estado = 'A' AND TRIM(NitEmpresa) = TRIM(?)
+            ) THEN 1 ELSE 0 END) AS contadas_cat
+        FROM familias f
+        INNER JOIN categorias c ON c.Tipo = f.id
+        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
+        GROUP BY f.id, f.nombre
+        ORDER BY f.nombre ASC
+    ";
+    $stmtFam = $mysqli->prepare($sqlFamilias);
+    $stmtFam->bind_param("s", $nitSede);
+    $stmtFam->execute();
+    $resFam = $stmtFam->get_result();
+    while ($row = $resFam->fetch_assoc()) {
+        $familiasResumen[] = $row;
     }
+
+    return [
+        'total_categorias' => $totalCategoriasHabilitadas,
+        'contadas_hoy' => $totalContadasHoy,
+        'pendientes' => max(0, $totalCategoriasHabilitadas - $totalContadasHoy),
+        'porcentaje' => $porcentajeAvance,
+        'familias' => $familiasResumen
+    ];
 }
 
-function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
+// Obtener datos para ambas sedes
+$datosCentral = obtenerMetricasSede($mysqli, NIT_CENTRAL);
+$datosDrinks  = obtenerMetricasSede($mysqli, NIT_DRINKS);
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Corte de Caja Global</title>
+    <title>Panel de Avance | Central y Drinks</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: "Segoe UI", sans-serif; margin: 15px; background: #eef3f7; color: #333; }
-        .panel { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-        .form-grid { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
-        .form-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
-        .form-group select, .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-        .row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 15px; margin-bottom: 15px; }
-        .table-responsive { width: 100%; overflow-x: auto; }
-        .table { width: 100%; border-collapse: collapse; }
-        .table td, .table th { padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px; }
-        .button { padding: 10px 20px; background: #1f2d3d; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .btn-save { background: #0b63a3; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
-        .text-end { text-align: right; }
-        .input-edit { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
-        .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        @media (max-width: 576px) {
-            .form-group { min-width: 100%; }
-            .button { width: 100%; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 10px; color: #333; }
+        
+        .main-container { width: 100%; max-width: 1400px; margin: 0 auto; }
+        
+        .nav-links { 
+            margin-bottom: 15px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: #fff; 
+            padding: 12px 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+            flex-wrap: wrap; 
+            gap: 10px; 
+        }
+        .nav-links a { color: #007bff; text-decoration: none; font-size: 13px; font-weight: bold; }
+
+        /* Contenedor adaptativo de paneles: lado a lado en pantallas grandes, apilados en móviles */
+        .panels-wrapper { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
+            gap: 15px; 
+        }
+        
+        .card { 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+            overflow: hidden;
+        }
+        
+        .btn-refresh { 
+            text-decoration: none; 
+            padding: 6px 12px; 
+            border-radius: 6px; 
+            background: #fff; 
+            border: 1px solid #ccc; 
+            cursor: pointer; 
+            font-size: 13px; 
+        }
+
+        .metrics-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 8px; 
+            margin-bottom: 15px; 
+        }
+        .metric-box { 
+            background: #f8f9fa; 
+            padding: 10px 5px; 
+            border-radius: 8px; 
+            border: 1px solid #e9ecef; 
+            text-align: center; 
+        }
+        .metric-box h3 { margin: 0 0 4px 0; font-size: 10px; color: #666; text-transform: uppercase; }
+        .metric-box span { font-size: 18px; font-weight: bold; color: #2c3e50; }
+
+        /* Barra de Progreso */
+        .progress-container { background: #e9ecef; border-radius: 10px; height: 16px; width: 100%; overflow: hidden; margin-bottom: 15px; position: relative; }
+        .progress-bar { background: #28a745; height: 100%; width: 0%; transition: width 0.6s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold; }
+
+        .table-responsive { 
+            width: 100%; 
+            overflow-x: auto; 
+            max-height: 380px; 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; white-space: nowrap; }
+        th, td { padding: 8px 6px; border-bottom: 1px solid #f0f0f0; text-align: left; font-size: 11px; }
+        th { background: #f8f9fa; color: #666; text-transform: uppercase; font-size: 10px; position: sticky; top: 0; z-index: 1; }
+
+        .badge-status { padding: 3px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; }
+        .badge-complete { background: #d4edda; color: #155724; }
+        .badge-pending { background: #fff3cd; color: #856404; }
+
+        /* Ajustes específicos para pantallas pequeñas */
+        @media (max-width: 480px) {
+            body { padding: 5px; }
+            .card { padding: 10px; }
+            .metric-box span { font-size: 15px; }
         }
     </style>
 </head>
 <body>
 
-<div class="panel no-print">
-    <form method="GET" class="form-grid">
-        <div class="form-group">
-            <label>Sede:</label>
-            <select name="sede" onchange="this.form.submit()">
-                <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
-                <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Fecha:</label>
-            <input type="date" name="fecha" value="<?= $fecha_input ?>">
-        </div>
-        <button class="button" type="submit">Consultar</button>
-    </form>
-</div>
+<div class="main-container">
+    <div class="nav-links">
+        <a href="index.php">⬅️ Volver al Conteo Principal</a>
+        <span style="font-size:11px; color:#888;">Actualización simultánea en tiempo real</span>
+        <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄 Actualizar Todo</button>
+    </div>
 
-<div class="row-grid">
-    <?php if(empty($listadoCajeros)): ?>
-        <div class="panel" style="grid-column: 1 / -1; text-align: center;">
-            <p>No se encontraron registros de facturadores para la fecha seleccionada.</p>
-        </div>
-    <?php else: foreach($listadoCajeros as $cajero): ?>
-        <div class="panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 10px;">
-                <h3 style="margin: 0; font-size: 1.1em;">📊 <?= htmlspecialchars($cajero['nombre']) ?></h3>
-                <div>
-                    <?php if($cajero['cierreRealizado']): ?>
-                        <span style="color: #d32f2f; font-weight: bold; font-size: 0.9em;">🔒 CERRADA</span>
-                    <?php else: ?>
-                        <span style="color: #2e7d32; font-weight: bold; font-size: 0.9em;">🔓 ABIERTA</span>
-                    <?php endif; ?>
+    <div class="panels-wrapper">
+
+        <!-- ================= PANEL CENTRAL ================= -->
+        <div class="card">
+            <h2 style="margin:0 0 3px 0; color:#2c3e50; font-size: 18px;">📊 Sede CENTRAL</h2>
+            <p style="margin:0 0 12px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
+
+            <div class="metrics-grid">
+                <div class="metric-box">
+                    <h3>Total Cat.</h3>
+                    <span><?= $datosCentral['total_categorias'] ?></span>
+                </div>
+                <div class="metric-box">
+                    <h3>Contadas</h3>
+                    <span style="color: #28a745;"><?= $datosCentral['contadas_hoy'] ?></span>
+                </div>
+                <div class="metric-box">
+                    <h3>Pendientes</h3>
+                    <span style="color: #dc3545;"><?= $datosCentral['pendientes'] ?></span>
                 </div>
             </div>
 
-            <div class="table-responsive">
-                <table class="table">
-                    <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $cajero['ocultarValores'] ? '***' : '$ '.money($cajero['totalVentas']) ?></b></td></tr>
-                    <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($cajero['totalEgresos']) ?></td></tr>
-                    <tr><td>(-) Transfer. Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($cajero['totalTransfer']) ?></td></tr>
-                    <tr><td>(-) Transfer. Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($cajero['totalTransferAuto']) ?></td></tr>
-                    <tr style="font-size:1.2em; border-top:2px solid #333; background:#fff3cd;">
-                        <td><b>TOTAL FÍSICO:</b></td>
-                        <td class="text-end"><b><?= $cajero['ocultarValores'] ? '***' : '$ '.money($cajero['efectivo_neto_final']) ?></b></td>
-                    </tr>
-                </table>
+            <label style="font-weight:bold; font-size:11px; margin-bottom:4px; display:block;">Progreso: <?= number_format($datosCentral['porcentaje'], 1) ?>%</label>
+            <div class="progress-container">
+                <div class="progress-bar" style="width: <?= $datosCentral['porcentaje'] ?>%;">
+                    <?= number_format($datosCentral['porcentaje'], 1) ?>%
+                </div>
             </div>
 
-            <h4 style="margin: 10px 0 5px 0; font-size: 0.95em;">💸 Egresos de Caja</h4>
-            <div class="table-responsive" style="max-height: 150px; overflow-y: auto;">
-                <table class="table">
-                    <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
-                    <tbody>
-                        <?php if(empty($cajero['listaEgresos'])): ?>
-                            <tr><td colspan="4" style="text-align:center; color:#777;">Sin egresos registrados</td></tr>
-                        <?php else: foreach($cajero['listaEgresos'] as $eg): $idE = $eg['IDSALIDA']; ?>
+            <h3 style="margin:12px 0 6px 0; font-size:12px; color:#444;">Desglose por Familias (Central)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
                         <tr>
-                            <td><?= $idE ?></td>
-                            <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
-                            <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
-                            <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
+                            <th>Familia</th>
+                            <th style="text-align:center;">Total</th>
+                            <th style="text-align:center;">Cont.</th>
+                            <th style="text-align:center;">Pend.</th>
+                            <th style="text-align:center;">Estado</th>
                         </tr>
-                        <?php endforeach; endif; ?>
+                    </thead>
+                    <tbody>
+                        <?php foreach($datosCentral['familias'] as $f): 
+                            $pendientes = $f['total_cat'] - $f['contadas_cat'];
+                            $completadoFam = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
+                        ?>
+                        <tr>
+                            <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
+                            <td align="center"><?= $f['total_cat'] ?></td>
+                            <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
+                            <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pendientes ?></td>
+                            <td align="center">
+                                <?php if($pendientes == 0): ?>
+                                    <span class="badge-status badge-complete">Listo</span>
+                                <?php else: ?>
+                                    <span class="badge-status badge-pending"><?= number_format($completadoFam, 0) ?>%</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
+        </div>
 
-            <div style="margin-top: 15px; display: flex; gap: 8px; justify-content: center;">
-                <button class="button" style="background:#f39c12; font-size:12px; padding:6px 12px;" onclick='mostrarVoucher("precierre", <?= json_encode($cajero) ?>)'>📋 Precierre</button>
-                <?php if($cajero['cierreRealizado']): ?>
-                    <button class="button" style="background:#2ecc71; font-size:12px; padding:6px 12px;" onclick='mostrarVoucher("cierre", <?= json_encode($cajero) ?>)'>🖨️ Cierre</button>
-                <?php else: ?>
-                    <button class="button" style="background:#d32f2f; font-size:12px; padding:6px 12px;" onclick='mostrarVoucher("cierre", <?= json_encode($cajero) ?>)'>🔒 Cierre Def.</button>
-                <?php endif; ?>
+        <!-- ================= PANEL DRINKS ================= -->
+        <div class="card">
+            <h2 style="margin:0 0 3px 0; color:#2c3e50; font-size: 18px;">📊 Sede DRINKS</h2>
+            <p style="margin:0 0 12px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
+
+            <div class="metrics-grid">
+                <div class="metric-box">
+                    <h3>Total Cat.</h3>
+                    <span><?= $datosDrinks['total_categorias'] ?></span>
+                </div>
+                <div class="metric-box">
+                    <h3>Contadas</h3>
+                    <span style="color: #28a745;"><?= $datosDrinks['contadas_hoy'] ?></span>
+                </div>
+                <div class="metric-box">
+                    <h3>Pendientes</h3>
+                    <span style="color: #dc3545;"><?= $datosDrinks['pendientes'] ?></span>
+                </div>
+            </div>
+
+            <label style="font-weight:bold; font-size:11px; margin-bottom:4px; display:block;">Progreso: <?= number_format($datosDrinks['porcentaje'], 1) ?>%</label>
+            <div class="progress-container">
+                <div class="progress-bar" style="width: <?= $datosDrinks['porcentaje'] ?>%;">
+                    <?= number_format($datosDrinks['porcentaje'], 1) ?>%
+                </div>
+            </div>
+
+            <h3 style="margin:12px 0 6px 0; font-size:12px; color:#444;">Desglose por Familias (Drinks)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Familia</th>
+                            <th style="text-align:center;">Total</th>
+                            <th style="text-align:center;">Cont.</th>
+                            <th style="text-align:center;">Pend.</th>
+                            <th style="text-align:center;">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach($datosDrinks['familias'] as $f): 
+                            $pendientes = $f['total_cat'] - $f['contadas_cat'];
+                            $completadoFam = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
+                        ?>
+                        <tr>
+                            <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
+                            <td align="center"><?= $f['total_cat'] ?></td>
+                            <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
+                            <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pendientes ?></td>
+                            <td align="center">
+                                <?php if($pendientes == 0): ?>
+                                    <span class="badge-status badge-complete">Listo</span>
+                                <?php else: ?>
+                                    <span class="badge-status badge-pending"><?= number_format($completadoFam, 0) ?>%</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
-    <?php endforeach; endif; ?>
-</div>
 
-<div id="modalVoucher" class="modal">
-    <div class="modal-content" id="printArea"></div>
+    </div>
 </div>
 
 <script>
-    function mostrarVoucher(tipo, cajero) {
-        const p9999 = '<?= $permiso9999 ?>';
-        const p7777 = '<?= $permiso7777 ?>';
-        const p0003 = '<?= $permiso0003 ?>';
-        const cierreYaHecho = cajero.cierreRealizado;
-
-        if(tipo === 'cierre' && !cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
-            alert('ACCESO DENEGADO: Requiere permiso de supervisor para realizar el cierre.'); 
-            return;
-        }
-
-        let egresosHtml = "";
-        cajero.listaEgresos.forEach(e => {
-            egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- ${e.MOTIVO.substring(0,20).toUpperCase()}</td><td style="text-align:right;"><b>$${Number(e.VALOR).toLocaleString()}</b></td></tr>`;
-        });
-
-        const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
-        const horaImpresion = '<?= date("h:i a") ?>';
-        const estadoSesion = cierreYaHecho ? "SESIÓN CERRADA" : "SESIÓN ABIERTA";
-        
-        const vVentas = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$' + Number(cajero.totalVentas).toLocaleString() : '***';
-        const vTotal = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$' + Number(cajero.efectivo_neto_final).toLocaleString() : '***';
-
-        let html = `
-            <div style="text-align:center;">
-                <h2 style="margin:0;"><b>${titulo}</b></h2>
-                <p style="margin:0;"><b>SEDE: <?= strtoupper($nombre_sede_display) ?></b></p>
-                <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
-                <p style="margin:0;">CAJERO: ${cajero.nombre.substring(0, 25).toUpperCase()}</p>
-                <p style="margin:0;"><b>ESTADO: ${estadoSesion}</b></p>
-                <hr>
-            </div>
-            <table style="width:100%; border-collapse:collapse;">
-                <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${vVentas}</b></td></tr>
-                <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$${Number(cajero.totalEgresos).toLocaleString()}</b></td></tr>
-                <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$${Number(cajero.totalTransfer).toLocaleString()}</b></td></tr>
-                <tr><td>(-) TRANS. AUTO:</td><td style="text-align:right;"><b>$${Number(cajero.totalTransferAuto).toLocaleString()}</b></td></tr>
-                <tr><td colspan="2"><hr></td></tr>
-                <tr style="font-size:16px;">
-                    <td><b>TOTAL FÍSICO:</b></td>
-                    <td style="text-align:right;"><b>${vTotal}</b></td>
-                </tr>
-            </table>
-            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
-            <table style="width:100%; font-size:11px;">${egresosHtml}</table>
-            <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
-                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
-                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
-            </div>
-            <div class="no-print" style="margin-top:20px;">
-                <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
-                <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
-            </div>
-        `;
-        document.getElementById('printArea').innerHTML = html;
-        document.getElementById('modalVoucher').style.display = 'block';
-    }
-
-    function guardarEgreso(id){
-        const mot = document.getElementById('motivo_'+id).value;
-        const val = document.getElementById('valor_'+id).value;
-        if(!confirm('¿Desea actualizar este egreso?')) return;
-        fetch('update_egreso.php', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=<?= $sede_actual ?>`
-        }).then(r => r.text()).then(t => { alert(t); location.reload(); });
-    }
+    // Auto-recargar el panel cada 60 segundos para mantenerlo actualizado en pantallas de supervisión
+    setTimeout(() => {
+        window.location.reload();
+    }, 60000);
 </script>
+
 </body>
 </html>
