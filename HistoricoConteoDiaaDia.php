@@ -29,7 +29,7 @@ $resCats = $mysqli->query("SELECT DISTINCT c.CodCat, cat.Nombre
                            ORDER BY c.CodCat,cat.Nombre ASC");
 
 /* ============================================================
-   CONSULTA DE CONTEOS
+   CONSULTA DE CONTEOS (Orden Descendente)
 ============================================================ */
 $sql = "SELECT c.*, cat.Nombre as NombreCat 
         FROM conteoweb c
@@ -45,7 +45,7 @@ if ($filtroSede != '') {
 }
 
 $sql .= " AND DATE(c.fecha_conteo) BETWEEN '$fechaInicio' AND '$fechaFin'";
-$sql .= " ORDER BY DATE(c.fecha_conteo) ASC, c.fecha_conteo ASC";
+$sql .= " ORDER BY DATE(c.fecha_conteo) DESC, c.fecha_conteo DESC";
 
 $resConteos = $mysqli->query($sql);
 ?>
@@ -90,7 +90,6 @@ $resConteos = $mysqli->query($sql);
                         if($resSedes):
                             while($s = $resSedes->fetch_assoc()): 
                                 $nit = trim($s['NitEmpresa']);
-                                // Identificación de sede por el NIT corregido
                                 if ($nit === '901724534-7') { $label = "Drinks"; }
                                 elseif ($nit === '86057267-8') { $label = "Central"; }
                                 else { $label = "NIT: " . $nit; }
@@ -116,11 +115,11 @@ $resConteos = $mysqli->query($sql);
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small fw-bold">Desde</label>
+                    <label class="form-label small fw-bold"><i class="bi bi-calendar-date"></i> Desde (Fecha)</label>
                     <input type="date" name="f_inicio" class="form-control form-control-sm" value="<?= $fechaInicio ?>">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small fw-bold">Hasta</label>
+                    <label class="form-label small fw-bold"><i class="bi bi-calendar-date"></i> Hasta (Fecha)</label>
                     <input type="date" name="f_fin" class="form-control form-control-sm" value="<?= $fechaFin ?>">
                 </div>
                 <div class="col-md-2">
@@ -136,7 +135,7 @@ $resConteos = $mysqli->query($sql);
                 <table class="table table-hover table-xs align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-4">Hora</th>
+                            <th class="ps-4">Fecha y Hora</th>
                             <th>Sede</th>
                             <th>Categoría</th>
                             <th class="text-end">Stock Sis.</th>
@@ -163,7 +162,10 @@ $resConteos = $mysqli->query($sql);
                                 </tr>
                         <?php endif; ?>
                                 <tr>
-                                    <td class="ps-4"><?= date("H:i:s", strtotime($r['fecha_conteo'])) ?></td>
+                                    <td class="ps-4">
+                                        <div class="fw-bold"><i class="bi bi-clock"></i> <?= date("H:i:s", strtotime($r['fecha_conteo'])) ?></div>
+                                        <div class="text-muted small"><?= date("d/m/Y", strtotime($r['fecha_conteo'])) ?></div>
+                                    </td>
                                     <td>
                                         <div class="fw-bold">
                                             <?= ($r['NitEmpresa'] === '901724534-7') ? 'Drinks' : (($r['NitEmpresa'] === '86057267-8') ? 'Central' : $r['NitEmpresa']) ?>
@@ -211,7 +213,6 @@ $resConteos = $mysqli->query($sql);
 </div>
 
 <script>
-    // Pequeño script por si quieres imprimir el reporte
     document.addEventListener('keydown', function(e) {
         if (e.ctrlKey && e.key === 'p') {
             window.print();

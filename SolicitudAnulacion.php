@@ -293,7 +293,6 @@ if ($dbSede) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="180">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Anulaciones - <?= $nombreSedeActual ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -433,8 +432,10 @@ if ($dbSede) {
                             $anuladoPOS = VerificarAnulacion($r['NroFactAnular'], $r['Nit_Empresa']);
                             $txtSede = ($r['Nit_Empresa'] == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
                             
-                            $badgeEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'bg-success' : 'bg-warning text-dark';
-                            $textoEstado = ($anuladoPOS || $r['GerenteCheck'] == '1') ? 'ANULADO OK' : 'ACTIVO';
+                            $aprobadoGerenciaObejto = ($r['GerenteCheck'] == '1' || $anuladoPOS == 1);
+                            
+                            $badgeEstado = $aprobadoGerenciaObejto ? 'bg-success' : 'bg-warning text-dark';
+                            $textoEstado = $aprobadoGerenciaObejto ? 'ANULADO' : 'ACTIVO';
                             
                             $tipoBadgeColor = ($r['Tipo'] === 'P') ? 'bg-info text-dark' : 'bg-primary';
                             $tipoTexto      = ($r['Tipo'] === 'P') ? 'PEDIDO' : 'FACTURA';
@@ -506,12 +507,41 @@ if ($dbSede) {
 <script>
     let timeLeft = 180;
     const timerDisplay = document.getElementById('timer-box');
-    setInterval(() => {
-        timeLeft--;
-        timerDisplay.textContent = timeLeft + "s";
-        if (timeLeft <= 10) timerDisplay.classList.replace('text-warning', 'text-danger');
-        if (timeLeft <= 0) window.location.reload();
-    }, 1000);
+    let isUserInteracting = false;
+    let timerInterval = null;
+
+    document.querySelectorAll('input, select, textarea').forEach(element => {
+        element.addEventListener('focus', () => { isUserInteracting = true; });
+        element.addEventListener('blur', () => { isUserInteracting = false; });
+    });
+
+    function iniciarContador() {
+        timerInterval = setInterval(() => {
+            if (isUserInteracting) {
+                timerDisplay.textContent = "Pausado";
+                return;
+            }
+
+            timeLeft--;
+
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval); // Detenemos el intervalo inmediatamente
+                timerDisplay.textContent = "0s";
+                window.location.reload();
+                return;
+            }
+
+            timerDisplay.textContent = timeLeft + "s";
+            
+            if (timeLeft <= 10) {
+                timerDisplay.classList.replace('text-warning', 'text-danger');
+            } else {
+                timerDisplay.classList.replace('text-danger', 'text-warning');
+            }
+        }, 1000);
+    }
+
+    iniciarContador();
 
     document.getElementById('formAnulacion').addEventListener('submit', function(e) {
         const sel = document.getElementById('selAnular');
@@ -552,7 +582,7 @@ if ($dbSede) {
             <div id="${windowId}" class="floating-window shadow" style="display: block; top: ${offsetY}px; left: ${offsetX}px;">
                 <div class="floating-header" onmousedown="iniciarArrastre(event, '${windowId}')">
                     <div>
-                        <span class="badge ${badgeRolClass} me-2" style="font-size: 0.65rem;"><?= '${rolDoc}' ?></span>
+                        <span class="badge ${badgeRolClass} me-2" style="font-size: 0.65rem;">${rolDoc}</span>
                         <span class="fw-bold">Doc: <span class="text-info">${nroDoc}</span></span>
                     </div>
                     <button type="button" class="btn-close btn-close-white btn-sm" onclick="document.getElementById('${windowId}').remove()"></button>
@@ -622,33 +652,32 @@ if ($dbSede) {
                 });
                 winElement.querySelector('.win-tabla-items').innerHTML = htmlItems;
             })
-            .catch(err => {
-                winElement.querySelector('.win-tabla-items').innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error al cargar.</td></tr>';
+            .catch(() => {
+                winElement.querySelector('.win-tabla-items').innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error al cargar los datos.</td></tr>`;
             });
     }
 
     function iniciarArrastre(e, windowId) {
-        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
         const win = document.getElementById(windowId);
         let startX = e.clientX;
         let startY = e.clientY;
-        let initialLeft = win.offsetLeft;
-        let initialTop = win.offsetTop;
 
         function enMovimiento(e) {
             let dx = e.clientX - startX;
             let dy = e.clientY - startY;
-            win.style.left = (initialLeft + dx) + 'px';
-            win.style.top = (initialTop + dy) + 'px';
+            startX = e.clientX;
+            startY = e.clientY;
+            win.style.top = (win.offsetTop + dy) + 'px';
+            win.style.left = (win.offsetLeft + dx) + 'px';
         }
 
-        function soltar() {
+        function detenerMovimiento() {
             window.removeEventListener('mousemove', enMovimiento);
-            window.removeEventListener('mouseup', soltar);
+            window.removeEventListener('mouseup', detenerMovimiento);
         }
 
         window.addEventListener('mousemove', enMovimiento);
-        window.addEventListener('mouseup', soltar);
+        window.addEventListener('mouseup', detenerMovimiento);
     }
 </script>
 </body>
