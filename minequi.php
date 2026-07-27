@@ -38,6 +38,25 @@ $usuario_actual = isset($_SESSION['Usuario']) ? trim($_SESSION['Usuario']) : '';
 $nit_empresa    = isset($_SESSION['NitEmpresa']) ? trim($_SESSION['NitEmpresa']) : 'No asignado';
 $nro_sucursal   = isset($_SESSION['NroSucursal']) ? trim($_SESSION['NroSucursal']) : 'No asignada';
 
+// --- FUNCIÓN DE AUTORIZACIÓN ---
+function Autorizacion($User, $Solicitud) {
+    global $mysqliWeb; 
+    if (empty($User) || trim($User) === '' || $User === '01') { return 'NO'; }
+    
+    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
+    if ($stmt) {
+        $stmt->bind_param("ss", $User, $Solicitud);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $row = $res->fetch_assoc();
+        $stmt->close();
+        return ($row && isset($row['Swich'])) ? strtoupper(trim($row['Swich'])) : 'NO';
+    }
+    return 'NO';
+}
+
+$esAdminStock = ($usuario_actual !== '01' && $usuario_actual !== '') ? (Autorizacion($usuario_actual, '9999') === 'SI') : false;
+
 // --- PROCESAR ACCIÓN AJAX (GUARDAR / ELIMINAR CHECK) ---
 if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
     header('Content-Type: application/json');
@@ -89,24 +108,23 @@ if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
     exit; 
 }
 
-// --- FUNCIÓN DE AUTORIZACIÓN ---
-function Autorizacion($User, $Solicitud) {
-    global $mysqliWeb; 
-    if (empty($User) || trim($User) === '' || $User === '01') { return 'NO'; }
-    
-    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE cedulaNit=? AND Nro_Auto=?");
-    if ($stmt) {
-        $stmt->bind_param("ss", $User, $Solicitud);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        $row = $res->fetch_assoc();
-        $stmt->close();
-        return ($row && isset($row['Swich'])) ? strtoupper(trim($row['Swich'])) : 'NO';
-    }
-    return 'NO';
-}
+// --- PROCESAR ACCIÓN UPDATE SUCURSAL (SOLO AUTORIZACIÓN 9999) ---
+if (isset($_POST['action']) && $_POST['action'] === 'update_sucursal') {
+    header('Content-Type: application/json');
 
-$esAdminStock = ($usuario_actual !== '01' && $usuario_actual !== '') ? (Autorizacion($usuario_actual, '9999') === 'SI') : false;
+    if (!$esAdminStock) {
+        echo json_encode(['status' => 'error', 'message' => 'No tienes autorización para realizar esta acción.']);
+        exit;
+    }
+
+    $update_sql = "UPDATE control_checks_nequi SET nro_sucursal = '1'";
+    if ($mysqliWeb->query($update_sql)) {
+        echo json_encode(['status' => 'success', 'message' => 'Sucursal actualizada correctamente a 1.']);
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Error al actualizar la base de datos: ' . $mysqliWeb->error]);
+    }
+    exit;
+}
 
 // Consultar nombre de usuario
 $nombre_usuario_sesion = "Invitado";
@@ -199,7 +217,7 @@ if ($res_totales && $res_totales->num_rows > 0) {
 
 // 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA (Sigue visible para todos)
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
-                       c.usuario_cedula, c.nit_empresa, c.nro_sucursal, t.Nombre AS nombre_dueno
+                     c.usuario_cedula, c.nit_empresa, c.nro_sucursal, t.Nombre AS nombre_dueno
                FROM notificaciones_nequi n
                LEFT JOIN control_checks_nequi c ON n.id = c.id_transferencia
                LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
@@ -296,17 +314,13 @@ if ($resultado && $resultado->num_rows > 0) {
         </div>
     </div>
 </div>
-
-<div class="container-fluid container-xl bg-white p-2 p-md-4 rounded shadow-sm container-main">
-    
+<div class="container-fluid container-xl bg-white p-2 p-md-4 rounded shadow-sm container-main">    
     <div class="row align-items-center justify-content-between g-2 mb-3">        
-        <div class="col-12 col-md-auto">
-            <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>
-        </div>
-
-        
-
-        <div class="col-12 col-md-auto text-center text-md-end">
+        <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
+            <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
+            <?php if ($esAdminStock): ?>
+                <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
+            <?php endif; ?>
             <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
                 ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
             </small>
@@ -479,6 +493,33 @@ if ($resultado && $resultado->num_rows > 0) {
         const urlActual = new URL(window.location.href);
         urlActual.searchParams.set('v', new Date().getTime());
         window.location.href = urlActual.toString();
+    }
+
+    function actualizarSucursalUnica() {
+        if (!confirm('¿Estás seguro de actualizar la sucursal a 1 para todos los registros de control_checks_nequi?')) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'update_sucursal');
+
+        fetch('', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('✅ ' + data.message);
+                forzarRefresco();
+            } else {
+                alert('⚠️ ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('❌ Ocurrió un error en la conexión.');
+        });
     }
 
     document.querySelectorAll('.check-transferencia').forEach(checkbox => {
