@@ -50,12 +50,12 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
             $msg = "<div class='alert err'>❌ No tienes permiso para grabar traslados (Requiere 0016)</div>";
         } else {
             $obs = !empty($_POST['observacion']) ? $_POST['observacion'] : "Traspaso manual";
-            $barcode = $_POST['barcode'] ?? '';
+            $barcode = $_POST['barcode'];
             $cantidad = (float)$_POST['cantidad'];
-            $origen = $_POST['origen'] ?? '';
-            $destino = $_POST['destino'] ?? '';
+            $origen = $_POST['origen'];
+            $destino = $_POST['destino'];
 
-            if($cantidad <= 0 || $origen === $destino || empty($barcode)) {
+            if($cantidad <= 0 || $origen === $destino) {
                 $msg = "<div class='alert err'>❌ Datos inválidos</div>";
             } else {
                 $dbOrig = ($origen == "Central") ? $mysqliCentral : $mysqliDrinks;
@@ -63,65 +63,29 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
                 $dbDest = ($destino == "Central") ? $mysqliCentral : $mysqliDrinks;
                 $nitDest = ($destino == "Central") ? NIT_CENTRAL : NIT_DRINKS;
 
-                try {
-                    // Iniciar transacciones independientes por cada conexión de forma segura
-                    $mysqliCentral->begin_transaction(); 
-                    $mysqliDrinks->begin_transaction(); 
-                    $mysqliWeb->begin_transaction();
+                $idO = $dbOrig->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
+                $idD = $dbDest->query("SELECT idproducto FROM productos WHERE barcode='$barcode'")->fetch_assoc()['idproducto'] ?? null;
 
-                    // 1. Obtener IDs de productos de forma segura
-                    $stmtO = $dbOrig->prepare("SELECT idproducto FROM productos WHERE barcode = ?");
-                    $stmtO->bind_param("s", $barcode);
-                    $stmtO->execute();
-                    $idO = $stmtO->get_result()->fetch_assoc()['idproducto'] ?? null;
-
-                    $stmtD = $dbDest->prepare("SELECT idproducto FROM productos WHERE barcode = ?");
-                    $stmtD->bind_param("s", $barcode);
-                    $stmtD->execute();
-                    $idD = $stmtD->get_result()->fetch_assoc()['idproducto'] ?? null;
-
-                    if (!$idO || !$idD) {
-                        throw new Exception("Producto no encontrado en alguna de las sedes.");
+                if($idO && $idD) {
+                    try {
+                        $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
+                        $dbOrig->query("UPDATE inventario SET cantidad = cantidad - $cantidad WHERE idproducto = $idO");
+                        $dbDest->query("UPDATE inventario SET cantidad = cantidad + $cantidad WHERE idproducto = $idD");
+                        
+                        $fechaBogota = date('Y-m-d H:i:s');
+                        $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, ?)";
+                        $stmtLog = $mysqliWeb->prepare($sqlLog);
+                        $stmtLog->bind_param("sssdsss", $nitOrig, $UsuarioSesion, $barcode, $cantidad, $nitDest, $obs, $fechaBogota);
+                        $stmtLog->execute();
+                        
+                        $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
+                        $msg = "<div class='alert ok'>✅ Traslado exitoso</div>";
+                    } catch(Exception $e) {
+                        $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
+                        $msg = "<div class='alert err'>❌ Error: ".$e->getMessage()."</div>";
                     }
-
-                    // 2. Bloquear y verificar stock en origen en línea (FOR UPDATE evita condiciones de carrera)
-                    $stmtStock = $dbOrig->prepare("SELECT cantidad FROM inventario WHERE idproducto = ? FOR UPDATE");
-                    $stmtStock->bind_param("i", $idO);
-                    $stmtStock->execute();
-                    $stockActual = $stmtStock->get_result()->fetch_assoc()['cantidad'] ?? 0;
-
-                    if ($stockActual < $cantidad) {
-                        throw new Exception("Stock insuficiente en origen. Stock actual disponible: " . number_format($stockActual, 1));
-                    }
-
-                    // 3. Ejecutar descuentos y aumentos de inventario en línea
-                    $updOrig = $dbOrig->prepare("UPDATE inventario SET cantidad = cantidad - ? WHERE idproducto = ?");
-                    $updOrig->bind_param("di", $cantidad, $idO);
-                    $updOrig->execute();
-
-                    $updDest = $dbDest->prepare("UPDATE inventario SET cantidad = cantidad + ? WHERE idproducto = ?");
-                    $updDest->bind_param("di", $cantidad, $idD);
-                    $updDest->execute();
-                    
-                    // 4. Registrar auditoría/movimiento centralizado en Web
-                    $fechaBogota = date('Y-m-d H:i:s');
-                    $sqlLog = "INSERT INTO inventario_movimientos (NitEmpresa_Orig, NroSucursal_Orig, usuario_Orig, tipo, barcode, cant, NitEmpresa_Dest, NroSucursal_Dest, Observacion, Aprobado, fecha) VALUES (?, '001', ?, 'SALE', ?, ?, ?, '001', ?, 1, ?)";
-                    $stmtLog = $mysqliWeb->prepare($sqlLog);
-                    $stmtLog->bind_param("sssdsss", $nitOrig, $UsuarioSesion, $barcode, $cantidad, $nitDest, $obs, $fechaBogota);
-                    $stmtLog->execute();
-                    
-                    // Confirmar todo si no hubo excepciones
-                    $mysqliCentral->commit(); 
-                    $mysqliDrinks->commit(); 
-                    $mysqliWeb->commit();
-
-                    $msg = "<div class='alert ok'>✅ Traslado exitoso y seguro en línea</div>";
-                } catch(Exception $e) {
-                    // Revertir cambios en todas las bases de datos ante cualquier fallo
-                    $mysqliCentral->rollback(); 
-                    $mysqliDrinks->rollback(); 
-                    $mysqliWeb->rollback();
-                    $msg = "<div class='alert err'>❌ Error en la transacción: ".$e->getMessage()."</div>";
+                } else {
+                    $msg = "<div class='alert err'>❌ Producto no encontrado en sedes</div>";
                 }
             }
         }
@@ -132,54 +96,24 @@ if($_SERVER['REQUEST_METHOD']=='POST'){
             $msg = "<div class='alert err'>❌ No tienes permiso para reversar (Requiere 0015)</div>";
         } else {
             $id = (int)$_POST['idMov'];
-            $stmtMov = $mysqliWeb->prepare("SELECT * FROM inventario_movimientos WHERE idMov = ? AND Aprobado = 1");
-            $stmtMov->bind_param("i", $id);
-            $stmtMov->execute();
-            $res = $stmtMov->get_result()->fetch_assoc();
-
+            $res = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE idMov=$id AND Aprobado=1")->fetch_assoc();
             if($res){
-                $origDb = ($res['NitEmpresa_Orig'] == NIT_CENTRAL) ? $mysqliCentral : $mysqliDrinks;
-                $destDb = ($res['NitEmpresa_Dest'] == NIT_CENTRAL) ? $mysqliCentral : $mysqliDrinks;
-                $bc = $res['barcode']; 
-                $cant = $res['cant'];
+                $origDb = ($res['NitEmpresa_Orig']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+                $destDb = ($res['NitEmpresa_Dest']==NIT_CENTRAL)?$mysqliCentral:$mysqliDrinks;
+                $bc = $res['barcode']; $cant = $res['cant'];
+
+                $idO = $origDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
+                $idD = $destDb->query("SELECT idproducto FROM productos WHERE barcode='$bc'")->fetch_assoc()['idproducto'];
 
                 try {
-                    $mysqliCentral->begin_transaction(); 
-                    $mysqliDrinks->begin_transaction(); 
-                    $mysqliWeb->begin_transaction();
-
-                    $stmtO = $origDb->prepare("SELECT idproducto FROM productos WHERE barcode = ?");
-                    $stmtO->bind_param("s", $bc);
-                    $stmtO->execute();
-                    $idO = $stmtO->get_result()->fetch_assoc()['idproducto'];
-
-                    $stmtD = $destDb->prepare("SELECT idproducto FROM productos WHERE barcode = ?");
-                    $stmtD->bind_param("s", $bc);
-                    $stmtD->execute();
-                    $idD = $stmtD->get_result()->fetch_assoc()['idproducto'];
-
-                    // Devolver stock al origen y quitar del destino de forma segura
-                    $updO = $origDb->prepare("UPDATE inventario SET cantidad = cantidad + ? WHERE idproducto = ?");
-                    $updO->bind_param("di", $cant, $idO);
-                    $updO->execute();
-
-                    $updD = $destDb->prepare("UPDATE inventario SET cantidad = cantidad - ? WHERE idproducto = ?");
-                    $updD->bind_param("di", $cant, $idD);
-                    $updD->execute();
-
-                    $updWeb = $mysqliWeb->prepare("UPDATE inventario_movimientos SET Aprobado = 0 WHERE idMov = ?");
-                    $updWeb->bind_param("i", $id);
-                    $updWeb->execute();
-
-                    $mysqliCentral->commit(); 
-                    $mysqliDrinks->commit(); 
-                    $mysqliWeb->commit();
-
+                    $mysqliCentral->begin_transaction(); $mysqliDrinks->begin_transaction(); $mysqliWeb->begin_transaction();
+                    $origDb->query("UPDATE inventario SET cantidad=cantidad+$cant WHERE idproducto=$idO");
+                    $destDb->query("UPDATE inventario SET cantidad=cantidad-$cant WHERE idproducto=$idD");
+                    $mysqliWeb->query("UPDATE inventario_movimientos SET Aprobado=0 WHERE idMov=$id");
+                    $mysqliCentral->commit(); $mysqliDrinks->commit(); $mysqliWeb->commit();
                     $msg = "<div class='alert ok'>✅ Movimiento reversado correctamente</div>";
                 } catch (Exception $e) {
-                    $mysqliCentral->rollback(); 
-                    $mysqliDrinks->rollback(); 
-                    $mysqliWeb->rollback();
+                    $mysqliCentral->rollback(); $mysqliDrinks->rollback(); $mysqliWeb->rollback();
                     $msg = "<div class='alert err'>❌ Error al procesar reverso: ".$e->getMessage()."</div>";
                 }
             }
@@ -192,8 +126,7 @@ $term = $_GET['term'] ?? '';
 $f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
 $f_fin = $_GET['f_fin'] ?? date('Y-m-d');
 
-$cats=[]; 
-$resC = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
+$cats=[]; $resC = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
 while($c=$resC->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 
 $nombresGlobales = [];
@@ -202,36 +135,19 @@ while($rn = $rNom->fetch_assoc()) $nombresGlobales[$rn['barcode']] = $rn['descri
 
 $barcodes = []; $central = []; $drinks = [];
 if($term !== '' || $categoria !== ''){
-    $where = "p.estado='1' AND (p.descripcion LIKE ? OR p.barcode LIKE ?)";
-    $paramTerm = "%$term%";
-    
+    $where = "p.estado='1' AND (p.descripcion LIKE '%$term%' OR p.barcode LIKE '%$term%')";
     if($categoria){
         $resBC = $mysqliWeb->query("SELECT sku FROM catproductos WHERE CodCat='$categoria'");
         $skus = []; while($r=$resBC->fetch_assoc()) $skus[]="'".$r['sku']."'";
         $where .= $skus ? " AND p.barcode IN (".implode(',',$skus).")" : " AND 1=0";
     }
-    
     $sql = "SELECT p.barcode, p.descripcion, IFNULL(i.cantidad,0) cantidad FROM productos p LEFT JOIN inventario i ON p.idproducto=i.idproducto WHERE $where LIMIT 50";
-    
-    $stmtC = $mysqliCentral->prepare($sql);
-    $stmtC->bind_param("ss", $paramTerm, $paramTerm);
-    $stmtC->execute();
-    $rc = $stmtC->get_result();
-    while($r=$rc->fetch_assoc()) $central[$r['barcode']]=$r;
-
-    $stmtD = $mysqliDrinks->prepare($sql);
-    $stmtD->bind_param("ss", $paramTerm, $paramTerm);
-    $stmtD->execute();
-    $rd = $stmtD->get_result();
-    while($r=$rd->fetch_assoc()) $drinks[$r['barcode']]=$r;
-
+    $rc = $mysqliCentral->query($sql); while($r=$rc->fetch_assoc()) $central[$r['barcode']]=$r;
+    $rd = $mysqliDrinks->query($sql);  while($r=$rd->fetch_assoc()) $drinks[$r['barcode']]=$r;
     $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
 }
 
-$stmtMov = $mysqliWeb->prepare("SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN ? AND ? ORDER BY fecha DESC LIMIT 500");
-$stmtMov->bind_param("ss", $f_inicio, $f_fin);
-$stmtMov->execute();
-$resMov = $stmtMov->get_result();
+$resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' ORDER BY fecha DESC LIMIT 500");
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -258,10 +174,13 @@ $resMov = $stmtMov->get_result();
         .modal{display:<?= (isset($_GET['f_inicio']) || isset($msg)) ? 'block' : 'none' ?>; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); overflow-y:auto; padding: 10px;}
         .modal-content{background:#fff; margin:5% auto; padding:15px; width:100%; max-width:1400px; border-radius:8px; max-height:90vh; overflow-y:auto;}
         
+        /* Estilos Adaptativos / Responsive */
         .search-form { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .search-form .input-s { flex: 1; min-width: 150px; }
+        
         .form-inline-traslado { display: flex; gap: 5px; align-items: center; justify-content: center; flex-wrap: wrap; }
 
+        /* Estilo tipo Botón para el Flujo del Historial con colores diferenciados por sede */
         .badge-flujo {
             display: inline-flex;
             align-items: center;
@@ -294,7 +213,7 @@ $resMov = $stmtMov->get_result();
 </head>
 <body>
 <div class="card">
-    <h2>📦 Grabacion de Traslados de Mercancia (En Línea y Seguro)</h2>
+    <h2>📦 Grabacion de Traslados de Mercancia</h2>
     <?php if(isset($msg)) echo $msg; ?>
     <form method="GET" class="search-form">
         <select name="categoria" class="input-s">
@@ -325,13 +244,13 @@ $resMov = $stmtMov->get_result();
                     <?= ($aut_9999=="SI") ? number_format($vC,1) : "---" ?>
                 </td>
                 <td>
-                    <form method="POST" onsubmit="return confirm('¿Confirmar traslado en línea?')" class="form-inline-traslado">
+                    <form method="POST" onsubmit="return confirm('¿Confirmar traslado?')" class="form-inline-traslado">
                         <input type="hidden" name="barcode" value="<?= $b ?>">
                         <input type="number" name="cantidad" step="0.1" style="width:70px" class="input-s" required>
                         <select name="origen" class="input-s"><option value="Central">Cen</option><option value="Drinks">Dri</option></select>
                         <span>➡️</span>
                         <select name="destino" class="input-s"><option value="Drinks">Dri</option><option value="Central">Cen</option></select>
-                        <button type="type" name="mover" class="btn">Ok</button>
+                        <button type="submit" name="mover" class="btn">Ok</button>
                     </form>
                 </td>
             </tr>
@@ -363,8 +282,8 @@ $resMov = $stmtMov->get_result();
                     $classDest = ($destText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
                 ?>
                 <tr style="<?= $r['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
-                    <td><?= $r['fecha'] ?></td><td><?= htmlspecialchars($r['usuario_Orig']) ?></td>
-                    <td><?= htmlspecialchars($nombresGlobales[$r['barcode']] ?? 'Desconocido') ?></td>
+                    <td><?= $r['fecha'] ?></td><td><?= $r['usuario_Orig'] ?></td>
+                    <td><?= $nombresGlobales[$r['barcode']] ?? 'Desconocido' ?></td>
                     <td><?= number_format($r['cant'], 1) ?></td>
                     <td>
                         <div class="badge-flujo">
@@ -373,10 +292,10 @@ $resMov = $stmtMov->get_result();
                             <span class="badge-sede <?= $classDest ?>"><?= $destText ?></span>
                         </div>
                     </td>
-                    <td><?= htmlspecialchars($r['Observacion']) ?></td>
+                    <td><?= $r['Observacion'] ?></td>
                     <td>
                         <?php if(($aut_0015=="SI" || $aut_9999=="SI") && $r['Aprobado']==1): ?>
-                            <form method="POST" onsubmit="return confirm('¿Reversar este movimiento?')">
+                            <form method="POST" onsubmit="return confirm('¿Reversar?')">
                                 <input type="hidden" name="idMov" value="<?= $r['idMov'] ?>">
                                 <button type="submit" name="aprobar" style="cursor:pointer;">🔄</button>
                             </form>

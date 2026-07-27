@@ -170,7 +170,7 @@ $res = $mysqli->query("SELECT c.*, cat.Nombre
                         INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                         WHERE c.estado = 'A' 
                         AND DATE(c.fecha_conteo) = '$hoy'
-                        AND ABS(c.diferencia) > 1
+                        AND ABS(c.diferencia) > 0.3
                         ORDER BY c.fecha_conteo DESC");
 ?>
 
