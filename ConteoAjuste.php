@@ -6,6 +6,9 @@ require_once("ConnCentral.php"); // $mysqliCentral
 require_once("ConnDrinks.php");  // $mysqliDrinks
 require_once("Conexion.php");    // ADM ($mysqli)
 
+// Activar manejo de excepciones en MySQLi para control robusto de transacciones
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
 session_start();
 if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida. Por favor, vuelva a iniciar sesión.");
@@ -43,7 +46,7 @@ if (isset($_POST['accion'])) {
             // Seleccionar base de datos de la sede
             $dbDestino = ($nitFila === '901724534-7') ? $mysqliDrinks : $mysqliCentral;
 
-            // 1. Obtener SKUs de la categoría
+            // 1. Obtener SKUs activos de la categoría
             $skus = [];
             $st = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
             $st->bind_param("s", $CodCat);
@@ -54,6 +57,7 @@ if (isset($_POST['accion'])) {
 
             if (!empty($skus)) {
                 $ph = implode(",", array_fill(0, count($skus), '?'));
+                // Filtramos estrictamente por productos activos (p.estado = '1')
                 $sql = "SELECT p.idproducto, i.cantidad FROM productos p 
                         INNER JOIN inventario i ON i.idproducto = p.idproducto 
                         WHERE p.barcode IN ($ph) AND i.idalmacen = 1 AND p.estado='1'";
@@ -68,28 +72,39 @@ if (isset($_POST['accion'])) {
                 $stmtP->close();
 
                 if (!empty($productosActuales)) {
+                    // Distribuir la diferencia equitativamente solo entre los productos activos encontrados
                     $difPorUnidad = $difTotal / count($productosActuales);
                     
+                    // Iniciar transacciones independientes por conexión
                     $dbDestino->begin_transaction();
                     $mysqli->begin_transaction();
 
                     try {
+                        // Preparar sentencias reutilizables para mejor rendimiento y seguridad
+                        $updInv = $dbDestino->prepare("UPDATE inventario SET cantidad=?, localchange=1, syncweb=0, sincalmacenes='AJUSTE_WEB' WHERE idproducto=? AND idalmacen=1");
+                        $updProd = $dbDestino->prepare("UPDATE productos SET localchange=1, syncweb=0 WHERE idproducto=?");
+
                         foreach ($productosActuales as $p) {
-                            $idp = $p['idproducto'];
-                            $nuevaCant = $p['cantidad'] + $difPorUnidad;
+                            $idp = (int)$p['idproducto'];
+                            $nuevaCant = (float)$p['cantidad'] + $difPorUnidad;
                             
                             // Actualizar Inventario en Sede
-                            $updInv = $dbDestino->prepare("UPDATE inventario SET cantidad=?, localchange=1, syncweb=0, sincalmacenes='AJUSTE_WEB' WHERE idproducto=? AND idalmacen=1");
                             $updInv->bind_param("di", $nuevaCant, $idp);
                             $updInv->execute();
-                            $updInv->close();
                             
                             // Marcar producto para sincronización general
-                            $dbDestino->query("UPDATE productos SET localchange=1, syncweb=0 WHERE idproducto=$idp");
+                            $updProd->bind_param("i", $idp);
+                            $updProd->execute();
                         }
+                        
+                        $updInv->close();
+                        $updProd->close();
 
                         // 2. Cerrar el conteo (Estado 'C' de Cerrado/Completado)
-                        $mysqli->query("UPDATE conteoweb SET estado='C' WHERE id=$idConteo");
+                        $updConteo = $mysqli->prepare("UPDATE conteoweb SET estado='C' WHERE id=?");
+                        $updConteo->bind_param("i", $idConteo);
+                        $updConteo->execute();
+                        $updConteo->close();
                         
                         // 3. CAMBIAR ESTADO DE LA CATEGORÍA
                         $updCat = $mysqli->prepare("UPDATE categorias SET Estado = '0' WHERE CodCat = ?");
@@ -105,16 +120,18 @@ if (isset($_POST['accion'])) {
                         $log->execute();
                         $log->close();
 
+                        // Confirmar ambas transacciones si todo sale bien
                         $dbDestino->commit();
                         $mysqli->commit();
                         $mensaje = "✅ Ajuste exitoso. Categoría $CodCat actualizada y estado modificado.";
                     } catch (Exception $e) {
+                        // Revertir cambios en ambas bases de datos si ocurre un fallo
                         $dbDestino->rollback();
                         $mysqli->rollback();
                         $mensaje = "❌ Error crítico: " . $e->getMessage();
                     }
                 } else {
-                    $mensaje = "⚠️ No hay productos con stock activo para esta categoría en la sede.";
+                    $mensaje = "⚠️ No hay productos activos con stock para esta categoría en la sede.";
                 }
             }
         }
@@ -125,7 +142,10 @@ if (isset($_POST['accion'])) {
         elseif ($_POST['accion'] === 'borrar') {
             $mysqli->begin_transaction();
             try {
-                $mysqli->query("UPDATE conteoweb SET estado='X' WHERE id=$idConteo");
+                $updConteoX = $mysqli->prepare("UPDATE conteoweb SET estado='X' WHERE id=?");
+                $updConteoX->bind_param("i", $idConteo);
+                $updConteoX->execute();
+                $updConteoX->close();
 
                 $updCat = $mysqli->prepare("UPDATE categorias SET Estado = '0' WHERE CodCat = ?");
                 $updCat->bind_param("s", $CodCat);
@@ -143,8 +163,8 @@ if (isset($_POST['accion'])) {
 }
 
 /* ============================================================
-   3. CONSULTA DE PENDIENTES (FILTRANDO RANGO -0.1 A +0.1)
-   ============================================================ */
+   3. CONSULTA DE PENDIENTES
+============================================================ */
 $res = $mysqli->query("SELECT c.*, cat.Nombre 
                         FROM conteoweb c 
                         INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
