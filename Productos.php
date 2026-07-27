@@ -5,34 +5,108 @@ require_once("Conexion.php");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
-    $bc   = $_POST['barcode'];
+    $bc   = $_POST['barcode'] ?? '';
     $sede = $_POST['sede'] ?? 'Central';
     $db   = ($sede === 'Central') ? $mysqliCentral : $mysqliDrinks;
 
-    if ($_POST['action'] === 'update_stock') {
-        $nueva_cant = floatval($_POST['cantidad']);
-        $res = $db->query("SELECT idproducto FROM productos WHERE barcode = '$bc' LIMIT 1");
-        if ($r = $res->fetch_assoc()) {
-            $idp = $r['idproducto'];
-            $stmt = $db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
-            $stmt->bind_param("di", $nueva_cant, $idp);
-            echo json_encode(['success' => $stmt->execute()]);
-        }
+    $response = ['success' => false];
+
+    switch ($_POST['action']) {
+        case 'update_stock':
+            $nueva_cant = floatval($_POST['cantidad']);
+            $db->begin_transaction();
+            try {
+                $stmt = $db->prepare("SELECT idproducto FROM productos WHERE barcode = ? LIMIT 1");
+                $stmt->bind_param("s", $bc);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                
+                if ($r = $res->fetch_assoc()) {
+                    $idp = $r['idproducto'];
+                    $stmt_up = $db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
+                    $stmt_up->bind_param("di", $nueva_cant, $idp);
+                    $stmt_up->execute();
+                    
+                    $db->commit();
+                    $response['success'] = true;
+                } else {
+                    $db->rollback();
+                }
+            } catch (Exception $e) {
+                $db->rollback();
+            }
+            break;
+
+        case 'toggle_status':
+            $nuevo_estado = intval($_POST['estado']);
+            $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
+            $stmt->bind_param("is", $nuevo_estado, $bc);
+            $response['success'] = $stmt->execute();
+            break;
+
+        case 'update_name':
+            $nombre = trim($_POST['nombre']);
+            $stmtC = $mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtC->bind_param("ss", $nombre, $bc);
+            $res1 = $stmtC->execute();
+
+            $stmtD = $mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtD->bind_param("ss", $nombre, $bc);
+            $res2 = $stmtD->execute();
+
+            $response['success'] = ($res1 && $res2);
+            break;
+
+        case 'update_price':
+            $nuevo_precio = floatval($_POST['precio']);
+            
+            $mysqliCentral->begin_transaction();
+            $mysqliDrinks->begin_transaction();
+            try {
+                $stmt1 = $mysqliCentral->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio, $bc);
+                $stmt1->execute();
+
+                $stmt2 = $mysqliDrinks->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio, $bc);
+                $stmt2->execute();
+
+                $mysqliCentral->commit();
+                $mysqliDrinks->commit();
+                $response['success'] = true;
+            } catch (Exception $e) {
+                $mysqliCentral->rollback();
+                $mysqliDrinks->rollback();
+            }
+            break;
+
+        case 'zero_stock_retired':
+            $mysqliCentral->begin_transaction();
+            $mysqliDrinks->begin_transaction();
+            try {
+                $resC = $mysqliCentral->query("SELECT idproducto FROM productos WHERE estado = 0");
+                while ($row = $resC->fetch_assoc()) {
+                    $idp = intval($row['idproducto']);
+                    $mysqliCentral->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
+                }
+
+                $resD = $mysqliDrinks->query("SELECT idproducto FROM productos WHERE estado = 0");
+                while ($row = $resD->fetch_assoc()) {
+                    $idp = intval($row['idproducto']);
+                    $mysqliDrinks->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
+                }
+
+                $mysqliCentral->commit();
+                $mysqliDrinks->commit();
+                $response['success'] = true;
+            } catch (Exception $e) {
+                $mysqliCentral->rollback();
+                $mysqliDrinks->rollback();
+            }
+            break;
     }
 
-    if ($_POST['action'] === 'toggle_status') {
-        $nuevo_estado = intval($_POST['estado']);
-        $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
-        $stmt->bind_param("is", $nuevo_estado, $bc);
-        echo json_encode(['success' => $stmt->execute()]);
-    }
-
-    if ($_POST['action'] === 'update_name') {
-        $nombre = $_POST['nombre'];
-        $mysqliCentral->query("UPDATE productos SET descripcion = '$nombre' WHERE barcode = '$bc'");
-        $mysqliDrinks->query("UPDATE productos SET descripcion = '$nombre' WHERE barcode = '$bc'");
-        echo json_encode(['success' => true]);
-    }
+    echo json_encode($response);
     exit;
 }
 
@@ -66,17 +140,21 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
     <meta charset="UTF-8">
     <title>Gestión Dual Sede | Corabastos</title>
     <style>
-        body{ font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 20px; }
-        .container{ max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        body{ font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 10px; }
+        .container{ width: 100%; box-sizing: border-box; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .filter-container { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th { background: #1a2a6c; color: white; padding: 12px; font-size: 13px; }
         td { border-bottom: 1px solid #eee; padding: 8px; text-align: center; }
         .row-drinks { background: #fffcf5; }
         .row-central { background: #f5f9ff; }
         .product-header { background: #f8f9fa; font-weight: bold; text-align: left !important; border-top: 2px solid #ddd; }
-        .stock-input { width: 70px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; }
-        .btn-save { background: #28a745; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+        .stock-input { width: 80px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; transition: background 0.3s; }
+        .stock-input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 5px rgba(37, 99, 235, 0.4); }
+        .price-input { width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; color: #166534; background: #f0fdf4; }
+        .price-input:focus { background: #fff; border-color: #22c55e; outline: none; box-shadow: 0 0 5px rgba(34, 197, 94, 0.4); }
+        .btn-masive { background: #d97706; color: white; border: none; padding: 12px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 5px; }
+        .btn-masive:hover { background: #b45309; }
         .switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 18px; }
@@ -110,6 +188,10 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
             <option value="1" selected>🟢 Activos</option>
             <option value="0">🔴 Retirados</option>
         </select>
+
+        <button class="btn-masive" onclick="setZeroStockRetiredMasive()" title="Poner el stock en 0 a todos los productos inactivos/retirados">
+            ⚠️ Stock 0 a Retirados Masivo
+        </button>
     </div>
 
     <table>
@@ -119,7 +201,6 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 <th>Estado</th>
                 <th>Precio Venta</th>
                 <th>Stock</th>
-                <th>Acción</th>
             </tr>
         </thead>
         <tbody>
@@ -130,7 +211,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 $pv = ($c['precioventa'] != 0) ? $c['precioventa'] : $d['precioventa'];
             ?>
             <tr class="product-header" data-barcode="<?= $b ?>">
-                <td colspan="5" style="text-align:left;">
+                <td colspan="4" style="text-align:left;">
                     <span style="color:#666; font-size: 12px; margin-right: 10px;">[<?= $b ?>]</span>
                     <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
@@ -143,9 +224,12 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                         <span class="slider"></span>
                     </label>
                 </td>
-                <td>$<?= number_format($pv, 0) ?></td>
-                <td><input type="number" step="any" class="stock-input stock-val" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>" oninput="filtrar()"></td>
-                <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Drinks')">💾</button></td>
+                <td>
+                    <input type="number" step="any" class="price-input" id="price-drinks-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
+                </td>
+                <td>
+                    <input type="number" step="any" class="stock-input stock-val" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>" oninput="filtrar()" onblur="updateStockDynamic('<?= $b ?>', 'Drinks', this.value)">
+                </td>
             </tr>
             <tr class="row-central" data-sede="central" data-barcode="<?= $b ?>" data-estado="<?= $c['estado'] ?>">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-central">Central</span></td>
@@ -155,9 +239,12 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                         <span class="slider"></span>
                     </label>
                 </td>
-                <td>$<?= number_format($pv, 0) ?></td>
-                <td><input type="number" step="any" class="stock-input stock-val" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>" oninput="filtrar()"></td>
-                <td><button class="btn-save" onclick="saveStock('<?= $b ?>', 'Central')">💾</button></td>
+                <td>
+                    <input type="number" step="any" class="price-input" id="price-central-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
+                </td>
+                <td>
+                    <input type="number" step="any" class="stock-input stock-val" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>" oninput="filtrar()" onblur="updateStockDynamic('<?= $b ?>', 'Central', this.value)">
+                </td>
             </tr>
             <?php endforeach; ?>
         </tbody>
@@ -165,7 +252,6 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
             <tr class="total-row">
                 <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
                 <td id="total-stock" style="text-align: center; font-size: 15px; color: #1a2a6c;">0</td>
-                <td></td>
             </tr>
         </tfoot>
     </table>
@@ -191,11 +277,9 @@ function filtrar() {
         const rowDrinks = document.querySelector(`.row-drinks[data-barcode="${barcode}"]`);
         const rowCentral = document.querySelector(`.row-central[data-barcode="${barcode}"]`);
 
-        // Sede check
         let mostrarDrinksSede = (sedeSeleccionada === 'todos' || sedeSeleccionada === 'drinks');
         let mostrarCentralSede = (sedeSeleccionada === 'todos' || sedeSeleccionada === 'central');
 
-        // Estado check
         const estadoDrinks = rowDrinks.getAttribute('data-estado');
         const estadoCentral = rowCentral.getAttribute('data-estado');
 
@@ -219,7 +303,6 @@ function filtrar() {
             }
         }
 
-        // Mostrar u ocultar la cabecera general del producto según si tiene al menos una de las dos sedes visibles
         if (mostrarFilaDrinks || mostrarFilaCentral) {
             header.style.display = '';
         } else {
@@ -234,21 +317,89 @@ function updateRowState(checkbox, sede, barcode) {
     const row = document.querySelector(`.row-${sede}[data-barcode="${barcode}"]`);
     if (row) {
         row.setAttribute('data-estado', checkbox.checked ? '1' : '0');
-        filtrar(); // Recalcular filtros y totales al alternar el switch en tiempo real
+        filtrar(); 
     }
 }
 
-function updateName(b, v) { fetch('', {method:'POST', body:new URLSearchParams({action:'update_name', barcode:b, nombre:v})}); }
-function saveStock(b, s) { 
-    let v = document.getElementById(`input-${s.toLowerCase()}-${b}`).value;
-    fetch('', {method:'POST', body:new URLSearchParams({action:'update_stock', barcode:b, sede:s, cantidad:v})}).then(()=>{
-        alert('Actualizado');
-        filtrar();
-    }); 
+function updateName(b, v) { 
+    fetch('', {
+        method:'POST', 
+        body:new URLSearchParams({action:'update_name', barcode:b, nombre:v})
+    }).then(res => res.json()).then(data => {
+        if(!data.success) alert('Error al actualizar el nombre del producto.');
+    });
 }
-function toggleStatus(b, s, e) { fetch('', {method:'POST', body:new URLSearchParams({action:'toggle_status', barcode:b, sede:s, estado:e.checked?1:0})}); }
 
-// Ejecutar al cargar la página para calcular el stock inicial con el filtro activo por defecto (Activos)
+function syncPrices(b, v) {
+    const pDrinks = document.getElementById(`price-drinks-${b}`);
+    const pCentral = document.getElementById(`price-central-${b}`);
+    if (pDrinks) pDrinks.value = v;
+    if (pCentral) pCentral.value = v;
+}
+
+function updatePrice(b, v) { 
+    fetch('', {
+        method: 'POST', 
+        body: new URLSearchParams({action: 'update_price', barcode: b, precio: v})
+    }).then(response => response.json()).then(data => {
+        if (!data.success) {
+            alert('Error al actualizar el precio en el servidor.');
+        }
+    });
+}
+
+function updateStockDynamic(b, s, v) {
+    fetch('', {
+        method: 'POST', 
+        body: new URLSearchParams({action: 'update_stock', barcode: b, sede: s, cantidad: v})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const inputField = document.getElementById(`input-${s.toLowerCase()}-${b}`);
+            inputField.style.backgroundColor = '#dcfce7';
+            setTimeout(() => { inputField.style.backgroundColor = ''; }, 600);
+            filtrar();
+        } else {
+            alert('Error al actualizar el stock.');
+        }
+    })
+    .catch(error => {
+        console.error("Error de red:", error);
+    });
+}
+
+function setZeroStockRetiredMasive() {
+    if (confirm("⚠️ ¿Estás seguro de poner el stock en 0 a TODOS los productos que se encuentran con estado 'Retirado' en ambas sedes?")) {
+        fetch('', {
+            method: 'POST',
+            body: new URLSearchParams({ action: 'zero_stock_retired' })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert("¡Stock actualizado masivamente a 0 para todos los productos retirados!");
+                location.reload();
+            } else {
+                alert("Hubo un error al ejecutar la acción masiva.");
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            alert("No se pudo conectar con el servidor.");
+        });
+    }
+}
+
+function toggleStatus(b, s, e) { 
+    fetch('', {
+        method:'POST', 
+        body:new URLSearchParams({action:'toggle_status', barcode:b, sede:s, estado:e.checked?1:0})
+    }).then(res => res.json()).then(data => {
+        if(!data.success) alert('Error al cambiar el estado.');
+    });
+}
+
 window.onload = function() {
     filtrar();
 };
