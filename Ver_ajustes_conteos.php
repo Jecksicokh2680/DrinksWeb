@@ -132,7 +132,7 @@ if (isset($_POST['accion'])) {
                             <thead class="table-light text-uppercase" style="font-size: 11px;">
                                 <tr>
                                     <th class="ps-4">PRODUCTO / HISTORIAL</th>
-                                    <th class="text-center">HORA</th> <!-- NUEVA COLUMNA DE HORA -->
+                                    <th class="text-center">HORA</th>
                                     <th class="text-end">SISTEMA</th>
                                     <th class="text-end">FÍSICO</th>
                                     <th class="text-center">DIF.</th>
@@ -146,7 +146,7 @@ if (isset($_POST['accion'])) {
                                                       WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2
                                                       AND DATE(c.fecha_conteo) = '$hoy' 
                                                       AND c.NitEmpresa $filtroNit 
-                                                      ORDER BY cat.CodCat ASC");
+                                                      ORDER BY c.fecha_conteo DESC"); // ORDENADO POR HORA DESCENDENTE
                                 while($r = $res->fetch_assoc()): 
                                     $subHist = $mysqli->query("SELECT diferencia_aplicada, fecha_ajuste, usuario FROM historial_ajustes 
                                                              WHERE categoria = '{$r['CodCat']}' AND nit_empresa = '{$r['NitEmpresa']}' 
@@ -172,7 +172,7 @@ if (isset($_POST['accion'])) {
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-center text-muted small">
-                                        <?= date("H:i:s", strtotime($r['fecha_conteo'])) ?> <!-- MUESTRA LA HORA DEL CONTEO -->
+                                        <?= date("H:i:s", strtotime($r['fecha_conteo'])) ?>
                                     </td>
                                     <td class="text-end text-muted small"><?= number_format($r['stock_sistema'], 2) ?></td>
                                     <td class="text-end fw-bold"><?= number_format($r['stock_fisico'], 2) ?></td>
