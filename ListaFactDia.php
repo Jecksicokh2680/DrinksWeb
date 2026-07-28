@@ -215,7 +215,7 @@ if ($skus && isset($mysqliWeb)) {
         <table id="tablaVentas">
             <thead>
                 <tr>
-                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
+                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Fecha / Hora</th>
                     <th>Sku</th><th>Producto</th><th>Costo</th>
                     <th style="text-align:center">Cajas</th>
                     <th style="text-align:center">Und</th>
@@ -247,7 +247,7 @@ if ($skus && isset($mysqliWeb)) {
                         <td><span class='badge $badge_class'>{$r['SUCURSAL']}</span></td>
                         <td>{$r['FACTURADOR']}</td>
                         <td>{$r['DOCUMENTO']}</td>
-                        <td>{$r['HORA']}</td>
+                        <td>{$r['FECHA']} {$r['HORA']}</td>
                         <td><code>{$r['Barcode']}</code></td>
                         <td>{$r['PRODUCTO']}</td>
                         <td>".number_format($r['VALORPROD'],0,'.','.')."</td>

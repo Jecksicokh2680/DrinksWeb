@@ -126,6 +126,12 @@ $term = $_GET['term'] ?? '';
 $f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
 $f_fin = $_GET['f_fin'] ?? date('Y-m-d');
 
+// Parámetros específicos para el nuevo Modal de Consulta Avanzada
+$con_f_inicio = $_GET['con_f_inicio'] ?? date('Y-m-d');
+$con_f_fin = $_GET['con_f_fin'] ?? date('Y-m-d');
+$con_sede = $_GET['con_sede'] ?? '';
+$con_producto = $_GET['con_producto'] ?? '';
+
 $cats=[]; $resC = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
 while($c=$resC->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 
@@ -148,6 +154,27 @@ if($term !== '' || $categoria !== ''){
 }
 
 $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' ORDER BY fecha DESC LIMIT 500");
+
+// Consulta filtrada para el nuevo Modal de Consultas Avanzadas
+$whereConsulta = "DATE(fecha) BETWEEN '$con_f_inicio' AND '$con_f_fin'";
+if($con_sede !== '') {
+    $whereConsulta .= " AND (NitEmpresa_Orig = '$con_sede' OR NitEmpresa_Dest = '$con_sede')";
+}
+if($con_producto !== '') {
+    // Buscar barCodes que coincidan con la descripción o barcode ingresado
+    $sub_sql = "SELECT barcode FROM productos WHERE barcode LIKE '%$con_producto%' OR descripcion LIKE '%$con_producto%'";
+    $res_sub = $mysqliCentral->query($sub_sql);
+    $arr_bc = [];
+    while($sb = $res_sub->fetch_assoc()) {
+        $arr_bc[] = "'" . $sb['barcode'] . "'";
+    }
+    if(!empty($arr_bc)) {
+        $whereConsulta .= " AND barcode IN (" . implode(',', $arr_bc) . ")";
+    } else {
+        $whereConsulta .= " AND 1=0"; // Si no encuentra nada, no trae resultados
+    }
+}
+$resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE $whereConsulta ORDER BY fecha DESC LIMIT 500");
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -171,16 +198,14 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         .input-s{padding:7px; border:1px solid #ccc; border-radius:4px; max-width: 100%;}
         .btn{background:#27ae60; color:#fff; border:none; padding:8px 15px; border-radius:4px; cursor:pointer; font-weight:bold;}
         
-        .modal{display:<?= (isset($_GET['f_inicio']) || isset($msg)) ? 'block' : 'none' ?>; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); overflow-y:auto; padding: 10px;}
+        .modal{display:none; position:fixed; z-index:100; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.5); overflow-y:auto; padding: 10px;}
         .modal-content{background:#fff; margin:5% auto; padding:15px; width:100%; max-width:1400px; border-radius:8px; max-height:90vh; overflow-y:auto;}
         
-        /* Estilos Adaptativos / Responsive */
         .search-form { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .search-form .input-s { flex: 1; min-width: 150px; }
         
         .form-inline-traslado { display: flex; gap: 5px; align-items: center; justify-content: center; flex-wrap: wrap; }
 
-        /* Estilo tipo Botón para el Flujo del Historial con colores diferenciados por sede */
         .badge-flujo {
             display: inline-flex;
             align-items: center;
@@ -222,6 +247,7 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         </select>
         <input type="text" name="term" placeholder="Buscar producto..." value="<?= htmlspecialchars($term) ?>" class="input-s">
         <button type="submit" class="btn" style="background:#2980b9">🔍 Buscar</button>
+        <button type="button" class="btn" style="background:#8e44ad" onclick="document.getElementById('modalConsulta').style.display='block'">📋 Consultar Traslados</button>
         <button type="button" class="btn" style="background:#f39c12" onclick="document.getElementById('m').style.display='block'">📅 Historial</button>
         <a href="?" style="padding:10px; text-decoration:none; color:#666; text-align:center;">Limpiar</a>
     </form>
@@ -261,7 +287,8 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
     <?php endif; ?>
 </div>
 
-<div id="m" class="modal">
+<!-- MODAL: HISTORIAL GENERAL -->
+<div id="m" class="modal" style="<?= isset($_GET['f_inicio']) && !isset($_GET['con_f_inicio']) ? 'display:block;' : '' ?>">
     <div class="modal-content">
         <span onclick="this.parentElement.parentElement.style.display='none'" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
         <h3>🗓 Historial de Movimientos</h3>
@@ -308,5 +335,86 @@ $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fec
         </div>
     </div>
 </div>
+
+<!-- NUEVO MODAL: CONSULTA AVANZADA DE TRASLADOS (Fechas, Sedes, Producto) -->
+<div id="modalConsulta" class="modal" style="<?= isset($_GET['con_f_inicio']) ? 'display:block;' : '' ?>">
+    <div class="modal-content">
+        <span onclick="this.parentElement.parentElement.style.display='none'" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
+        <h3>🔍 Consulta Avanzada de Traslados</h3>
+        <form method="GET" class="search-form" style="margin-bottom:15px;">
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 11px; color: #555; display: block;">Fecha Inicio:</label>
+                <input type="date" name="con_f_inicio" value="<?= $con_f_inicio ?>" class="input-s" style="width: 100%;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 11px; color: #555; display: block;">Fecha Fin:</label>
+                <input type="date" name="con_f_fin" value="<?= $con_f_fin ?>" class="input-s" style="width: 100%;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 11px; color: #555; display: block;">Sede (Origen/Destino):</label>
+                <select name="con_sede" class="input-s" style="width: 100%;">
+                    <option value="">-- Todas las Sedes --</option>
+                    <option value="<?= NIT_CENTRAL ?>" <?= $con_sede == NIT_CENTRAL ? 'selected' : '' ?>>CENTRAL</option>
+                    <option value="<?= NIT_DRINKS ?>" <?= $con_sede == NIT_DRINKS ? 'selected' : '' ?>>DRINK</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+                <label style="font-size: 11px; color: #555; display: block;">Producto (Nombre o Barcode):</label>
+                <input type="text" name="con_producto" placeholder="Filtrar producto..." value="<?= htmlspecialchars($con_producto) ?>" class="input-s" style="width: 100%;">
+            </div>
+            <div style="display: flex; align-items: flex-end;">
+                <button type="submit" class="btn" style="background:#8e44ad">Consultar</button>
+            </div>
+        </form>
+        
+        <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>Barcode</th>
+                    <th>Producto</th>
+                    <th>Cant.</th>
+                    <th>FLUJO (ORIGEN ➔ DESTINO)</th>
+                    <th>Obs</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ($resConsultaAvanzada->num_rows > 0): ?>
+                    <?php while($rc = $resConsultaAvanzada->fetch_assoc()): 
+                        $origText = ($nombresSedesMap[$rc['NitEmpresa_Orig']] ?? $rc['NitEmpresa_Orig']);
+                        $destText = ($nombresSedesMap[$rc['NitEmpresa_Dest']] ?? $rc['NitEmpresa_Dest']);
+                        
+                        $classOrig = ($origText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
+                        $classDest = ($destText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
+                    ?>
+                    <tr style="<?= $rc['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
+                        <td><?= $rc['fecha'] ?></td>
+                        <td><?= $rc['usuario_Orig'] ?></td>
+                        <td><code><?= $rc['barcode'] ?></code></td>
+                        <td><?= $nombresGlobales[$rc['barcode']] ?? 'Desconocido' ?></td>
+                        <td><?= number_format($rc['cant'], 1) ?></td>
+                        <td>
+                            <div class="badge-flujo">
+                                <span class="badge-sede <?= $classOrig ?>"><?= $origText ?></span>
+                                <span>➔</span>
+                                <span class="badge-sede <?= $classDest ?>"><?= $destText ?></span>
+                            </div>
+                        </td>
+                        <td><?= $rc['Observacion'] ?></td>
+                        <td><?= $rc['Aprobado'] == 1 ? '✅ Activo' : '❌ Reversado' ?></td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="8" style="padding: 20px; color: #777;">No se encontraron registros con los filtros seleccionados.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

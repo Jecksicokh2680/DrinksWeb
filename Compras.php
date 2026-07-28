@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         
         // El backend guarda estrictamente en negativo para el egreso
         $monto = -abs((double)$input['monto']);
-        $descripcion = substr("Compra Gerencial - Prov: " . $input['nombre'] . " | Factura: " . $idCompra, 0, 100);
+        $descripcion = substr($input['nombre'] . " | Fact: " . $idCompra, 0, 100);
 
         if ($monto < 0 && !empty($nit)) {
             $stmt->bind_param("sssdss", $nit, $fechaActual, $horaActual, $monto, $tipoMonto, $descripcion);

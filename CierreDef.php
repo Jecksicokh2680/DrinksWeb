@@ -97,7 +97,7 @@ $qryFacturadores = "SELECT FACTURADOR_NIT, FACTURADOR FROM (
 ) X GROUP BY FACTURADOR_NIT ORDER BY FACTURADOR ASC";
 $factList = $mysqliActiva->query($qryFacturadores);
 
-$totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0; $totalTransferAuto = 0;
+$totalVentas = 0; $nombreCompleto = ""; $totalEgresos = 0; $totalTransfer = 0; $totalTransferAuto = 0; $totalTransferGeneral = 0;
 $listaEgresos = [];
 $yaExisteTransferEnEgresos = false;
 
@@ -148,6 +148,9 @@ if($UsuarioFact !== ''){
     $stmtTA->execute();
     $resTA = $stmtTA->get_result();
     $totalTransferAuto = (float)($resTA->fetch_assoc()['total_auto'] ?? 0);
+
+    // TOTAL GENERAL DE TRANSFERENCIAS (Manuales + Automáticas)
+    $totalTransferGeneral = $totalTransfer + $totalTransferAuto;
 }
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
@@ -277,6 +280,11 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
                     <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
                     <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
                     <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
+                    <!-- LÍNEA INFORMATIVA TOTAL TRANSFERENCIAS -->
+                    <tr style="background:#f8f9fa; border-top:1px dashed #ccc;">
+                        <td><b>ℹ️ Total Transferencias (Man. + Auto.):</b></td>
+                        <td class="text-end" style="color:#0056b3;"><b>$ <?= money($totalTransferGeneral) ?></b></td>
+                    </tr>
                     <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
                         <td><b>TOTAL FÍSICO:</b></td>
                         <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
@@ -369,8 +377,9 @@ $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRea
             <table class="ticket-table">
                 <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${vVentas}</b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
-                <tr><td>(-) TRANSFER:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
+                <tr><td>(-) TRANSFER. MANUAL:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
                 <tr><td>(-) TRANS. AUTO:</td><td style="text-align:right;"><b>$<?= money($totalTransferAuto) ?></b></td></tr>
+                <tr><td><b>TOT. TRANSFER.:</b></td><td style="text-align:right;"><b>$<?= money($totalTransferGeneral) ?></b></td></tr>
                 <tr><td colspan="2"><hr></td></tr>
                 <tr style="font-size:16px;">
                     <td><b>TOTAL FÍSICO:</b></td>

@@ -620,6 +620,11 @@ if (!function_exists('agente_conteo_inventario_por_categoria')) {
             return [];
         }
         $limite = max(1, min(500, $limite));
+
+        // Aseguramos que el rango cubra todo el día final si solo pasan la fecha "YYYY-MM-DD"
+        $ini = $fechaIni . ' 00:00:00';
+        $fin = $fechaFin . ' 23:59:59';
+
         $sql = "SELECT DATE(c.fecha_conteo) AS fecha,
                        c.CodCat,
                        IFNULL(cat.Nombre, c.CodCat) AS NombreCat,
@@ -632,21 +637,27 @@ if (!function_exists('agente_conteo_inventario_por_categoria')) {
                 FROM conteoweb c
                 LEFT JOIN categorias cat ON cat.CodCat = c.CodCat
                 WHERE c.estado IN ('A','C')
-                  AND DATE(c.fecha_conteo) BETWEEN ? AND ?
-                ORDER BY DATE(c.fecha_conteo) ASC, c.CodCat ASC
-                LIMIT " . (int) $limite;
+                  AND c.fecha_conteo BETWEEN ? AND ?
+                ORDER BY c.fecha_conteo ASC, c.CodCat ASC
+                LIMIT ?";
+
         $stmt = $web->prepare($sql);
         if (!$stmt) {
             return [];
         }
-        $stmt->bind_param('ss', $fechaIni, $fechaFin);
+
+        // Se usa 'ssi' para las dos fechas y el límite como entero
+        $stmt->bind_param('ssi', $ini, $fin, $limite);
+
         if (!$stmt->execute()) {
             return [];
         }
+
         $res = $stmt->get_result();
         $out = [];
         $sedeMap = ['901724534-7' => 'Drinks', '86057267-8' => 'Central'];
         $estadoMap = ['A' => 'Abierto', 'C' => 'Cerrado', 'E' => 'Eliminado'];
+
         while ($res && $row = $res->fetch_assoc()) {
             $nit = trim((string) ($row['NitEmpresa'] ?? ''));
             $est = strtoupper(trim((string) ($row['estado'] ?? '')));
@@ -665,7 +676,6 @@ if (!function_exists('agente_conteo_inventario_por_categoria')) {
         return $out;
     }
 }
-
 if (!function_exists('agente_construir_bloque_datos')) {
     function agente_construir_bloque_datos(): string
     {
