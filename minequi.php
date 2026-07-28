@@ -108,6 +108,68 @@ if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
     exit; 
 }
 
+// --- PROCESAR ACCIÓN AJAX (GUARDAR / ELIMINAR GERENCIA CHECK) ---
+if (isset($_POST['action']) && $_POST['action'] === 'toggle_gerencia_check') {
+    header('Content-Type: application/json');
+
+    if (!$esAdminStock) {
+        echo json_encode(['status' => 'error', 'message' => 'No tienes autorización para realizar esta acción.']);
+        exit;
+    }
+
+    $id_trans = filter_input(INPUT_POST, 'id_transferencia', FILTER_VALIDATE_INT);
+    $estado   = filter_input(INPUT_POST, 'estado', FILTER_VALIDATE_INT); // 1 = marcar, 0 = desmarcar
+
+    if (!$id_trans) {
+        echo json_encode(['status' => 'error', 'message' => 'ID de transferencia no válido.']);
+        exit;
+    }
+
+    $fecha_actual = date('Y-m-d H:i:s');
+
+    if ($estado === 1) {
+        // Actualizamos o insertamos asegurando que gerencia_verificado quede en 1
+        // Primero verificamos si ya existe un registro en control_checks_nequi para este id_transferencia
+        $stmt_chk = $mysqliWeb->prepare("SELECT id FROM control_checks_nequi WHERE id_transferencia = ?");
+        $stmt_chk->bind_param("i", $id_trans);
+        $stmt_chk->execute();
+        $res_chk = $stmt_chk->get_result();
+        
+        if ($res_chk->num_rows > 0) {
+            $stmt_chk->close();
+            $stmt_upd = $mysqliWeb->prepare("UPDATE control_checks_nequi SET gerencia_verificado = 1, gerencia_usuario_cedula = ?, gerencia_fecha_hora = ? WHERE id_transferencia = ?");
+            $stmt_upd->bind_param("ssi", $usuario_actual, $fecha_actual, $id_trans);
+            if ($stmt_upd->execute()) {
+                echo json_encode(['status' => 'success', 'message' => 'Verificación de gerencia guardada.']);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Error al actualizar gerencia.']);
+            }
+            $stmt_upd->close();
+        } else {
+            $stmt_chk->close();
+            // Si no existe, lo creamos con los datos mínimos y gerencia activado
+            $stmt_ins = $mysqliWeb->prepare("INSERT INTO control_checks_nequi (id_transferencia, nit_empresa, nro_sucursal, usuario_cedula, fecha_hora_check, gerencia_verificado, gerencia_usuario_cedula, gerencia_fecha_hora) VALUES (?, ?, ?, ?, ?, 1, ?, ?)");
+            $stmt_ins->bind_param("issssss", $id_trans, $nit_empresa, $nro_sucursal, $usuario_actual, $fecha_actual, $usuario_actual, $fecha_actual);
+            if ($stmt_ins->execute()) {
+                echo json_encode(['status' => 'success', 'message' => 'Verificación de gerencia creada.']);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Error al insertar registro de gerencia.']);
+            }
+            $stmt_ins->close();
+        }
+    } else {
+        $stmt_upd = $mysqliWeb->prepare("UPDATE control_checks_nequi SET gerencia_verificado = 0, gerencia_usuario_cedula = NULL, gerencia_fecha_hora = NULL WHERE id_transferencia = ?");
+        $stmt_upd->bind_param("i", $id_trans);
+        if ($stmt_upd->execute()) {
+            echo json_encode(['status' => 'success', 'message' => 'Verificación de gerencia desmarcada.']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Error al desmarcar gerencia.']);
+        }
+        $stmt_upd->close();
+    }
+    exit;
+}
+
 // --- PROCESAR ACCIÓN UPDATE SUCURSAL (SOLO AUTORIZACIÓN 9999) ---
 if (isset($_POST['action']) && $_POST['action'] === 'update_sucursal') {
     header('Content-Type: application/json');
@@ -217,10 +279,11 @@ if ($res_totales && $res_totales->num_rows > 0) {
 
 // 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA (Sigue visible para todos)
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
-                     c.usuario_cedula, c.nit_empresa, c.nro_sucursal, t.Nombre AS nombre_dueno
+                     c.usuario_cedula, c.nit_empresa, c.nro_sucursal, c.gerencia_verificado, c.gerencia_usuario_cedula, c.gerencia_fecha_hora, t.Nombre AS nombre_dueno, tg.Nombre AS nombre_gerencia_dueno
                FROM notificaciones_nequi n
                LEFT JOIN control_checks_nequi c ON n.id = c.id_transferencia
                LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
+               LEFT JOIN terceros tg ON (c.gerencia_usuario_cedula COLLATE utf8mb4_general_ci) = (tg.CedulaNit COLLATE utf8mb4_general_ci)
                WHERE DATE(n.fecha_correo) = '$hoy' 
                ORDER BY n.fecha_correo DESC";
 
@@ -408,7 +471,7 @@ if ($resultado && $resultado->num_rows > 0) {
             <thead class="table-dark text-nowrap">
                 <tr>
                     <th class="text-center" style="width: 50px;">ID</th>
-                    <th class="text-center" style="width: 50px;">Asignar</th>
+                    <th class="text-center" style="width: 80px;">Asignar/Gcia</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
@@ -424,15 +487,32 @@ if ($resultado && $resultado->num_rows > 0) {
                         $checked_attr = $tiene_dueno ? 'checked' : '';
                         $disabled_attr = ($tiene_dueno && !$soy_el_dueno) ? 'disabled' : '';
                         if (empty($usuario_actual)) { $disabled_attr = 'disabled'; } 
+
+                        // Lógica para el check de gerencia
+                        $gerencia_verificado = isset($row['gerencia_verificado']) && (int)$row['gerencia_verificado'] === 1;
+                        $gerencia_checked_attr = $gerencia_verificado ? 'checked' : '';
+                        // Solo el usuario con autorización 9999 ($esAdminStock) puede activar/desactivar este check
+                        $gerencia_disabled_attr = !$esAdminStock ? 'disabled' : '';
                     ?>
                         <tr>
                             <td class="text-center font-monospace small text-muted">#<?php echo $row['id']; ?></td>
-                            <td class="text-center">
-                                <input type="checkbox" 
-                                       class="form-check-input check-transferencia" 
-                                       data-id="<?php echo $row['id']; ?>" 
-                                       <?php echo $checked_attr; ?> 
-                                       <?php echo $disabled_attr; ?>>
+                            <td class="text-center text-nowrap">
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    <input type="checkbox" 
+                                           class="form-check-input check-transferencia" 
+                                           title="Asignar"
+                                           data-id="<?php echo $row['id']; ?>" 
+                                           <?php echo $checked_attr; ?> 
+                                           <?php echo $disabled_attr; ?>>
+                                           
+                                    <input type="checkbox" 
+                                           class="form-check-input check-gerencia border-primary" 
+                                           style="<?php echo $esAdminStock ? 'accent-color: #0d6efd;' : ''; ?>"
+                                           title="Autorización Gerencia (9999)"
+                                           data-id="<?php echo $row['id']; ?>" 
+                                           <?php echo $gerencia_checked_attr; ?> 
+                                           <?php echo $gerencia_disabled_attr; ?>>
+                                </div>
                             </td>
                             <td class="text-nowrap">
                                 <strong class="d-block"><?php echo date("d/m", strtotime($row['fecha_correo'])); ?></strong>
@@ -460,6 +540,14 @@ if ($resultado && $resultado->num_rows > 0) {
                                                     - NIT: <?php echo htmlspecialchars($row['nit_empresa']); ?>
                                                 </span>
                                             <?php endif; ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ($gerencia_verificado): ?>
+                                    <div class="mt-1">
+                                        <span class="badge bg-primary d-inline-flex align-items-center flex-wrap gap-1 badge-green-flexible" style="font-size: 0.68rem; padding: 4px 6px;">
+                                            <span>🛡️ Gerencia: <?php echo htmlspecialchars($row['nombre_gerencia_dueno'] ?? $row['gerencia_usuario_cedula']); ?></span>
                                         </span>
                                     </div>
                                 <?php endif; ?>
@@ -532,6 +620,42 @@ if ($resultado && $resultado->num_rows > 0) {
 
             const formData = new FormData();
             formData.append('action', 'toggle_check');
+            formData.append('id_transferencia', idTransferencia);
+            formData.append('estado', estadoNuevo);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    forzarRefresco();
+                } else {
+                    alert('⚠️ ' + data.message);
+                    elemento.checked = !elemento.checked;
+                    elemento.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Ocurrió un error en la conexión.');
+                elemento.checked = !elemento.checked;
+                elemento.disabled = false;
+            });
+        });
+    });
+
+    document.querySelectorAll('.check-gerencia').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const idTransferencia = this.getAttribute('data-id');
+            const estadoNuevo = this.checked ? 1 : 0;
+            const elemento = this;
+
+            elemento.disabled = true;
+
+            const formData = new FormData();
+            formData.append('action', 'toggle_gerencia_check');
             formData.append('id_transferencia', idTransferencia);
             formData.append('estado', estadoNuevo);
 
