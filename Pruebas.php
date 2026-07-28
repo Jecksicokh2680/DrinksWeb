@@ -1,328 +1,130 @@
 <?php
-/* ============================================================
-   PANEL DE PROGRESO Y ESTADO DE CONTEO - DOBLE VISTA RESPONSIVE
-============================================================ */
-require_once("ConnCentral.php"); // $mysqliCentral
-require_once("ConnDrinks.php");  // $mysqliDrinks
-require_once("Conexion.php");    // ADM ($mysqli)
-
+require_once("Conexion.php");      // $mysqliWeb (Donde reside historial_stock)
+date_default_timezone_set('America/Bogota'); 
 session_start();
-date_default_timezone_set('America/Bogota');
 
-// Definición de sedes
-define('NIT_CENTRAL', '86057267-8');
-define('NIT_DRINKS',  '901724534-7');
+$fecha_consulta = $_GET['fecha'] ?? date('Y-m-d');
+$term = $_GET['term'] ?? '';
 
-if (!isset($_SESSION['Usuario'])) {
-    die("Sesión no válida. Por favor inicie sesión.");
+// Obtener categorías para filtros
+$cats = [];
+$resCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1' ORDER BY CodCat ASC");
+while ($c = $resCat->fetch_assoc()) { $cats[$c['CodCat']] = $c['Nombre']; }
+
+// Consulta del stock histórico guardado en esa fecha
+$where = "fecha_registro = ?";
+$params = [$fecha_consulta];
+$types = "s";
+
+if (!empty($term)) {
+    $where .= " AND (descripcion LIKE ? OR barcode LIKE ?)";
+    $like = "%$term%";
+    $params[] = $like;
+    $params[] = $like;
+    $types .= "ss";
 }
 
-/* ============================================================
-   FUNCIÓN PARA OBTENER MÉTRICAS POR SEDE
-============================================================ */
-function obtenerMetricasSede($mysqli, $nitSede) {
-    // 1. Total de categorías habilitadas para conteo web
-    $stmtCatTotal = $mysqli->prepare("
-        SELECT COUNT(*) as total 
-        FROM categorias c 
-        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
-    ");
-    $stmtCatTotal->execute();
-    $totalCategoriasHabilitadas = $stmtCatTotal->get_result()->fetch_assoc()['total'] ?? 0;
-
-    // 2. Categorías contadas hoy en la sede
-    $stmtCatContadas = $mysqli->prepare("
-        SELECT COUNT(DISTINCT CodCat) as total 
-        FROM conteoweb 
-        WHERE DATE(fecha_conteo) = CURDATE() 
-          AND estado = 'A' 
-          AND TRIM(NitEmpresa) = TRIM(?)
-    ");
-    $stmtCatContadas->bind_param("s", $nitSede);
-    $stmtCatContadas->execute();
-    $totalContadasHoy = $stmtCatContadas->get_result()->fetch_assoc()['total'] ?? 0;
-
-    // Porcentaje de avance
-    $porcentajeAvance = ($totalCategoriasHabilitadas > 0) ? ($totalContadasHoy / $totalCategoriasHabilitadas) * 100 : 0;
-
-    // 3. Resumen detallado por Familia
-    $familiasResumen = [];
-    $sqlFamilias = "
-        SELECT 
-            f.id AS id_familia,
-            f.nombre AS nombre_familia,
-            COUNT(c.CodCat) AS total_cat,
-            SUM(CASE WHEN c.CodCat IN (
-                SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo) = CURDATE() AND estado = 'A' AND TRIM(NitEmpresa) = TRIM(?)
-            ) THEN 1 ELSE 0 END) AS contadas_cat
-        FROM familias f
-        INNER JOIN categorias c ON c.Tipo = f.id
-        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
-        GROUP BY f.id, f.nombre
-        ORDER BY f.nombre ASC
-    ";
-    $stmtFam = $mysqli->prepare($sqlFamilias);
-    $stmtFam->bind_param("s", $nitSede);
-    $stmtFam->execute();
-    $resFam = $stmtFam->get_result();
-    while ($row = $resFam->fetch_assoc()) {
-        $familiasResumen[] = $row;
-    }
-
-    return [
-        'total_categorias' => $totalCategoriasHabilitadas,
-        'contadas_hoy' => $totalContadasHoy,
-        'pendientes' => max(0, $totalCategoriasHabilitadas - $totalContadasHoy),
-        'porcentaje' => $porcentajeAvance,
-        'familias' => $familiasResumen
-    ];
-}
-
-// Obtener datos para ambas sedes
-$datosCentral = obtenerMetricasSede($mysqli, NIT_CENTRAL);
-$datosDrinks  = obtenerMetricasSede($mysqli, NIT_DRINKS);
+$sqlHist = "SELECT * FROM historial_stock WHERE $where ORDER BY codcat ASC, descripcion ASC";
+$stmt = $mysqliWeb->prepare($sqlHist);
+$stmt->bind_param($types, ...$params);
+$stmt->execute();
+$resultadoHistorial = $stmt->get_result();
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Avance | Central y Drinks</title>
+    <meta charset="UTF-8">
+    <title>Auditoría de Stock Histórico</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 10px; color: #333; }
-        
-        .main-container { width: 100%; max-width: 1400px; margin: 0 auto; }
-        
-        .nav-links { 
-            margin-bottom: 15px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            background: #fff; 
-            padding: 12px 15px; 
-            border-radius: 8px; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
-            flex-wrap: wrap; 
-            gap: 10px; 
-        }
-        .nav-links a { color: #007bff; text-decoration: none; font-size: 13px; font-weight: bold; }
-
-        /* Contenedor adaptativo de paneles: lado a lado en pantallas grandes, apilados en móviles */
-        .panels-wrapper { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
-            gap: 15px; 
-        }
-        
-        .card { 
-            background: #fff; 
-            padding: 15px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-            overflow: hidden;
-        }
-        
-        .btn-refresh { 
-            text-decoration: none; 
-            padding: 6px 12px; 
-            border-radius: 6px; 
-            background: #fff; 
-            border: 1px solid #ccc; 
-            cursor: pointer; 
-            font-size: 13px; 
-        }
-
-        .metrics-grid { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            gap: 8px; 
-            margin-bottom: 15px; 
-        }
-        .metric-box { 
-            background: #f8f9fa; 
-            padding: 10px 5px; 
-            border-radius: 8px; 
-            border: 1px solid #e9ecef; 
-            text-align: center; 
-        }
-        .metric-box h3 { margin: 0 0 4px 0; font-size: 10px; color: #666; text-transform: uppercase; }
-        .metric-box span { font-size: 18px; font-weight: bold; color: #2c3e50; }
-
-        /* Barra de Progreso */
-        .progress-container { background: #e9ecef; border-radius: 10px; height: 16px; width: 100%; overflow: hidden; margin-bottom: 15px; position: relative; }
-        .progress-bar { background: #28a745; height: 100%; width: 0%; transition: width 0.6s ease; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold; }
-
-        .table-responsive { 
-            width: 100%; 
-            overflow-x: auto; 
-            max-height: 380px; 
-            overflow-y: auto; 
-            -webkit-overflow-scrolling: touch;
-        }
-        table { width: 100%; border-collapse: collapse; margin-top: 5px; white-space: nowrap; }
-        th, td { padding: 8px 6px; border-bottom: 1px solid #f0f0f0; text-align: left; font-size: 11px; }
-        th { background: #f8f9fa; color: #666; text-transform: uppercase; font-size: 10px; position: sticky; top: 0; z-index: 1; }
-
-        .badge-status { padding: 3px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; }
-        .badge-complete { background: #d4edda; color: #155724; }
-        .badge-pending { background: #fff3cd; color: #856404; }
-
-        /* Ajustes específicos para pantallas pequeñas */
-        @media (max-width: 480px) {
-            body { padding: 5px; }
-            .card { padding: 10px; }
-            .metric-box span { font-size: 15px; }
-        }
+        body{font-family:Segoe UI,Arial;background:#eef1f4;color:#333;margin:0;padding:0}
+        .container{max-width:1200px;margin:30px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+        h2{color:#2c3e50;text-align:center;margin-bottom:20px}
+        form{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center}
+        select,input,button{padding:8px 12px;border-radius:6px;border:1px solid #ccc;font-size:14px}
+        button{background:#6c757d;color:#fff;border:none;cursor:pointer}
+        .table-container{overflow-x:auto;border-radius:12px;background:#fff}
+        table{width:100%;border-collapse:collapse;min-width:700px}
+        th,td{padding:12px 8px;text-align:center;border-bottom:1px solid #e1e1e1}
+        th{background:#6c757d;color:#fff}
+        .btn-nav { background:#007bff; text-decoration: none; display: inline-block; padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 14px; }
     </style>
 </head>
 <body>
 
-<div class="main-container">
-    <div class="nav-links">
-        <a href="index.php">⬅️ Volver al Conteo Principal</a>
-        <span style="font-size:11px; color:#888;">Actualización simultánea en tiempo real</span>
-        <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄 Actualizar Todo</button>
-    </div>
-
-    <div class="panels-wrapper">
-
-        <!-- ================= PANEL CENTRAL ================= -->
-        <div class="card">
-            <h2 style="margin:0 0 3px 0; color:#2c3e50; font-size: 18px;">📊 Sede CENTRAL</h2>
-            <p style="margin:0 0 12px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
-
-            <div class="metrics-grid">
-                <div class="metric-box">
-                    <h3>Total Cat.</h3>
-                    <span><?= $datosCentral['total_categorias'] ?></span>
-                </div>
-                <div class="metric-box">
-                    <h3>Contadas</h3>
-                    <span style="color: #28a745;"><?= $datosCentral['contadas_hoy'] ?></span>
-                </div>
-                <div class="metric-box">
-                    <h3>Pendientes</h3>
-                    <span style="color: #dc3545;"><?= $datosCentral['pendientes'] ?></span>
-                </div>
-            </div>
-
-            <label style="font-weight:bold; font-size:11px; margin-bottom:4px; display:block;">Progreso: <?= number_format($datosCentral['porcentaje'], 1) ?>%</label>
-            <div class="progress-container">
-                <div class="progress-bar" style="width: <?= $datosCentral['porcentaje'] ?>%;">
-                    <?= number_format($datosCentral['porcentaje'], 1) ?>%
-                </div>
-            </div>
-
-            <h3 style="margin:12px 0 6px 0; font-size:12px; color:#444;">Desglose por Familias (Central)</h3>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Familia</th>
-                            <th style="text-align:center;">Total</th>
-                            <th style="text-align:center;">Cont.</th>
-                            <th style="text-align:center;">Pend.</th>
-                            <th style="text-align:center;">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($datosCentral['familias'] as $f): 
-                            $pendientes = $f['total_cat'] - $f['contadas_cat'];
-                            $completadoFam = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
-                        ?>
-                        <tr>
-                            <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
-                            <td align="center"><?= $f['total_cat'] ?></td>
-                            <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
-                            <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pendientes ?></td>
-                            <td align="center">
-                                <?php if($pendientes == 0): ?>
-                                    <span class="badge-status badge-complete">Listo</span>
-                                <?php else: ?>
-                                    <span class="badge-status badge-pending"><?= number_format($completadoFam, 0) ?>%</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+<div class="container">
+    <h2>📅 Auditoría de Stock por Fecha (Historial)</h2>
+    
+    <form method="GET">
+        <div>
+            <label style="font-size:11px; display:block; color:#666;">Seleccionar Fecha:</label>
+            <input type="date" name="fecha" value="<?= $fecha_consulta ?>">
         </div>
-
-        <!-- ================= PANEL DRINKS ================= -->
-        <div class="card">
-            <h2 style="margin:0 0 3px 0; color:#2c3e50; font-size: 18px;">📊 Sede DRINKS</h2>
-            <p style="margin:0 0 12px 0; color:#666; font-size:11px;">Progreso de conteo físico para hoy.</p>
-
-            <div class="metrics-grid">
-                <div class="metric-box">
-                    <h3>Total Cat.</h3>
-                    <span><?= $datosDrinks['total_categorias'] ?></span>
-                </div>
-                <div class="metric-box">
-                    <h3>Contadas</h3>
-                    <span style="color: #28a745;"><?= $datosDrinks['contadas_hoy'] ?></span>
-                </div>
-                <div class="metric-box">
-                    <h3>Pendientes</h3>
-                    <span style="color: #dc3545;"><?= $datosDrinks['pendientes'] ?></span>
-                </div>
-            </div>
-
-            <label style="font-weight:bold; font-size:11px; margin-bottom:4px; display:block;">Progreso: <?= number_format($datosDrinks['porcentaje'], 1) ?>%</label>
-            <div class="progress-container">
-                <div class="progress-bar" style="width: <?= $datosDrinks['porcentaje'] ?>%;">
-                    <?= number_format($datosDrinks['porcentaje'], 1) ?>%
-                </div>
-            </div>
-
-            <h3 style="margin:12px 0 6px 0; font-size:12px; color:#444;">Desglose por Familias (Drinks)</h3>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Familia</th>
-                            <th style="text-align:center;">Total</th>
-                            <th style="text-align:center;">Cont.</th>
-                            <th style="text-align:center;">Pend.</th>
-                            <th style="text-align:center;">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach($datosDrinks['familias'] as $f): 
-                            $pendientes = $f['total_cat'] - $f['contadas_cat'];
-                            $completadoFam = ($f['total_cat'] > 0) ? ($f['contadas_cat'] / $f['total_cat']) * 100 : 0;
-                        ?>
-                        <tr>
-                            <td><strong><?= htmlspecialchars($f['nombre_familia']) ?></strong></td>
-                            <td align="center"><?= $f['total_cat'] ?></td>
-                            <td align="center" style="color: #28a745; font-weight: bold;"><?= $f['contadas_cat'] ?></td>
-                            <td align="center" style="color: #dc3545; font-weight: bold;"><?= $pendientes ?></td>
-                            <td align="center">
-                                <?php if($pendientes == 0): ?>
-                                    <span class="badge-status badge-complete">Listo</span>
-                                <?php else: ?>
-                                    <span class="badge-status badge-pending"><?= number_format($completadoFam, 0) ?>%</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+        <div>
+            <label style="font-size:11px; display:block; color:#666;">Buscar Producto:</label>
+            <input type="text" name="term" placeholder="Nombre o barcode..." value="<?= htmlspecialchars($term) ?>">
         </div>
+        <div style="display:flex; align-items:flex-end; gap:5px;">
+            <button type="submit" style="background:#6c757d;">🔍 Consultar Historial</button>
+            <a href="inventario_actual.php" class="btn-nav">⬅️ Volver al Stock Actual</a>
+        </div>
+    </form>
 
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>CodCat</th>
+                    <th>Categoría</th>
+                    <th>Barcode</th>
+                    <th style="text-align:left;">Producto</th>
+                    <th>Drinks (Hist.)</th>
+                    <th>Central (Hist.)</th>
+                    <th>Total (Hist.)</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php 
+            if ($resultadoHistorial->num_rows > 0):
+                $totD = $totC = $totT = 0;
+                while($row = $resultadoHistorial->fetch_assoc()):
+                    $totD += $row['stock_drinks'];
+                    $totC += $row['stock_central'];
+                    $totT += $row['stock_total'];
+            ?>
+                <tr>
+                    <td><?= $row['codcat'] ?></td>
+                    <td><?= $cats[$row['codcat']] ?? 'SIN CATEGORÍA' ?></td>
+                    <td><?= $row['barcode'] ?></td>
+                    <td style="text-align:left;"><?= htmlspecialchars($row['descripcion']) ?></td>
+                    <td><?= number_format($row['stock_drinks'], 0) ?></td>
+                    <td><?= number_format($row['stock_central'], 0) ?></td>
+                    <td><strong><?= number_format($row['stock_total'], 0) ?></strong></td>
+                </tr>
+            <?php 
+                endwhile;
+            else:
+            ?>
+                <tr>
+                    <td colspan="7" style="padding:20px; color:#e74c3c; font-weight:bold;">
+                        ❌ No hay registros de respaldo guardados para la fecha <?= $fecha_consulta ?>. 
+                        (Asegúrate de haber presionado "Sincronizar Historial" en el inventario actual para esa fecha).
+                    </td>
+                </tr>
+            <?php endif; ?>
+            </tbody>
+            <?php if (isset($totT)): ?>
+            <tfoot>
+                <tr style="background:#343a40; color:#fff; font-weight:bold;">
+                    <td colspan="4" style="text-align:right;">TOTALES HISTÓRICOS:</td>
+                    <td><?= number_format($totD, 0) ?></td>
+                    <td><?= number_format($totC, 0) ?></td>
+                    <td><?= number_format($totT, 0) ?></td>
+                </tr>
+            </tfoot>
+            <?php endif; ?>
+        </table>
     </div>
 </div>
-
-<script>
-    // Auto-recargar el panel cada 60 segundos para mantenerlo actualizado en pantallas de supervisión
-    setTimeout(() => {
-        window.location.reload();
-    }, 60000);
-</script>
 
 </body>
 </html>

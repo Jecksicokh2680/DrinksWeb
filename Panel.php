@@ -266,6 +266,7 @@ body {
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
+                                    <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
@@ -293,7 +294,7 @@ body {
                             <div id="adminInv" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Generar Ajustes Conteos</a>
-                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Modificar Stock Bnma</a> 
+                                    <a class="nav-link" href="StockCentral.php" target="contentFrame">Ver Stock por Categorias</a> 
                                     <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
                                     <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            
                                     <a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
