@@ -105,7 +105,7 @@ if (isset($_POST['accion'])) {
 
 <nav class="navbar navbar-dark bg-dark shadow-sm mb-4">
     <div class="container-fluid px-4">
-        <span class="navbar-brand fw-bold small"><i class="bi bi-ui-checks me-2"></i>SIA AUDITORÍA</span>
+        <span class="navbar-brand fw-bold small"><i class="bi bi-ui-checks me-2"></i>AUDITORÍA DE INVENTARIOS</span>
         <button onclick="location.reload()" class="btn btn-outline-info btn-sm"><i class="bi bi-arrow-clockwise"></i> REFRESCAR</button>
     </div>
 </nav>
@@ -132,6 +132,7 @@ if (isset($_POST['accion'])) {
                             <thead class="table-light text-uppercase" style="font-size: 11px;">
                                 <tr>
                                     <th class="ps-4">PRODUCTO / HISTORIAL</th>
+                                    <th class="text-center">HORA</th> <!-- NUEVA COLUMNA DE HORA -->
                                     <th class="text-end">SISTEMA</th>
                                     <th class="text-end">FÍSICO</th>
                                     <th class="text-center">DIF.</th>
@@ -148,8 +149,8 @@ if (isset($_POST['accion'])) {
                                                       ORDER BY cat.CodCat ASC");
                                 while($r = $res->fetch_assoc()): 
                                     $subHist = $mysqli->query("SELECT diferencia_aplicada, fecha_ajuste, usuario FROM historial_ajustes 
-                                                              WHERE categoria = '{$r['CodCat']}' AND nit_empresa = '{$r['NitEmpresa']}' 
-                                                              ORDER BY fecha_ajuste DESC LIMIT 3");
+                                                             WHERE categoria = '{$r['CodCat']}' AND nit_empresa = '{$r['NitEmpresa']}' 
+                                                             ORDER BY fecha_ajuste DESC LIMIT 3");
                                 ?>
                                 <tr>
                                     <td class="ps-4 py-3">
@@ -169,6 +170,9 @@ if (isset($_POST['accion'])) {
                                                 </tbody>
                                             </table>
                                         <?php endif; ?>
+                                    </td>
+                                    <td class="text-center text-muted small">
+                                        <?= date("H:i:s", strtotime($r['fecha_conteo'])) ?> <!-- MUESTRA LA HORA DEL CONTEO -->
                                     </td>
                                     <td class="text-end text-muted small"><?= number_format($r['stock_sistema'], 2) ?></td>
                                     <td class="text-end fw-bold"><?= number_format($r['stock_fisico'], 2) ?></td>

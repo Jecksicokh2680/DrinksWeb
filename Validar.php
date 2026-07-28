@@ -6,7 +6,7 @@ error_reporting(E_ALL);
 session_start();
 
 $session_timeout   = 3600;
-$inactive_timeout  = 1800;
+$inactive_timeout  = 2700;
 
 require 'Conexion.php';
 require 'helpers.php';

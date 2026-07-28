@@ -26,7 +26,7 @@ $resSedes = $mysqli->query("SELECT DISTINCT NitEmpresa FROM conteoweb WHERE NitE
 $resCats = $mysqli->query("SELECT DISTINCT c.CodCat, cat.Nombre 
                            FROM conteoweb c 
                            INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
-                           ORDER BY c.CodCat,cat.Nombre ASC");
+                           ORDER BY cat.Nombre ASC");
 
 /* ============================================================
    CONSULTA DE CONTEOS (Orden Descendente)

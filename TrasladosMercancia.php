@@ -132,7 +132,7 @@ $con_f_fin = $_GET['con_f_fin'] ?? date('Y-m-d');
 $con_sede = $_GET['con_sede'] ?? '';
 $con_producto = $_GET['con_producto'] ?? '';
 
-$cats=[]; $resC = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1'");
+$cats=[]; $resC = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE Estado='1' order by Nombre");
 while($c=$resC->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 
 $nombresGlobales = [];

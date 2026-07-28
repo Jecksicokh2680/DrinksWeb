@@ -11,19 +11,26 @@ $mysqli->set_charset("utf8");
 
 // Captura de filtros
 $filtroCat   = $_GET['codcat'] ?? '';
+$filtroSede  = $_GET['nit_empresa'] ?? ''; 
 $fechaInicio = $_GET['f_inicio'] ?? date('Y-m-01'); 
 $fechaFin    = $_GET['f_fin'] ?? date('Y-m-d');
 
 /* ============================================================
-   CONSULTA DE CATEGORÍAS (SOLO LAS QUE TIENEN AJUSTES)
+    CONSULTA DE CATEGORÍAS (SOLO LAS QUE TIENEN AJUSTES)
 ============================================================ */
-$resCats = $mysqli->query("SELECT DISTINCT h.categoria, cat.Nombre 
-                           FROM historial_ajustes h 
-                           INNER JOIN categorias cat ON cat.CodCat = h.categoria 
-                           ORDER BY cat.Nombre ASC");
+$sqlCats = "SELECT DISTINCT h.categoria, cat.Nombre 
+            FROM historial_ajustes h 
+            INNER JOIN categorias cat ON cat.CodCat = h.categoria 
+            WHERE 1=1";
+
+if ($filtroSede != '') {
+    $sqlCats .= " AND h.nit_empresa = '" . $mysqli->real_escape_string($filtroSede) . "'";
+}
+$sqlCats .= " ORDER BY cat.Nombre ASC";
+$resCats = $mysqli->query($sqlCats);
 
 /* ============================================================
-   CONSULTA DE MOVIMIENTOS DÍA A DÍA
+    CONSULTA DE MOVIMIENTOS DÍA A DÍA
 ============================================================ */
 $sql = "SELECT h.*, cat.Nombre as NombreCat 
         FROM historial_ajustes h
@@ -31,8 +38,13 @@ $sql = "SELECT h.*, cat.Nombre as NombreCat
         WHERE 1=1";
 
 if ($filtroCat != '') {
-    $sql .= " AND h.categoria = '$filtroCat'";
+    $sql .= " AND h.categoria = '" . $mysqli->real_escape_string($filtroCat) . "'";
 }
+
+if ($filtroSede != '') {
+    $sql .= " AND h.nit_empresa = '" . $mysqli->real_escape_string($filtroSede) . "'";
+}
+
 $sql .= " AND DATE(h.fecha_ajuste) BETWEEN '$fechaInicio' AND '$fechaFin'";
 $sql .= " ORDER BY h.fecha_ajuste DESC";
 
@@ -68,8 +80,17 @@ $resHistorial = $mysqli->query($sql);
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label small fw-bold">Categoría (Solo con ajustes realizados)</label>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Sede</label>
+                    <select name="nit_empresa" class="form-select form-select-sm">
+                        <option value="">-- Todas las sedes --</option>
+                        <option value="901724534-7" <?= ($filtroSede == '901724534-7') ? 'selected' : '' ?>>Drinks</option>
+                        <option value="CENTRAL" <?= ($filtroSede == 'CENTRAL') ? 'selected' : '' ?>>Central</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Categoría (Solo con ajustes)</label>
                     <select name="codcat" class="form-select form-select-sm">
                         <option value="">-- Todas las ajustadas --</option>
                         <?php while($c = $resCats->fetch_assoc()): ?>
@@ -87,11 +108,11 @@ $resHistorial = $mysqli->query($sql);
                     <label class="form-label small fw-bold">Hasta</label>
                     <input type="date" name="f_fin" class="form-control form-control-sm" value="<?= $fechaFin ?>">
                 </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-search"></i> Filtrar</button>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary btn-sm w-100" title="Filtrar"><i class="bi bi-search"></i></button>
                 </div>
-                <div class="col-md-2">
-                    <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm w-100"><i class="bi bi-printer"></i> Imprimir</button>
+                <div class="col-md-1">
+                    <button type="button" onclick="window.print()" class="btn btn-outline-secondary btn-sm w-100" title="Imprimir"><i class="bi bi-printer"></i></button>
                 </div>
             </form>
         </div>
@@ -100,7 +121,7 @@ $resHistorial = $mysqli->query($sql);
     <div class="card">
         <div class="card-header bg-white py-3">
             <h6 class="mb-0 fw-bold text-dark">
-                <?= ($filtroCat != '') ? "Movimientos Detallados" : "Todos los movimientos del periodo" ?>
+                <?= ($filtroCat != '' || $filtroSede != '') ? "Movimientos Detallados" : "Todos los movimientos del periodo" ?>
             </h6>
         </div>
         <div class="card-body p-0">
