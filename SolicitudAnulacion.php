@@ -358,7 +358,15 @@ if ($dbSede) {
                     <span class="fw-bold"><?= $fechaConsulta ?></span>
                 <?php endif; ?>
             </div>
-            <div><small class="text-secondary d-block">ACTUALIZACIÓN</small><span id="timer-box" class="text-warning">180s</span></div>
+            <div class="d-flex align-items-center">
+    <div>
+        <small class="text-secondary d-block">ACTUALIZACIÓN</small>
+        <div class="d-flex align-items-center gap-2">
+            <span id="timer-box" class="text-warning">180s</span>
+            <button class="btn btn-outline-light btn-sm py-0 px-2" onclick="window.location.reload();" title="Refrescar ahora">🔄</button>
+        </div>
+    </div>
+</div>
         </div>
         <div class="text-end">
             <small class="text-secondary d-block">CAMBIAR SEDE</small>

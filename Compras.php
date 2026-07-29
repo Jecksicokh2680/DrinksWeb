@@ -1,5 +1,27 @@
 <?php
-session_start();
+
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$sesionExpirada = false;
+if (!isset($_SESSION['Usuario']) || empty($_SESSION['Usuario'])) {
+    $sesionExpirada = true;
+}
+$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+?>
+<?php if ($sesionExpirada): ?>
+<script>
+    window.addEventListener("DOMContentLoaded", function() {
+        // Muestra un aviso opcional y cierra la ventana emergente actual
+        alert("La sesión ha expirado.");
+        window.close();
+    });
+</script>
+<?php 
+    exit; // Detiene la ejecución del resto del script en la ventana emergente
+endif;
 
 // Aseguramos que PHP use estrictamente la zona horaria de Bogotá
 date_default_timezone_set('America/Bogota');
@@ -11,11 +33,7 @@ require('Conexion.php');
 require('ConnCentral.php');
 require('ConnDrinks.php');
 
-$User = trim($_SESSION['Usuario'] ?? '');
-if ($User === '') {
-    header("Location: Login.php");
-    exit;
-}
+
 
 // ---------------------------------------------------------
 // PROCESAMIENTO AJAX: GUARDAR FACTURA EN NEGATIVO CON HORA DE BOGOTÁ
