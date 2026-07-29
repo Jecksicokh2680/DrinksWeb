@@ -61,7 +61,6 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
         $condPedido  .= " AND T2.NOMBRES = '$f_fac_esc' ";
     }
 
-    // Se agrega FACTURAS.FECHA / PEDIDOS.FECHA al SELECT para poder ordenar cronológicamente de forma estricta
     $sql = "
     SELECT 
         '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
@@ -114,7 +113,6 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     }
 }
 
-// Si se unieron datos de dos bases de datos distintas, volvemos a ordenar el array global en PHP para que no se mezclen los días entre sucursales
 if (!empty($rows)) {
     usort($rows, function($a, $b) {
         if ($a['FECHA'] != $b['FECHA']) {
@@ -127,7 +125,6 @@ if (!empty($rows)) {
     });
 }
 
-// Mantener lista de facturadores para el select
 if ($fFac == '' && !empty($rows)) {
     $listaFacturadores = array_unique(array_column($rows, 'FACTURADOR'));
     $_SESSION['UltimosFacturadores'] = $listaFacturadores;
@@ -136,7 +133,6 @@ if ($fFac == '' && !empty($rows)) {
 }
 sort($listaFacturadores);
 
-// Obtener Unicaja
 $unicaja = [];
 $skus = array_unique(array_column($rows, 'Barcode'));
 if ($skus && isset($mysqliWeb)) {
@@ -162,6 +158,7 @@ if ($skus && isset($mysqliWeb)) {
         button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold;}
         .btn-excel{ background: #2e7d32 !important; }
         .btn-print{ background: #455a64 !important; }
+        .btn-print-detail{ background: #e65100 !important; }
         .table-container { max-height: 600px; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
         table{ border-collapse: collapse; width: 100%; background: white; }
         th{ position: sticky; top: 0; background: #263238; color: white; padding: 12px; text-align: left; z-index: 2; }
@@ -204,7 +201,8 @@ if ($skus && isset($mysqliWeb)) {
 
         <button type="submit">🔍 Filtrar</button>
         <button type="button" class="btn-excel" onclick="exportarExcel()">Excel 📥</button>
-        <button type="button" class="btn-print" onclick="imprimirReporte()">Imprimir 🖨️</button>
+        <button type="button" class="btn-print" onclick="imprimirReporte()">Resumen 🖨️</button>
+        <button type="button" class="btn-print-detail" onclick="imprimirDetalle()">Imprimir Detalle 🖨️</button>
     </form>
 
     <?php if(!$rows): ?>
@@ -286,72 +284,244 @@ function exportarExcel() {
 }
 
 function imprimirReporte() {
-    const tabla = document.getElementById("tablaVentas");
+    const datos = <?= json_encode($rows) ?>;
+    if (!datos || datos.length === 0) {
+        alert("No hay datos para imprimir.");
+        return;
+    }
+
+    const facturas = {};
+    datos.forEach(item => {
+        const doc = item.DOCUMENTO;
+        if (!facturas[doc]) {
+            facturas[doc] = { documento: doc, fecha: item.FECHA, hora: item.HORA, total: 0 };
+        }
+        facturas[doc].total += (parseFloat(item.CANTIDAD) * parseFloat(item.VALORPROD));
+    });
+
+    const fIni = "<?= $f_ini_raw ?>";
+    const fFin = "<?= $f_fin_raw ?>";
     
-    if (!tabla || tabla.querySelector("tbody").rows.length === 0) {
-        alert("No hay datos en la tabla para imprimir.");
+    let win = window.open('', '_blank', 'width=320,height=600');
+    win.document.write(`
+        <html>
+        <head>
+            <title>Resumen de Facturas</title>
+            <style>
+                @page { margin: 0px; }
+                body { font-family: "Courier New", monospace; font-size: 9px; padding: 2px; margin: 0; width: 100%; max-width: 270px; color: #000; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .border-dashed { border-top: 1.5px dashed #000; margin: 3px 0; }
+                table { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
+                th { padding: 2px 0; border-bottom: 1.5px solid #000; font-size: 8px; font-weight: 950; color: #000; }
+                td { padding: 2px 0; font-size: 9px; font-weight: 900; color: #000; overflow: hidden; white-space: nowrap; }
+                .col-fecha { width: 42px; }
+                .col-hora  { width: 36px; }
+                .col-doc   { width: 45px; }
+                .col-total { width: 85px; text-align: right; }
+                .num { text-align: right; }
+                .dark-title { font-weight: 950; font-size: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center dark-title">
+                <strong>SISTEMA DRINKS</strong><br>
+                RESUMEN DE FACTURAS<br>
+                ${fIni} al ${fFin}
+            </div>
+            <div class="border-dashed"></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-fecha">FEC</th>
+                        <th class="col-hora">HORA</th>
+                        <th class="col-doc">DOC</th>
+                        <th class="col-total">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `);
+
+    let granTotal = 0;
+    Object.values(facturas).forEach(f => {
+        granTotal += f.total;
+        let fechaFmt = f.fecha;
+        if (fechaFmt && fechaFmt.length === 8) {
+            fechaFmt = fechaFmt.substring(6,8) + '/' + fechaFmt.substring(4,6);
+        } else if (fechaFmt && fechaFmt.includes('-')) {
+            const partes = fechaFmt.split('-');
+            fechaFmt = `${partes[2]}/${partes[1]}`;
+        }
+        let horaFmt = f.hora;
+        if (horaFmt && horaFmt.length > 5) horaFmt = horaFmt.substring(0, 5);
+        const totalFmt = "$" + Math.round(f.total).toLocaleString('es-CO');
+
+        win.document.write(`
+            <tr>
+                <td class="col-fecha">${fechaFmt}</td>
+                <td class="col-hora">${horaFmt}</td>
+                <td class="col-doc">${f.documento}</td>
+                <td class="col-total num">${totalFmt}</td>
+            </tr>
+        `);
+    });
+
+    const granTotalFmt = "$" + Math.round(granTotal).toLocaleString('es-CO');
+    win.document.write(`
+                </tbody>
+            </table>
+            <div class="border-dashed"></div>
+            <div class="text-right" style="font-size:10px; font-weight:950; margin-top:4px;">TOTAL: ${granTotalFmt}</div>
+            <div style="margin-top:8px; text-align:center; font-size:8px; font-weight:bold;">Gen: <?=date('d/m/Y H:i')?></div>
+        </body>
+        </html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
+}
+
+function imprimirDetalle() {
+    const datos = <?= json_encode($rows) ?>;
+    const arrayUnicaja = <?= json_encode($unicaja) ?>;
+    
+    if (!datos || datos.length === 0) {
+        alert("No hay datos para imprimir.");
         return;
     }
 
     const fIni = "<?= $f_ini_raw ?>";
     const fFin = "<?= $f_fin_raw ?>";
     
-    let win = window.open('', '_blank', 'width=450,height=600');
+    let win = window.open('', '_blank', 'width=320,height=600');
     win.document.write(`
         <html>
         <head>
-            <title>Ticket POS</title>
+            <title>Reporte Detallado</title>
             <style>
-                body { font-family: "Courier New", monospace; font-size: 11px; padding: 10px; font-weight: bold; }
+                @page { margin: 0px; }
+                body { 
+                    font-family: "Courier New", monospace; 
+                    font-size: 9.5px; 
+                    padding: 2px; 
+                    margin: 0; 
+                    width: 100%; 
+                    max-width: 270px; 
+                    color: #000;
+                }
                 .text-center { text-align: center; }
                 .text-right { text-align: right; }
-                .border-dashed { border-top: 1px dashed #000; margin: 5px 0; }
-                .doc-header { background: #eee; padding: 2px; margin-top: 8px; }
-                .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-                .subtotal-line { text-align: right; font-style: italic; margin: 3px 0 8px 0; font-size: 10px; }
+                .border-dashed { 
+                    border-top: 1.5px dashed #000; 
+                    margin: 3px 0; 
+                }
+                .doc-header { 
+                    font-weight: 900; 
+                    font-size: 9.5px; 
+                    margin-top: 5px; 
+                    background: transparent !important; 
+                    color: #000 !important; 
+                    border-bottom: 1px solid #000;
+                    padding: 2px 0; 
+                }
+                table { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
+                th { 
+                    padding: 2px 0; 
+                    border-bottom: 1.5px solid #000; 
+                    font-size: 8.5px; 
+                    font-weight: 900; 
+                    text-align: left; 
+                    color: #000;
+                }
+                td { 
+                    padding: 2px 0; 
+                    font-size: 9px; 
+                    font-weight: bold; 
+                    color: #000;
+                    overflow: hidden; 
+                    text-overflow: ellipsis; 
+                    white-space: nowrap; 
+                }
+                .col-prod { width: 105px; }
+                .col-cant { width: 50px; text-align: center; }
+                .col-sub  { width: 75px; text-align: right; }
+                .num { text-align: right; }
+                .dark-title { font-weight: 900; font-size: 10.5px; }
             </style>
         </head>
         <body>
-            <div class="text-center">
+            <div class="text-center dark-title">
                 <strong>SISTEMA DRINKS</strong><br>
-                REPORTE: ${fIni} / ${fFin}
+                REPORTE DETALLADO<br>
+                ${fIni} al ${fFin}
             </div>
             <div class="border-dashed"></div>
     `);
 
-    const filas = tabla.querySelectorAll("tbody tr");
-    let ultimoDoc = "";
+    let docActual = '';
+    let subtotalDoc = 0;
+    let granTotalGeneral = 0;
 
-    filas.forEach(fila => {
-        if (fila.classList.contains('total-row')) {
-            win.document.write(`<div class="subtotal-line">${fila.innerText.trim()}</div><div class="border-dashed"></div>`);
-        } else {
-            const c = fila.cells;
-            const docActual = c[2].innerText;
-
-            if(ultimoDoc !== docActual) {
-                win.document.write(`<div class="doc-header">DOC: ${docActual} - ${c[3].innerText}</div>`);
-                ultimoDoc = docActual;
+    datos.forEach((item, index) => {
+        if (docActual !== item.DOCUMENTO) {
+            if (docActual !== '') {
+                win.document.write(`
+                    </table>
+                    <div class="text-right" style="font-weight:900; font-size:9.5px; margin: 2px 0;">Subtotal Doc: $${Math.round(subtotalDoc).toLocaleString('es-CO')}</div>
+                    <div class="border-dashed"></div>
+                `);
+                subtotalDoc = 0;
             }
-
+            docActual = item.DOCUMENTO;
             win.document.write(`
-                <div class="item-row">
-                    <span>${c[5].innerText.substring(0, 22)}</span>
-                    <span>${c[7].innerText}c+${c[8].innerText}u</span>
-                    <span>${c[9].innerText}</span>
-                </div>
+                <div class="doc-header">DOC: ${docActual} | ${item.FECHA}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-prod">PRODUCTO</th>
+                            <th class="col-cant">C/U</th>
+                            <th class="col-sub">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             `);
         }
+
+        const uni = arrayUnicaja[item.Barcode] || 1;
+        const cantTotal = parseFloat(item.CANTIDAD);
+        const cajas = Math.floor(cantTotal);
+        const unds = Math.round((cantTotal - cajas) * uni);
+        const totalItem = cantTotal * parseFloat(item.VALORPROD);
+        
+        subtotalDoc += totalItem;
+        granTotalGeneral += totalItem;
+
+        let descCorta = item.PRODUCTO;
+
+        win.document.write(`
+            <tr>
+                <td class="col-prod">${descCorta}</td>
+                <td class="col-cant">${cajas}c ${unds}u</td>
+                <td class="col-sub num">$${Math.round(totalItem).toLocaleString('es-CO')}</td>
+            </tr>
+        `);
     });
 
-    const granTotal = tabla.querySelector("tfoot .gran-total td:last-child").innerText;
+    if (docActual !== '') {
+        win.document.write(`
+                </table>
+                <div class="text-right" style="font-weight:900; font-size:9.5px; margin: 2px 0;">Subtotal Doc: $${Math.round(subtotalDoc).toLocaleString('es-CO')}</div>
+                <div class="border-dashed"></div>
+        `);
+    }
+
     win.document.write(`
-            <div class="border-dashed"></div>
-            <div class="text-center" style="font-size:13px; margin-top:10px;">
-                <strong>TOTAL GENERAL: ${granTotal}</strong>
+            <div class="text-right" style="font-size:10.5px; font-weight:900; margin-top:5px;">
+                GRAN TOTAL: $${Math.round(granTotalGeneral).toLocaleString('es-CO')}
             </div>
-            <div style="margin-top:20px; text-align:center; font-size:9px;">Generado el: <?=date('d/m/Y H:i:s')?></div>
-        </body></html>
+            <div style="margin-top:8px; text-align:center; font-size:8px; font-weight:bold;">Gen: <?=date('d/m/Y H:i')?></div>
+        </body>
+        </html>
     `);
 
     win.document.close();
