@@ -61,6 +61,7 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
         $condPedido  .= " AND T2.NOMBRES = '$f_fac_esc' ";
     }
 
+    // Se agrega FACTURAS.FECHA / PEDIDOS.FECHA al SELECT para poder ordenar cronológicamente de forma estricta
     $sql = "
     SELECT 
         '$nombreSucursal' AS SUCURSAL, FACTURAS.FECHA, FACTURAS.HORA, T1.NOMBRES AS FACTURADOR,
@@ -94,10 +95,9 @@ function obtenerDatos($cnx, $nombreSucursal, $f_ini, $f_fin, $busqProd, $f_fac) 
 
 $f_ini_raw = $_GET['fecha_ini'] ?? date('Y-m-d');
 $f_fin_raw = $_GET['fecha_fin'] ?? date('Y-m-d');
-$f_prod    = trim($_GET['filtro_prod'] ?? '');
-$fSuc      = $_GET['sucursal'] ?? '';
-$fFac      = $_GET['facturador'] ?? '';
-$fCat      = $_GET['categoria'] ?? '';
+$f_prod     = trim($_GET['filtro_prod'] ?? '');
+$fSuc       = $_GET['sucursal'] ?? '';
+$fFac       = $_GET['facturador'] ?? '';
 
 $f_ini = str_replace('-', '', $f_ini_raw);
 $f_fin = str_replace('-', '', $f_fin_raw);
@@ -114,56 +114,16 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     }
 }
 
-// Obtener listado completo de categorías para llenar el select del filtro
-$listaCategorias = [];
-if (isset($mysqliWeb)) {
-    $qCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias ORDER BY Nombre ASC");
-    if ($qCat) {
-        while ($c = $qCat->fetch_assoc()) {
-            $listaCategorias[] = $c;
-        }
-    }
-}
-
-// Obtener CodCat, Nombre de categoría y Unicaja desde la base web
-$datosWeb = [];
-$skus = array_unique(array_column($rows, 'Barcode'));
-if ($skus && isset($mysqliWeb)) {
-    $listaSkus = "'" . implode("','", array_map(array($mysqliWeb, 'real_escape_string'), $skus)) . "'";
-    $q = $mysqliWeb->query("SELECT cp.Sku, cat.CodCat, cat.Unicaja, cat.Nombre AS CATEGORIA FROM catproductos cp INNER JOIN categorias cat ON cp.CodCat = cat.CodCat WHERE cp.Sku IN ($listaSkus)");
-    if ($q) {
-        while ($u = $q->fetch_assoc()) {
-            $datosWeb[$u['Sku']] = [
-                'CodCat'    => $u['CodCat'] ?? 'N/A',
-                'Unicaja'   => $u['Unicaja'],
-                'Categoria' => $u['CATEGORIA'] ?? 'SIN CATEGORIA'
-            ];
-        }
-    }
-}
-
-// Inyectar datos a cada registro
-foreach ($rows as &$r) {
-    $r['CODCAT']    = $datosWeb[$r['Barcode']]['CodCat'] ?? 'N/A';
-    $r['CATEGORIA'] = $datosWeb[$r['Barcode']]['Categoria'] ?? 'SIN CATEGORIA';
-    $r['UNICAYA_VAL'] = $datosWeb[$r['Barcode']]['Unicaja'] ?? 1;
-}
-unset($r);
-
-// Aplicar filtro de categoría en PHP si fue seleccionado
-if ($fCat != '') {
-    $rows = array_filter($rows, function($r) use ($fCat) {
-        return $r['CODCAT'] == $fCat;
-    });
-}
-
+// Si se unieron datos de dos bases de datos distintas, volvemos a ordenar el array global en PHP para que no se mezclen los días entre sucursales
 if (!empty($rows)) {
     usort($rows, function($a, $b) {
-        if ($a['FECHA'] != $b['FECHA']) return strcmp($a['FECHA'], $b['FECHA']);
-        if ($a['HORA'] != $b['HORA']) return strcmp($a['HORA'], $b['HORA']);
-        if ($a['DOCUMENTO'] != $b['DOCUMENTO']) return strcmp($a['DOCUMENTO'], $b['DOCUMENTO']);
-        if ($a['CODCAT'] != $b['CODCAT']) return strcmp($a['CODCAT'], $b['CODCAT']);
-        return strcmp($a['CATEGORIA'], $b['CATEGORIA']);
+        if ($a['FECHA'] != $b['FECHA']) {
+            return strcmp($a['FECHA'], $b['FECHA']);
+        }
+        if ($a['HORA'] != $b['HORA']) {
+            return strcmp($a['HORA'], $b['HORA']);
+        }
+        return strcmp($a['DOCUMENTO'], $b['DOCUMENTO']);
     });
 }
 
@@ -175,6 +135,17 @@ if ($fFac == '' && !empty($rows)) {
     $listaFacturadores = $_SESSION['UltimosFacturadores'] ?? [];
 }
 sort($listaFacturadores);
+
+// Obtener Unicaja
+$unicaja = [];
+$skus = array_unique(array_column($rows, 'Barcode'));
+if ($skus && isset($mysqliWeb)) {
+    $listaSkus = "'" . implode("','", array_map(array($mysqliWeb, 'real_escape_string'), $skus)) . "'";
+    $q = $mysqliWeb->query("SELECT cp.Sku, cat.Unicaja FROM catproductos cp INNER JOIN categorias cat ON cp.CodCat = cat.CodCat WHERE cp.Sku IN ($listaSkus)");
+    if ($q) {
+        while ($u = $q->fetch_assoc()) $unicaja[$u['Sku']] = $u['Unicaja'];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -182,9 +153,8 @@ sort($listaFacturadores);
     <meta charset="UTF-8">
     <title>Reporte Ejecutivo - Sistema Drinks</title>
     <style>
-        html, body { height: 100%; margin: 0; padding: 0; }
-        body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; padding: 15px; box-sizing: border-box; display: flex; flex-direction: column;}
-        .card{background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); flex: 1; display: flex; flex-direction: column; box-sizing: border-box;}
+        body{font-family:'Segoe UI', sans-serif; font-size:14px; background: #eceff1; margin: 20px;}
+        .card{background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);}
         .filter-box{ background: #f8f9fa; padding: 15px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; border: 1px solid #dee2e6;}
         .filter-group{ display: flex; flex-direction: column; gap: 5px; }
         label{ font-size: 11px; font-weight: bold; color: #546e7a; text-transform: uppercase;}
@@ -192,7 +162,7 @@ sort($listaFacturadores);
         button{ background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold;}
         .btn-excel{ background: #2e7d32 !important; }
         .btn-print{ background: #455a64 !important; }
-        .table-container { flex: 1; max-height: none; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
+        .table-container { max-height: 600px; overflow-y: auto; margin-top: 20px; border: 1px solid #ddd; }
         table{ border-collapse: collapse; width: 100%; background: white; }
         th{ position: sticky; top: 0; background: #263238; color: white; padding: 12px; text-align: left; z-index: 2; }
         td{ padding: 10px; border-bottom: 1px solid #eee; }
@@ -213,18 +183,6 @@ sort($listaFacturadores);
         <div class="filter-group"><label>Hasta:</label><input type="date" name="fecha_fin" value="<?=$f_fin_raw?>"></div>
         <div class="filter-group" style="flex-grow: 1;"><label>Producto:</label><input type="text" name="filtro_prod" value="<?=htmlspecialchars($f_prod)?>" placeholder="Nombre o Barcode..."></div>
         
-        <div class="filter-group">
-            <label>Categoría:</label>
-            <select name="categoria">
-                <option value="">-- Todas --</option>
-                <?php foreach($listaCategorias as $cat): ?>
-                    <option value="<?=$cat['CodCat']?>" <?=$fCat == $cat['CodCat'] ? 'selected' : ''?>>
-                        [<?=$cat['CodCat']?>] <?=$cat['Nombre']?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
         <div class="filter-group">
             <label>Sucursal:</label>
             <select name="sucursal">
@@ -249,15 +207,15 @@ sort($listaFacturadores);
         <button type="button" class="btn-print" onclick="imprimirReporte()">Imprimir 🖨️</button>
     </form>
 
-    <?php if(empty($rows)): ?>
+    <?php if(!$rows): ?>
         <p style="margin-top:20px; text-align:center; color:#777;">No se encontraron registros.</p>
     <?php else: ?>
     <div class="table-container">
         <table id="tablaVentas">
             <thead>
                 <tr>
-                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Fecha / Hora</th>
-                    <th>CodCat</th><th>Sku</th><th>Producto</th><th>Costo</th>
+                    <th>Sucursal</th><th>Facturador</th><th>Documento</th><th>Hora</th>
+                    <th>Sku</th><th>Producto</th><th>Costo</th>
                     <th style="text-align:center">Cajas</th>
                     <th style="text-align:center">Und</th>
                     <th>Total Item</th>
@@ -270,11 +228,11 @@ sort($listaFacturadores);
 
                 foreach($rows as $r){
                     if($docAnt && $docAnt != $r['DOCUMENTO']){
-                        echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                        echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                         $subDoc = 0;
                     }
 
-                    $uni = $r['UNICAYA_VAL'];
+                    $uni = $unicaja[$r['Barcode']] ?? 1;
                     $cant_total = $r['CANTIDAD'];
                     $cajas = floor($cant_total);
                     $unds  = round(($cant_total - $cajas) * $uni);
@@ -288,8 +246,7 @@ sort($listaFacturadores);
                         <td><span class='badge $badge_class'>{$r['SUCURSAL']}</span></td>
                         <td>{$r['FACTURADOR']}</td>
                         <td>{$r['DOCUMENTO']}</td>
-                        <td>{$r['FECHA']} {$r['HORA']}</td>
-                        <td><code>{$r['CODCAT']}</code></td>
+                        <td>{$r['HORA']}</td>
                         <td><code>{$r['Barcode']}</code></td>
                         <td>{$r['PRODUCTO']}</td>
                         <td>".number_format($r['VALORPROD'],0,'.','.')."</td>
@@ -302,12 +259,12 @@ sort($listaFacturadores);
                     $subDoc    += $total_item;
                     $docAnt     = $r['DOCUMENTO'];
                 }
-                if($docAnt) echo "<tr class='total-row'><td colspan='10' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
+                if($docAnt) echo "<tr class='total-row'><td colspan='9' style='text-align:right'>Subtotal Doc $docAnt:</td><td>$ ".number_format($subDoc,0,'.','.')."</td></tr>";
                 ?>
             </tbody>
             <tfoot>
                 <tr class="gran-total">
-                    <td colspan="8" style="text-align:right">GRAN TOTAL GENERAL:</td>
+                    <td colspan="7" style="text-align:right">GRAN TOTAL GENERAL:</td>
                     <td align="center"><?=number_format($totalCajasGlobal,0)?></td>
                     <td align="center"><?=number_format($totalUndsGlobal,0)?></td>
                     <td>$ <?=number_format($granTotal,0,'.','.')?></td>
@@ -329,7 +286,76 @@ function exportarExcel() {
 }
 
 function imprimirReporte() {
-    window.print();
+    const tabla = document.getElementById("tablaVentas");
+    
+    if (!tabla || tabla.querySelector("tbody").rows.length === 0) {
+        alert("No hay datos en la tabla para imprimir.");
+        return;
+    }
+
+    const fIni = "<?= $f_ini_raw ?>";
+    const fFin = "<?= $f_fin_raw ?>";
+    
+    let win = window.open('', '_blank', 'width=450,height=600');
+    win.document.write(`
+        <html>
+        <head>
+            <title>Ticket POS</title>
+            <style>
+                body { font-family: "Courier New", monospace; font-size: 11px; padding: 10px; font-weight: bold; }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .border-dashed { border-top: 1px dashed #000; margin: 5px 0; }
+                .doc-header { background: #eee; padding: 2px; margin-top: 8px; }
+                .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                .subtotal-line { text-align: right; font-style: italic; margin: 3px 0 8px 0; font-size: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center">
+                <strong>SISTEMA DRINKS</strong><br>
+                REPORTE: ${fIni} / ${fFin}
+            </div>
+            <div class="border-dashed"></div>
+    `);
+
+    const filas = tabla.querySelectorAll("tbody tr");
+    let ultimoDoc = "";
+
+    filas.forEach(fila => {
+        if (fila.classList.contains('total-row')) {
+            win.document.write(`<div class="subtotal-line">${fila.innerText.trim()}</div><div class="border-dashed"></div>`);
+        } else {
+            const c = fila.cells;
+            const docActual = c[2].innerText;
+
+            if(ultimoDoc !== docActual) {
+                win.document.write(`<div class="doc-header">DOC: ${docActual} - ${c[3].innerText}</div>`);
+                ultimoDoc = docActual;
+            }
+
+            win.document.write(`
+                <div class="item-row">
+                    <span>${c[5].innerText.substring(0, 22)}</span>
+                    <span>${c[7].innerText}c+${c[8].innerText}u</span>
+                    <span>${c[9].innerText}</span>
+                </div>
+            `);
+        }
+    });
+
+    const granTotal = tabla.querySelector("tfoot .gran-total td:last-child").innerText;
+    win.document.write(`
+            <div class="border-dashed"></div>
+            <div class="text-center" style="font-size:13px; margin-top:10px;">
+                <strong>TOTAL GENERAL: ${granTotal}</strong>
+            </div>
+            <div style="margin-top:20px; text-align:center; font-size:9px;">Generado el: <?=date('d/m/Y H:i:s')?></div>
+        </body></html>
+    `);
+
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
 }
 </script>
 </body>
