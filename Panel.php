@@ -266,6 +266,7 @@ body {
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
+                                    <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>
                                     <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>

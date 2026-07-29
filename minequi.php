@@ -471,7 +471,7 @@ if ($resultado && $resultado->num_rows > 0) {
             <thead class="table-dark text-nowrap">
                 <tr>
                     <th class="text-center" style="width: 50px;">ID</th>
-                    <th class="text-center" style="width: 80px;">Asignar/Gcia</th>
+                    <th class="text-center" style="width: 80px;">Asig/VoB-Gcia</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
