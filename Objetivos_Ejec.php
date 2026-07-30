@@ -87,28 +87,25 @@ $mapaProductos = [];
 if (isset($mysqliCentral)) {
     $res = $mysqliCentral->query("SELECT barcode, descripcion FROM productos WHERE estado = 1 ORDER BY descripcion ASC");
     while ($row = $res->fetch_assoc()) { 
+        $row['descripcion'] = html_entity_decode($row['descripcion'], ENT_QUOTES, 'UTF-8');
         $productosCentral[] = $row; 
         $mapaProductos[$row['barcode']] = $row['descripcion'];
     }
 }
 
 $tercerosCajeros = [];
-$mapaCajeros = [];
 if (isset($mysqliWeb)) {
     $resT = $mysqliWeb->query("SELECT CedulaNit, Nombre FROM terceros WHERE Estado = 1 ORDER BY Nombre ASC");
     while ($rowT = $resT->fetch_assoc()) { 
         $tercerosCajeros[] = $rowT; 
-        $mapaCajeros[$rowT['CedulaNit']] = $rowT['Nombre'];
     }
 }
 
 $empresasLista = [];
-$mapaEmpresas = [];
 if (isset($mysqliWeb)) {
     $resE = $mysqliWeb->query("SELECT Nit, RazonSocial FROM empresa WHERE Estado = 1 ORDER BY RazonSocial ASC");
     while ($rowE = $resE->fetch_assoc()) { 
         $empresasLista[] = $rowE; 
-        $mapaEmpresas[$rowE['Nit']] = $rowE['RazonSocial'];
     }
 }
 
@@ -172,7 +169,6 @@ if (isset($mysqliWeb)) {
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
         .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
         
-        /* Sistema adaptable para filas del formulario */
         .form-row { 
             display: flex; 
             flex-wrap: wrap; 
@@ -209,7 +205,6 @@ if (isset($mysqliWeb)) {
 
         .ts-wrapper { width: 100% !important; }
 
-        /* Media Queries para adaptar perfectamente en móviles pequeños */
         @media (max-width: 600px) {
             body { padding: 10px; }
             .form-container { padding: 15px; }
@@ -293,16 +288,19 @@ if (isset($mysqliWeb)) {
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
 <script>
 const objetivosRegistrados = <?= json_encode(array_values($todosObjetivos)) ?>;
+const productosDisponibles = <?= json_encode($productosCentral) ?>;
 
 let tsCajero = new TomSelect("#CedulaNit", { 
     create: false, 
     sortField: { field: "text", direction: "asc" },
+    maxOptions: null, // Permite ver todos los elementos sin límite
     onChange: function(value) { verificarObjetivoExistente(); }
 });
 
 let tsEmpresa = new TomSelect("#NitEmpresa", { 
     create: false, 
     sortField: { field: "text", direction: "asc" },
+    maxOptions: null, // Permite ver todos los elementos sin límite
     onChange: function(value) { verificarObjetivoExistente(); }
 });
 
@@ -310,6 +308,7 @@ function inicializarTomSelectSku(element) {
     return new TomSelect(element, {
         create: false,
         sortField: { field: "text", direction: "asc" },
+        maxOptions: null, // 🔥 AQUÍ ESTÁ LA CLAVE: Elimina el límite de 50 elementos
         placeholder: "-- Seleccione o busque producto --"
     });
 }
@@ -317,6 +316,15 @@ function inicializarTomSelectSku(element) {
 document.querySelectorAll('.sku-select').forEach((el) => {
     inicializarTomSelectSku(el);
 });
+
+function obtenerOpcionesHTML(seleccionado = '') {
+    let html = '<option value="">-- Seleccione producto --</option>';
+    productosDisponibles.forEach(prod => {
+        let selected = (String(prod.barcode) === String(seleccionado)) ? 'selected' : '';
+        html += `<option value="${prod.barcode}" ${selected}>${prod.descripcion} (${prod.barcode})</option>`;
+    });
+    return html;
+}
 
 function verificarObjetivoExistente() {
     let cedula = document.getElementById('CedulaNit').value.trim();
@@ -346,7 +354,7 @@ function verificarObjetivoExistente() {
                 nuevaFila.innerHTML = `
                     <div>
                         <select name="Sku[]" class="sku-select" required>
-                            ${opcionesProductos}
+                            ${obtenerOpcionesHTML(det.sku)}
                         </select>
                     </div>
                     <div>
@@ -359,8 +367,7 @@ function verificarObjetivoExistente() {
                 container.appendChild(nuevaFila);
 
                 let nuevoSelect = nuevaFila.querySelector('.sku-select');
-                let tsInstance = inicializarTomSelectSku(nuevoSelect);
-                tsInstance.setValue(det.sku);
+                inicializarTomSelectSku(nuevoSelect);
             });
             actualizarBotonesEliminar();
         }
@@ -383,13 +390,6 @@ function prepararEnvio() {
     input.value = input.value.replace(/\./g, '');
 }
 
-const opcionesProductos = `
-    <option value="">-- Seleccione producto --</option>
-    <?php foreach ($productosCentral as $prod): ?>
-        <option value="<?= htmlspecialchars($prod['barcode']) ?>"><?= htmlspecialchars($prod['descripcion']) ?> (<?= $prod['barcode'] ?>)</option>
-    <?php endforeach; ?>
-`;
-
 function agregarFila() {
     const container = document.getElementById('productos-container');
     const nuevaFila = document.createElement('div');
@@ -397,7 +397,7 @@ function agregarFila() {
     nuevaFila.innerHTML = `
         <div>
             <select name="Sku[]" class="sku-select" required>
-                ${opcionesProductos}
+                ${obtenerOpcionesHTML()}
             </select>
         </div>
         <div>

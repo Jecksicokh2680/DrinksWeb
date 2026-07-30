@@ -309,96 +309,73 @@ if (!empty($reporte)) {
     <title>Corte de Caja y Objetivos</title>
     <style>
         * { box-sizing: border-box; }
-        body{font-family:"Segoe UI",sans-serif; margin:15px; background:#eef3f7; color:#333;}
-        .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
-        .form-grid { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
-        .form-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+        body { font-family: "Segoe UI", sans-serif; margin: 10px; background: #eef3f7; color: #333; }
+        
+        .panel { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); width: 100%; overflow: hidden; }
+        
+        .form-grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+        .form-group { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 5px; }
         .form-group select, .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         
-        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; width: 100%; }
         @media (max-width: 1100px) { .dashboard-grid { grid-template-columns: 1fr; } }
 
-        .column-left { display: flex; flex-direction: column; gap: 15px; }
-        .column-right { display: flex; flex-direction: column; }
+        .column-left { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
+        .column-right { display: flex; flex-direction: column; width: 100%; min-width: 0; }
 
-        .row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px; }
-        .status-container { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 150px; }
+        .row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0; width: 100%; }
+        @media (max-width: 768px) { .row-grid { grid-template-columns: 1fr; } }
+
+        .status-container { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 120px; }
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .table{width:100%; border-collapse:collapse;}
-        .table td, .table th{padding:10px; border-bottom:1px solid #eee; text-align: left;}
-        .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; width: auto; text-align: center;}
-        .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;}
-        .actions-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-        .text-end{ text-align: right; }
-        .input-edit { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .table { width: 100%; border-collapse: collapse; min-width: 280px; }
+        .table td, .table th { padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px; word-break: break-word; }
         
-        .grid-paneles { display: grid; grid-template-columns: 1fr; gap: 15px; }
-        .tercero-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; background: #fff; margin-bottom: 15px; }
-        .tercero-header { background: #263238; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
-        .tercero-header h3 { margin: 0; font-size: 16px; }
-        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 12px 15px; border-bottom: 1px solid #e0e0e0; }
-        .metric-box { flex: 1; text-align: center; }
-        .metric-box .title { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; }
-        .metric-box .value { font-size: 15px; font-weight: bold; margin-top: 3px; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
+        .button { padding: 10px 15px; background: #1f2d3d; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; text-align: center; font-size: 14px; }
+        .btn-save { background: #0b63a3; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+        
+        .actions-container { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+        .actions-container .button { width: auto; flex: 1; min-width: 130px; }
+        
+        .text-end { text-align: right; }
+        .input-edit { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        
+        .grid-paneles { display: grid; grid-template-columns: 1fr; gap: 12px; width: 100%; }
+        .tercero-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; background: #fff; margin-bottom: 12px; width: 100%; }
+        .tercero-header { background: #263238; color: white; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 5px; }
+        .tercero-header h3 { margin: 0; font-size: 15px; word-break: break-word; }
+        
+        .resumen-meta { display: flex; gap: 10px; background: #f8f9fa; padding: 10px 12px; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
+        .metric-box { flex: 1; min-width: 100px; text-align: center; }
+        .metric-box .title { font-size: 10px; text-transform: uppercase; color: #666; font-weight: bold; }
+        .metric-box .value { font-size: 14px; font-weight: bold; margin-top: 3px; word-break: break-word; }
+        
+        .badge { padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
         .bg-success { background-color: #2e7d32; }
         .bg-warning { background-color: #f57c00; }
         .bg-danger { background-color: #c62828; }
-        .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 8px; width: 100%; overflow: hidden; margin-top: 4px; }
+        .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 6px; width: 100%; overflow: hidden; margin-top: 4px; }
         .progress-bar-fill { height: 100%; border-radius: 10px; }
 
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
-        .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .modal-content { background: white; margin: 15px auto; padding: 12px; width: 100%; max-width: 400px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 
-        /* REGLAS DE IMPRESIÓN PARA NEGRITA FUERTE, MODO OSCURO/TINTA Y TAMAÑO REDUCIDO */
+        /* REGLAS DE IMPRESIÓN */
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            #modalVoucher, #modalVoucher * {
-                visibility: visible;
-            }
-            #modalVoucher {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: auto;
-                background: transparent !important;
-                padding: 0;
-            }
-            .modal-content {
-                box-shadow: none !important;
-                margin: 0 auto !important;
-                width: 100% !important;
-                max-width: 100% !important;
-                padding: 0 !important;
-                font-size: 10px !important;
-                color: #000 !important; /* Texto negro puro */
-                font-weight: 900 !important; /* Máxima negrita global para oscurecer la impresión térmica */
-            }
-            .modal-content * {
-                color: #000 !important;
-                font-weight: 900 !important; /* Forzar negrita fuerte en todos los elementos internos */
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-            .modal-content h2 {
-                font-size: 13px !important;
-            }
-            .modal-content table {
-                font-size: 9px !important;
-            }
-            .no-print {
-                display: none !important;
-            }
+            body * { visibility: hidden; }
+            #modalVoucher, #modalVoucher * { visibility: visible; }
+            #modalVoucher { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: transparent !important; padding: 0; }
+            .modal-content { box-shadow: none !important; margin: 0 auto !important; width: 100% !important; max-width: 100% !important; padding: 0 !important; font-size: 10px !important; color: #000 !important; font-weight: 900 !important; }
+            .modal-content * { color: #000 !important; font-weight: 900 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .modal-content h2 { font-size: 13px !important; }
+            .modal-content table { font-size: 9px !important; }
+            .no-print { display: none !important; }
         }
 
-        @media (max-width: 576px) {
-            body { margin: 10px; }
-            .panel { padding: 12px; }
+        @media (max-width: 480px) {
+            body { margin: 5px; }
+            .panel { padding: 8px; }
             .form-group { min-width: 100%; }
-            .button { width: 100%; }
         }
     </style>
 </head>
@@ -432,7 +409,9 @@ if (!empty($reporte)) {
         </div>
         <input type="hidden" name="mm" value="<?= $mes_sel ?>">
         <input type="hidden" name="aa" value="<?= $anio_sel ?>">
-        <button class="button" type="submit">Consultar</button>
+        <div class="form-group" style="flex: 0 0 auto; min-width: auto; width: 100%;">
+            <button class="button" type="submit">Consultar</button>
+        </div>
     </form>
 </div>
 
@@ -440,20 +419,20 @@ if (!empty($reporte)) {
     <div class="dashboard-grid no-print">
         
         <div class="column-left">
-            <div class="row-grid" style="margin-bottom: 0;">
+            <div class="row-grid">
                 <div class="panel" style="margin-bottom: 0;">
-                    <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
+                    <h3 style="font-size: 15px; margin-top: 0;">📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
                     <div class="table-responsive">
                         <table class="table">
                             <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
                             <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                            <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
-                            <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
+                            <tr><td>(-) Transf. Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                            <tr><td>(-) Transf. Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
                             <tr style="background:#f8f9fa; border-top:1px dashed #ccc;">
-                                <td><b>ℹ️ Total Transferencias (Man. + Auto.):</b></td>
+                                <td><b>ℹ️ Tot. Transferencias:</b></td>
                                 <td class="text-end" style="color:#0056b3;"><b>$ <?= money($totalTransferGeneral) ?></b></td>
                             </tr>
-                            <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
+                            <tr style="font-size:1.2em; border-top:2px solid #333; background:#fff3cd;">
                                 <td><b>TOTAL FÍSICO:</b></td>
                                 <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
                             </tr>
@@ -463,21 +442,21 @@ if (!empty($reporte)) {
 
                 <div class="panel status-container" style="margin-bottom: 0;">
                     <?php if($cierreRealizado): ?>
-                        <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center;">
-                            <div style="font-size: 3em;">🔒</div>
-                            <h3 style="color: #d32f2f; margin: 0;">SESIÓN CERRADA</h3>
+                        <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 15px; text-align: center;">
+                            <div style="font-size: 2.5em;">🔒</div>
+                            <h3 style="color: #d32f2f; margin: 0; font-size: 14px;">SESIÓN CERRADA</h3>
                         </div>
                     <?php else: ?>
-                        <div style="width: 100%; border: 2px solid #2e7d32; border-radius: 8px; padding: 20px; text-align: center;">
-                            <div style="font-size: 3em;">🔓</div>
-                            <h3 style="color: #2e7d32; margin: 0;">SESIÓN ABIERTA</h3>
+                        <div style="width: 100%; border: 2px solid #2e7d32; border-radius: 8px; padding: 15px; text-align: center;">
+                            <div style="font-size: 2.5em;">🔓</div>
+                            <h3 style="color: #2e7d32; margin: 0; font-size: 14px;">SESIÓN ABIERTA</h3>
                         </div>
                     <?php endif; ?>
                 </div>
             </div>
 
             <div class="panel" style="margin-bottom: 0;">
-                <h3>💸 Egresos de Caja</h3>
+                <h3 style="font-size: 15px; margin-top: 0;">💸 Egresos de Caja</h3>
                 <div class="table-responsive">
                     <table class="table">
                         <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
@@ -496,22 +475,22 @@ if (!empty($reporte)) {
             </div>
 
             <div class="panel actions-container" style="margin-bottom: 0;">
-                <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
+                <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Precierre</button>
                 <?php if($cierreRealizado): ?>
-                    <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
+                    <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Cierre Def</button>
                 <?php else: ?>
-                    <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
+                    <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Def.</button>
                 <?php endif; ?>
             </div>
         </div>
 
         <div class="column-right">
             <div class="panel" style="height: 100%; margin-bottom: 0;">
-                <h3>🎯 Objetivos </h3>
+                <h3 style="font-size: 15px; margin-top: 0;">🎯 Objetivos</h3>
                 <?php if (empty($reporte)): ?>
-                    <p style="text-align:center; color:#777; margin-top: 40px;">No se registraron objetivos para el período seleccionado o para el cajero seleccionado.</p>
+                    <p style="text-align:center; color:#777; margin-top: 30px;">No se registraron objetivos para el período o cajero seleccionado.</p>
                 <?php else: ?>
-                    <div class="grid-paneles" style="margin-top: 15px;">
+                    <div class="grid-paneles" style="margin-top: 10px;">
                         <?php foreach ($reporte as $tercero): 
                             $metaVal  = $tercero['meta_valor_total'];
                             $ejecVal  = $tercero['ejecutado_valor'];
@@ -537,18 +516,18 @@ if (!empty($reporte)) {
                                     <?php endif; ?>
                                 </div>
                                 <div class="table-responsive">
-                                    <table style="width:100%; font-size: 13px;">
+                                    <table style="width:100%; font-size: 12px; border-collapse: collapse;">
                                         <thead>
                                             <tr style="background:#fafafa;">
-                                                <th>SKU / Producto</th>
-                                                <th>Meta C.</th>
-                                                <th>Vend.</th>
-                                                <th>Progreso</th>
+                                                <th style="padding: 6px;">SKU / Producto</th>
+                                                <th style="padding: 6px;">Meta</th>
+                                                <th style="padding: 6px;">Vend.</th>
+                                                <th style="padding: 6px;">Progreso</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <?php if(empty($tercero['detalles'])): ?>
-                                                <tr><td colspan="4" style="text-align:center; color:#777;">Sin detalles de SKU asignados.</td></tr>
+                                                <tr><td colspan="4" style="text-align:center; color:#777; padding: 6px;">Sin detalles de SKU.</td></tr>
                                             <?php else: foreach ($tercero['detalles'] as $det): 
                                                 $metaC = $det['meta_cajas'];
                                                 $cantVendida = $det['cajas_vendidas'];
@@ -556,14 +535,14 @@ if (!empty($reporte)) {
                                                 $fillColor = ($pctSku >= 100) ? '#2e7d32' : (($pctSku >= 70) ? '#f57c00' : '#c62828');
                                             ?>
                                                 <tr>
-                                                    <td>
+                                                    <td style="padding: 6px;">
                                                         <strong><?= htmlspecialchars($det['sku']) ?></strong><br>
-                                                        <span style="font-size:11px; color:#555;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
+                                                        <span style="font-size:10px; color:#555;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
                                                     </td>
-                                                    <td><?= number_format($metaC, 1) ?></td>
-                                                    <td><?= $cantVendida ?></td>
-                                                    <td>
-                                                        <div style="font-size:10px; font-weight:bold;"><?= $pctSku ?>%</div>
+                                                    <td style="padding: 6px;"><?= number_format($metaC, 1) ?></td>
+                                                    <td style="padding: 6px;"><?= $cantVendida ?></td>
+                                                    <td style="padding: 6px;">
+                                                        <div style="font-size:9px; font-weight:bold;"><?= $pctSku ?>%</div>
                                                         <div class="progress-bar-bg">
                                                             <div class="progress-bar-fill" style="width: <?= $pctSku ?>%; background-color: <?= $fillColor ?>;"></div>
                                                         </div>
@@ -600,9 +579,13 @@ if (!empty($reporte)) {
         }
 
         let egresosHtml = "";
-        <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
-        <?php endforeach; ?>
+        <?php if (!empty($listaEgresos)): ?>
+            <?php foreach($listaEgresos as $e): ?>
+                egresosHtml += `<tr><td style="padding:2px 0; max-width:140px; overflow:hidden;">- <?= strtoupper(substr(addslashes($e['MOTIVO']), 0, 25)) ?></td><td style="text-align:right; padding:2px 0;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
+            <?php endforeach; ?>
+        <?php else: ?>
+            egresosHtml += `<tr><td colspan="2" style="text-align:center; padding:2px 0;">SIN EGRESOS REGISTRADOS</td></tr>`;
+        <?php endif; ?>
 
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
@@ -634,18 +617,23 @@ if (!empty($reporte)) {
                 </tr>
                 <tr><td colspan="2"><hr style="border: 1px solid #000;"></td></tr>
                 <tr style="font-size:14px;">
-                    <td><b>% EJECUCIÓN (META):</b></td>
+                    <td><b>% EJEC (VTAS):</b></td>
                     <td style="text-align:right;"><b>${pctEjecucionGlobal}</b></td>
                 </tr>
             </table>
-            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
-            <table class="ticket-table" style="font-size:11px; width:100%;"><?= $egresosHtml ?></table>
+            
+            <br>
+            <div style="font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase; margin-bottom: 4px;">Detalle de Egresos</div>
+            <table class="ticket-table" style="font-size:11px; width:100%;">
+                ${egresosHtml}
+            </table>
+
             <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
             </div>
             <div class="no-print" style="margin-top:20px;">
-                <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
+                <button class="button" style="background:#2ecc71; width:100%; font-size:16px;" onclick="window.print()">🖨 IMPRIMIR</button>
                 <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
             </div>
         `;
