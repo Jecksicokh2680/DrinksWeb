@@ -133,7 +133,7 @@ if($UsuarioFact !== ''){
 
     // TRANSFERENCIAS MANUALES
     $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
-                             WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
+                               WHERE Fecha = ? AND CedulaNit = ? AND NitEmpresa = ?");
     $stmtT->bind_param("sss", $fecha_input, $UsuarioFact, $nit_empresa_filtro);
     $stmtT->execute();
     $resT = $stmtT->get_result();
@@ -165,7 +165,7 @@ if ($yaExisteTransferEnEgresos) {
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRealizado);
 
 /* ============================================================
-    MÓDULO DE OBJETIVOS (PARTE INFERIOR)
+    MÓDULO DE OBJETIVOS
 ============================================================ */
 $mes_sel  = (int)($_GET['mm'] ?? date('m'));
 $anio_sel = (int)($_GET['aa'] ?? date('Y'));
@@ -173,13 +173,13 @@ $anio_sel = (int)($_GET['aa'] ?? date('Y'));
 $f_ini = str_replace('-', '', $fecha_input);
 $f_fin = str_replace('-', '', $fecha_input);
 
-$unicaja = [];
-if (isset($mysqli) && !$mysqli->connect_error) {
-    $mysqli->set_charset("utf8mb4");
-    $qUnicaja = $mysqli->query("SELECT cp.Sku, cat.Unicaja FROM catproductos cp INNER JOIN categorias cat ON cp.CodCat = cat.CodCat");
-    if ($qUnicaja) {
-        while ($u = $qUnicaja->fetch_assoc()) {
-            $unicaja[$u['Sku']] = (float)$u['Unicaja'];
+// Obtener nombres de productos desde ConnCentral (barcode -> nombre)
+$nombresProductos = [];
+if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
+    $qProd = $mysqliCentral->query("SELECT Barcode, descripcion FROM productos");
+    if ($qProd) {
+        while ($p = $qProd->fetch_assoc()) {
+            $nombresProductos[trim($p['Barcode'])] = $p['descripcion'];
         }
     }
 }
@@ -234,7 +234,6 @@ foreach ($rawVentas as $v) {
     $ventasPorFacturador[$facturador]['skus'][$sku] += $cantidad;
 }
 
-// Condición para filtrar por la cédula seleccionada si existe en el select superior
 $sqlObjetivos = "
     SELECT t.CedulaNit, t.Nombre, t.NombreCom, cab.id_cabecera, cab.NitEmpresa, cab.mm, cab.aa, cab.meta_valor_total, det.Sku, det.meta_cajas
     FROM terceros t
@@ -273,16 +272,31 @@ while ($row = $resObj->fetch_assoc()) {
     }
 
     if (!empty($row['Sku'])) {
-        $sku = $row['Sku'];
+        $sku = trim($row['Sku']);
         $metaCajas = (float)$row['meta_cajas'];
         $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
+        $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
         $reporte[$cedula]['detalles'][] = [
             'sku' => $sku,
+            'nombre_producto' => $nombreProducto,
             'meta_cajas' => $metaCajas,
             'cajas_vendidas' => $cantVendida,
             'unds_vendidas' => $cantVendida
         ];
+    }
+}
+
+// Calcular el porcentaje de ejecución general en valor para el cajero actual
+$pctValorCajeroGlobal = 0.0;
+if (!empty($reporte)) {
+    foreach ($reporte as $repItem) {
+        $metaV = $repItem['meta_valor_total'];
+        $ejecV = $repItem['ejecutado_valor'];
+        if ($metaV > 0) {
+            $pctValorCajeroGlobal = round(($ejecV / $metaV) * 100, 1);
+        }
+        break; 
     }
 }
 ?>
@@ -300,6 +314,13 @@ while ($row = $resObj->fetch_assoc()) {
         .form-grid { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
         .form-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
         .form-group select, .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        @media (max-width: 1100px) { .dashboard-grid { grid-template-columns: 1fr; } }
+
+        .column-left { display: flex; flex-direction: column; gap: 15px; }
+        .column-right { display: flex; flex-direction: column; }
+
         .row-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px; }
         .status-container { display: flex; align-items: center; justify-content: center; height: 100%; min-height: 150px; }
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -311,26 +332,67 @@ while ($row = $resObj->fetch_assoc()) {
         .text-end{ text-align: right; }
         .input-edit { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         
-        /* Estilos del Módulo de Objetivos */
-        .grid-paneles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-        @media (max-width: 900px) { .grid-paneles { grid-template-columns: 1fr; } }
+        .grid-paneles { display: grid; grid-template-columns: 1fr; gap: 15px; }
         .tercero-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; background: #fff; margin-bottom: 15px; }
-        .tercero-header { background: #263238; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .tercero-header h3 { margin: 0; font-size: 18px; }
-        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0; }
+        .tercero-header { background: #263238; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
+        .tercero-header h3 { margin: 0; font-size: 16px; }
+        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 12px 15px; border-bottom: 1px solid #e0e0e0; }
         .metric-box { flex: 1; text-align: center; }
         .metric-box .title { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; }
-        .metric-box .value { font-size: 16px; font-weight: bold; margin-top: 5px; }
+        .metric-box .value { font-size: 15px; font-weight: bold; margin-top: 3px; }
         .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
         .bg-success { background-color: #2e7d32; }
         .bg-warning { background-color: #f57c00; }
         .bg-danger { background-color: #c62828; }
-        .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 10px; width: 100%; overflow: hidden; margin-top: 4px; }
+        .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 8px; width: 100%; overflow: hidden; margin-top: 4px; }
         .progress-bar-fill { height: 100%; border-radius: 10px; }
 
-        /* Modal */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
         .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        /* REGLAS DE IMPRESIÓN PARA NEGRITA FUERTE, MODO OSCURO/TINTA Y TAMAÑO REDUCIDO */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #modalVoucher, #modalVoucher * {
+                visibility: visible;
+            }
+            #modalVoucher {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: auto;
+                background: transparent !important;
+                padding: 0;
+            }
+            .modal-content {
+                box-shadow: none !important;
+                margin: 0 auto !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 0 !important;
+                font-size: 10px !important;
+                color: #000 !important; /* Texto negro puro */
+                font-weight: 900 !important; /* Máxima negrita global para oscurecer la impresión térmica */
+            }
+            .modal-content * {
+                color: #000 !important;
+                font-weight: 900 !important; /* Forzar negrita fuerte en todos los elementos internos */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .modal-content h2 {
+                font-size: 13px !important;
+            }
+            .modal-content table {
+                font-size: 9px !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
 
         @media (max-width: 576px) {
             body { margin: 10px; }
@@ -375,172 +437,155 @@ while ($row = $resObj->fetch_assoc()) {
 </div>
 
 <?php if($UsuarioFact !== ''): ?>
-    <div class="row-grid no-print">
-        <div class="panel" style="margin-bottom: 0;">
-            <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
-            <div class="table-responsive">
-                <table class="table">
-                    <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
-                    <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
-                    <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
-                    <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
-                    <tr style="background:#f8f9fa; border-top:1px dashed #ccc;">
-                        <td><b>ℹ️ Total Transferencias (Man. + Auto.):</b></td>
-                        <td class="text-end" style="color:#0056b3;"><b>$ <?= money($totalTransferGeneral) ?></b></td>
-                    </tr>
-                    <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
-                        <td><b>TOTAL FÍSICO:</b></td>
-                        <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
-                    </tr>
-                </table>
+    <div class="dashboard-grid no-print">
+        
+        <div class="column-left">
+            <div class="row-grid" style="margin-bottom: 0;">
+                <div class="panel" style="margin-bottom: 0;">
+                    <h3>📊 Resumen: <?= htmlspecialchars($nombreCompleto) ?></h3>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($totalVentas) ?></b></td></tr>
+                            <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($totalEgresos) ?></td></tr>
+                            <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($totalTransfer) ?></td></tr>
+                            <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($totalTransferAuto) ?></td></tr>
+                            <tr style="background:#f8f9fa; border-top:1px dashed #ccc;">
+                                <td><b>ℹ️ Total Transferencias (Man. + Auto.):</b></td>
+                                <td class="text-end" style="color:#0056b3;"><b>$ <?= money($totalTransferGeneral) ?></b></td>
+                            </tr>
+                            <tr style="font-size:1.4em; border-top:2px solid #333; background:#fff3cd;">
+                                <td><b>TOTAL FÍSICO:</b></td>
+                                <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($efectivo_neto_final) ?></b></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel status-container" style="margin-bottom: 0;">
+                    <?php if($cierreRealizado): ?>
+                        <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center;">
+                            <div style="font-size: 3em;">🔒</div>
+                            <h3 style="color: #d32f2f; margin: 0;">SESIÓN CERRADA</h3>
+                        </div>
+                    <?php else: ?>
+                        <div style="width: 100%; border: 2px solid #2e7d32; border-radius: 8px; padding: 20px; text-align: center;">
+                            <div style="font-size: 3em;">🔓</div>
+                            <h3 style="color: #2e7d32; margin: 0;">SESIÓN ABIERTA</h3>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="panel" style="margin-bottom: 0;">
+                <h3>💸 Egresos de Caja</h3>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
+                        <tbody>
+                            <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
+                            <tr>
+                                <td><?= $idE ?></td>
+                                <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                                <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                                <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel actions-container" style="margin-bottom: 0;">
+                <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
+                <?php if($cierreRealizado): ?>
+                    <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
+                <?php else: ?>
+                    <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
+                <?php endif; ?>
             </div>
         </div>
 
-        <div class="panel status-container" style="margin-bottom: 0;">
-            <?php if($cierreRealizado): ?>
-                <div style="width: 100%; border: 2px solid #d32f2f; border-radius: 8px; padding: 20px; text-align: center;">
-                    <div style="font-size: 3em;">🔒</div>
-                    <h3 style="color: #d32f2f; margin: 0;">SESIÓN CERRADA</h3>
-                </div>
-            <?php else: ?>
-                <div style="width: 100%; border: 2px solid #2e7d32; border-radius: 8px; padding: 20px; text-align: center;">
-                    <div style="font-size: 3em;">🔓</div>
-                    <h3 style="color: #2e7d32; margin: 0;">SESIÓN ABIERTA</h3>
-                </div>
-            <?php endif; ?>
+        <div class="column-right">
+            <div class="panel" style="height: 100%; margin-bottom: 0;">
+                <h3>🎯 Objetivos </h3>
+                <?php if (empty($reporte)): ?>
+                    <p style="text-align:center; color:#777; margin-top: 40px;">No se registraron objetivos para el período seleccionado o para el cajero seleccionado.</p>
+                <?php else: ?>
+                    <div class="grid-paneles" style="margin-top: 15px;">
+                        <?php foreach ($reporte as $tercero): 
+                            $metaVal  = $tercero['meta_valor_total'];
+                            $ejecVal  = $tercero['ejecutado_valor'];
+                            $pctValor = ($metaVal > 0) ? min(100, round(($ejecVal / $metaVal) * 100, 1)) : 0;
+                            $badgeValClass = ($pctValor >= 100) ? 'bg-success' : (($pctValor >= 70) ? 'bg-warning' : 'bg-danger');
+                        ?>
+                            <div class="tercero-card">
+                                <div class="tercero-header">
+                                    <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
+                                    <span class="badge <?= $badgeValClass ?>"><?= $pctValor ?>%</span>
+                                </div>
+                                <div class="resumen-meta">
+                                    <div class="metric-box">
+                                        <div class="title">Meta Valor</div>
+                                        <div class="value">$ <?= money($metaVal) ?></div>
+                                    </div>
+                                    
+                                    <?php if ($permiso9999 === 'SI'): ?>
+                                    <div class="metric-box">
+                                        <div class="title">Ejecutado (Día)</div>
+                                        <div class="value" style="color: #0288d1;">$ <?= money($ejecVal) ?></div>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="table-responsive">
+                                    <table style="width:100%; font-size: 13px;">
+                                        <thead>
+                                            <tr style="background:#fafafa;">
+                                                <th>SKU / Producto</th>
+                                                <th>Meta C.</th>
+                                                <th>Vend.</th>
+                                                <th>Progreso</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php if(empty($tercero['detalles'])): ?>
+                                                <tr><td colspan="4" style="text-align:center; color:#777;">Sin detalles de SKU asignados.</td></tr>
+                                            <?php else: foreach ($tercero['detalles'] as $det): 
+                                                $metaC = $det['meta_cajas'];
+                                                $cantVendida = $det['cajas_vendidas'];
+                                                $pctSku = ($metaC > 0) ? min(100, round(($cantVendida / $metaC) * 100, 1)) : 0;
+                                                $fillColor = ($pctSku >= 100) ? '#2e7d32' : (($pctSku >= 70) ? '#f57c00' : '#c62828');
+                                            ?>
+                                                <tr>
+                                                    <td>
+                                                        <strong><?= htmlspecialchars($det['sku']) ?></strong><br>
+                                                        <span style="font-size:11px; color:#555;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
+                                                    </td>
+                                                    <td><?= number_format($metaC, 1) ?></td>
+                                                    <td><?= $cantVendida ?></td>
+                                                    <td>
+                                                        <div style="font-size:10px; font-weight:bold;"><?= $pctSku ?>%</div>
+                                                        <div class="progress-bar-bg">
+                                                            <div class="progress-bar-fill" style="width: <?= $pctSku ?>%; background-color: <?= $fillColor ?>;"></div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
 
-    <div class="panel no-print">
-        <h3>💸 Egresos de Caja</h3>
-        <div class="table-responsive">
-            <table class="table">
-                <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
-                <tbody>
-                    <?php foreach($listaEgresos as $eg): $idE = $eg['IDSALIDA']; ?>
-                    <tr>
-                        <td><?= $idE ?></td>
-                        <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
-                        <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
-                        <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE)'>💾</button>" : "-" ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="panel no-print actions-container">
-        <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
-        <?php if($cierreRealizado): ?>
-            <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
-        <?php else: ?>
-            <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
-        <?php endif; ?>
     </div>
 
     <div id="modalVoucher" class="modal">
         <div class="modal-content" id="printArea"></div>
     </div>
 <?php endif; ?>
-
-<!-- ============================================================
-    SECCIÓN INFERIOR: SEGUIMIENTO DE OBJETIVOS
-============================================================ -->
-<div class="panel" style="margin-top: 25px;">
-    <h3>🎯 Seguimiento de Cumplimiento de Objetivos</h3>
-    <form method="GET" class="filter-box" style="background: #eef2f5; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 20px;">
-        <input type="hidden" name="sede" value="<?= $sede_actual ?>">
-        <input type="hidden" name="fecha" value="<?= $fecha_input ?>">
-        <input type="hidden" name="nit" value="<?= $UsuarioFact ?>">
-
-        <label><strong>Mes:</strong></label>
-        <select name="mm">
-            <?php for ($m = 1; $m <= 12; $m++): ?>
-                <option value="<?=$m?>" <?=$m == $mes_sel ? 'selected' : ''?>><?=date('F', mktime(0, 0, 0, $m, 1))?> (<?=$m?>)</option>
-            <?php endfor; ?>
-        </select>
-
-        <label><strong>Año:</strong></label>
-        <select name="aa">
-            <?php for ($a = date('Y'); $a >= date('Y') - 2; $a--): ?>
-                <option value="<?=$a?>" <?=$a == $anio_sel ? 'selected' : ''?>><?=$a?></option>
-            <?php endfor; ?>
-        </select>
-
-        <button type="submit" class="button" style="padding: 8px 12px; font-size: 14px;">🔍 Cargar Cumplimiento</button>
-    </form>
-
-    <?php if (empty($reporte)): ?>
-        <p style="text-align:center; color:#777;">No se registraron objetivos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>) o para el cajero seleccionado.</p>
-    <?php else: ?>
-        <div class="grid-paneles">
-            <?php foreach ($reporte as $tercero): 
-                $metaVal  = $tercero['meta_valor_total'];
-                $ejecVal  = $tercero['ejecutado_valor'];
-                $pctValor = ($metaVal > 0) ? min(100, round(($ejecVal / $metaVal) * 100, 1)) : 0;
-                $badgeValClass = ($pctValor >= 100) ? 'bg-success' : (($pctValor >= 70) ? 'bg-warning' : 'bg-danger');
-            ?>
-                <div class="tercero-card">
-                    <div class="tercero-header">
-                        <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
-                        <span class="badge <?= $badgeValClass ?>"><?= $pctValor ?>%</span>
-                    </div>
-                    <div class="resumen-meta">
-                        <div class="metric-box">
-                            <div class="title">Meta Valor</div>
-                            <div class="value">$ <?= money($metaVal) ?></div>
-                        </div>
-                        
-                        <?php if ($permiso9999 === 'SI'): ?>
-                        <div class="metric-box">
-                            <div class="title">Ejecutado (Día)</div>
-                            <div class="value" style="color: #0288d1;">$ <?= money($ejecVal) ?></div>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="table-responsive">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>SKU / Producto</th>
-                                    <th>Meta Cajas</th>
-                                    <th>Vendidas</th>
-                                    <th>Progreso</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if(empty($tercero['detalles'])): ?>
-                                    <tr><td colspan="4" style="text-align:center; color:#777;">Sin detalles de SKU asignados.</td></tr>
-                                <?php else: foreach ($tercero['detalles'] as $det): 
-                                    $metaC = $det['meta_cajas'];
-                                    $cajasV = $det['cajas_vendidas'];
-                                    $divisor = ($unicaja[$det['sku']] ?? 1);
-                                    if($divisor <= 0) $divisor = 1;
-                                    $cajasCalculadas = $cajasV / $divisor;
-                                    $pctSku = ($metaC > 0) ? min(100, round(($cajasCalculadas / $metaC) * 100, 1)) : 0;
-                                    $fillColor = ($pctSku >= 100) ? '#2e7d32' : (($pctSku >= 70) ? '#f57c00' : '#c62828');
-                                ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars($det['sku']) ?></strong></td>
-                                        <td><?= number_format($metaC, 1) ?></td>
-                                        <td><?= number_format($cajasCalculadas, 2) ?></td>
-                                        <td>
-                                            <div style="font-size:11px; font-weight:bold;"><?= $pctSku ?>%</div>
-                                            <div class="progress-bar-bg">
-                                                <div class="progress-bar-fill" style="width: <?= $pctSku ?>%; background-color: <?= $fillColor ?>;"></div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
-</div>
 
 <script>
     function mostrarVoucher(tipo) {
@@ -565,6 +610,7 @@ while ($row = $resObj->fetch_assoc()) {
         
         const vVentas = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($totalVentas) ?>' : '***';
         const vTotal = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$<?= money($efectivo_neto_final) ?>' : '***';
+        const pctEjecucionGlobal = '<?= $pctValorCajeroGlobal ?>%';
 
         let html = `
             <div class="ticket-header" style="text-align:center;">
@@ -573,22 +619,27 @@ while ($row = $resObj->fetch_assoc()) {
                 <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
                 <p style="margin:0;">CAJERO: <?= strtoupper(substr($nombreCompleto, 0, 25)) ?></p>
                 <p style="margin:0;"><b>ESTADO: ${estadoSesion}</b></p>
-                <hr>
+                <hr style="border: 1px solid #000;">
             </div>
-            <table class="ticket-table">
+            <table class="ticket-table" style="width:100%;">
                 <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${vVentas}</b></td></tr>
                 <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$<?= money($totalEgresos) ?></b></td></tr>
                 <tr><td>(-) TRANSFER. MANUAL:</td><td style="text-align:right;"><b>$<?= money($totalTransfer) ?></b></td></tr>
                 <tr><td>(-) TRANS. AUTO:</td><td style="text-align:right;"><b>$<?= money($totalTransferAuto) ?></b></td></tr>
                 <tr><td><b>TOT. TRANSFER.:</b></td><td style="text-align:right;"><b>$<?= money($totalTransferGeneral) ?></b></td></tr>
-                <tr><td colspan="2"><hr></td></tr>
-                <tr style="font-size:16px;">
+                <tr><td colspan="2"><hr style="border: 1px solid #000;"></td></tr>
+                <tr style="font-size:15px;">
                     <td><b>TOTAL FÍSICO:</b></td>
                     <td style="text-align:right;"><b>${vTotal}</b></td>
                 </tr>
+                <tr><td colspan="2"><hr style="border: 1px solid #000;"></td></tr>
+                <tr style="font-size:14px;">
+                    <td><b>% EJECUCIÓN (META):</b></td>
+                    <td style="text-align:right;"><b>${pctEjecucionGlobal}</b></td>
+                </tr>
             </table>
             <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
-            <table class="ticket-table" style="font-size:11px;"><?= $egresosHtml ?></table>
+            <table class="ticket-table" style="font-size:11px; width:100%;"><?= $egresosHtml ?></table>
             <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
