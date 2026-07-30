@@ -223,7 +223,8 @@ body {
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
-                        <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>                 
+                        <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
+                        <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>               
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
@@ -267,7 +268,7 @@ body {
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>
-                                    <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>
+                                
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
@@ -366,6 +367,7 @@ body {
                                     <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Sincronizar Productos en Categorias</a>
                                     <a class="nav-link" href="Precios.php" target="contentFrame">Modificar Precios en Productos</a>
                                     <a class="nav-link" href="Activacion_categorias_conteo.php" target="contentFrame">Panel de activacion de Categorias para conteo</a>
+                                    <a class="nav-link" href="Objetivos_Ejec.php" target="contentFrame">Objetivos Ejecucion</a>
                                 </div>
                             </div>
                         </div>

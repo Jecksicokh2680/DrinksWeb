@@ -176,8 +176,12 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .header-top h2 { margin:0; font-size: 1.4rem; color: #1f2937; }
 
+        .header-actions { display: flex; align-items: center; gap: 10px; }
         .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .timer-box span { color: #60a5fa; min-width: 45px; }
+
+        .btn-refresh { background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.2s; }
+        .btn-refresh:hover { background: #1d4ed8; }
 
         .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-bottom: 20px; }
         
@@ -215,7 +219,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
         @media (max-width: 480px) {
             body { padding: 10px; }
             .header-top { flex-direction: column; align-items: flex-start; }
-            .timer-box { align-self: flex-end; }
+            .header-actions { align-self: flex-end; width: 100%; justify-content: space-between; }
             .main-value { font-size: 1.4rem; }
             .card { padding: 15px; }
             
@@ -230,7 +234,10 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
 
     <div class="header-top">
         <h2>Panel Administrativo</h2>
-        <div class="timer-box">⏱️ Act: <span id="countdown">03:00</span></div>
+        <div class="header-actions">
+            <button class="btn-refresh" onclick="location.reload()">🔄 Actualizar</button>
+            <div class="timer-box">⏱️ <span id="countdown">03:00</span></div>
+        </div>
     </div>
 
     <div class="grid-cards">
