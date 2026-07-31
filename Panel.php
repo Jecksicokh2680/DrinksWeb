@@ -225,6 +225,7 @@ body {
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
                         <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
                         <!-- <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a> -->             
+                        
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
@@ -270,6 +271,7 @@ body {
                                     <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>
                                 
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
+                                    <a class="nav-link" href="Flijo_Caja.php" target="contentFrame">Movimientos de Caja</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
