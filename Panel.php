@@ -271,7 +271,7 @@ body {
                                     <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>
                                 
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
-                                    <a class="nav-link" href="Flijo_Caja.php" target="contentFrame">Movimientos de Caja</a>
+                                    <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
