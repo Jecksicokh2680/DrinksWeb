@@ -28,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
     // 1. ELIMINAR MOVIMIENTO MANUAL
     if (isset($_POST['accion_eliminar'])) {
         $id_transaccion = (int)$_POST['id_transaccion'];
-        // Solo permitimos borrar si es un registro manual (id_origen IS NULL)
         $del_sql = "DELETE FROM flujo_efectivo WHERE id_transaccion = $id_transaccion AND id_origen IS NULL";
         if ($db_conexion->query($del_sql)) {
             $mensaje_exito = "¡Movimiento manual eliminado con éxito!";
@@ -101,6 +100,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
 }
 
 /* ============================================================
+    CÁLCULO DEL ARRANQUE DE LA OPERACIÓN (Saldo Día Anterior)
+============================================================ */
+$arranque_operacion = 0;
+if ($db_conexion) {
+    $fecha_ayer = date('Y-m-d', strtotime($fecha_ini_input . ' - 1 day'));
+
+    $sql_arranque = "SELECT 
+        SUM(CASE WHEN tipo = 'INGRESO' THEN valor ELSE 0 END) - 
+        SUM(CASE WHEN tipo = 'PAGO' THEN valor ELSE 0 END) AS saldo_dia_anterior 
+        FROM flujo_efectivo 
+        WHERE fecha = '$fecha_ayer'";
+        
+    $res_arranque = $db_conexion->query($sql_arranque);
+    if ($res_arranque && $row_arr = $res_arranque->fetch_assoc()) {
+        $arranque_operacion = (float)($row_arr['saldo_dia_anterior'] ?? 0);
+    }
+}
+
+/* ============================================================
     LÓGICA DE CONSULTA MULTI-SEDE Y CONSOLIDACIÓN
 ============================================================ */
 $sedes = [
@@ -111,9 +129,11 @@ $sedes = [
 $reporte = [];
 $resumen_cajeros = [];
 $resumen_sedes = ['CENTRAL' => 0, 'DRINKS' => 0];
-$gran_total = 0;
+$total_ingresos = 0;
+$total_egresos = 0;
+$gran_total = $arranque_operacion; 
 
-// 1. Cargar desde las tablas automáticas (SALIDASCAJA)
+// 1. Cargar desde las tablas automáticas (SALIDASCAJA) -> Cuentan como Ingresos
 foreach ($sedes as $nombre_sede => $conexion_sede) {
     if (!$conexion_sede) continue;
 
@@ -138,9 +158,12 @@ foreach ($sedes as $nombre_sede => $conexion_sede) {
             
             $reporte[$cajero][] = $row;
             
-            $resumen_cajeros[$cajero] = ($resumen_cajeros[$cajero] ?? 0) + (float)$row['VALOR'];
-            $resumen_sedes[$nombre_sede] += (float)$row['VALOR'];
-            $gran_total += (float)$row['VALOR'];
+            $val = (float)$row['VALOR'];
+            $resumen_cajeros[$cajero] = ($resumen_cajeros[$cajero] ?? 0) + $val;
+            $resumen_sedes[$nombre_sede] += $val;
+            
+            $total_ingresos += $val;
+            $gran_total += $val;
 
             // Sincronizar en flujo_efectivo
             if ($db_conexion) {
@@ -182,8 +205,13 @@ if ($db_conexion) {
             $valor_m = (float)$row_m['valor'];
             
             $tipo_real = $row_m['tipo']; // 'INGRESO' o 'PAGO'
+            
             if ($tipo_real === 'PAGO') {
-                $valor_m = -$valor_m; 
+                $total_egresos += $valor_m;
+                $valor_neto = -$valor_m; 
+            } else {
+                $total_ingresos += $valor_m;
+                $valor_neto = $valor_m;
             }
 
             $row_format = [
@@ -195,16 +223,16 @@ if ($db_conexion) {
                 'MOTIVO' => '[' . $tipo_real . '] ' . $row_m['motivo'],
                 'MOTIVO_PURO' => $row_m['motivo'],
                 'TIPO_PURO' => $tipo_real,
-                'VALOR' => $valor_m,
+                'VALOR' => $valor_neto,
                 'VALOR_REAL' => (float)$row_m['valor'],
                 'NIT' => $row_m['nit_tercero'] ?? 'N/A',
                 'ES_MANUAL' => true
             ];
 
             $reporte[$cajero][] = $row_format;
-            $resumen_cajeros[$cajero] = ($resumen_cajeros[$cajero] ?? 0) + $valor_m;
-            $resumen_sedes[$row_m['sede']] += $valor_m;
-            $gran_total += $valor_m;
+            $resumen_cajeros[$cajero] = ($resumen_cajeros[$cajero] ?? 0) + $valor_neto;
+            $resumen_sedes[$row_m['sede']] += $valor_neto;
+            $gran_total += $valor_neto;
         }
     }
 }
@@ -226,7 +254,7 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
         .wrapper { max-width: 1100px; margin: auto; background: #fff; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
         .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 25px; }
         
-        .summary-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 40px; }
+        .summary-grid { display: grid; grid-template-columns: 2fr 1.2fr; gap: 20px; margin-bottom: 40px; }
         .summary-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.03); }
         .summary-card h3 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 8px; }
         .resumen-table { width: 100%; border-collapse: collapse; }
@@ -377,46 +405,61 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
         </div>
     </div>
 
-    <?php if (empty($reporte)): ?>
-        <div style="text-align:center; padding:50px; color:#95a5a6;"><h3>No hay datos para este rango.</h3></div>
-    <?php else: ?>
-
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h3>👥 Totalizado por Tercero / Cajero</h3>
-                <table class="resumen-table">
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3>👥 Totalizado por Tercero / Cajero</h3>
+            <table class="resumen-table">
+                <?php if(empty($resumen_cajeros)): ?>
+                    <tr><td colspan="2" style="text-align:center; color:#95a5a6;">No hay movimientos en este rango.</td></tr>
+                <?php else: ?>
                     <?php foreach($resumen_cajeros as $nom => $valor): ?>
                     <tr>
                         <td><strong><?= strtoupper($nom) ?></strong></td>
                         <td align="right" style="color:<?= $valor >= 0 ? '#27ae60' : '#c0392b' ?>; font-weight:bold;">$ <?= money($valor) ?></td>
                     </tr>
                     <?php endforeach; ?>
-                </table>
-            </div>
-
-            <div class="summary-card">
-                <h3>🏢 Total por Sede</h3>
-                <table class="resumen-table">
-                    <tr>
-                        <td>Sede Central:</td>
-                        <td align="right">$ <?= money($resumen_sedes['CENTRAL']) ?></td>
-                    </tr>
-                    <tr>
-                        <td>Sede Drinks:</td>
-                        <td align="right">$ <?= money($resumen_sedes['DRINKS']) ?></td>
-                    </tr>
-                    <tr style="border-top: 2px solid #2c3e50; font-weight:bold;">
-                        <td>TOTAL:</td>
-                        <td align="right" style="font-size:1.2em;">$ <?= money($gran_total) ?></td>
-                    </tr>
-                </table>
-            </div>
+                <?php endif; ?>
+            </table>
         </div>
 
-        <hr style="border:0; border-top:1px solid #eee; margin-bottom:40px;">
+        <div class="summary-card">
+            <h3>🏢 Resumen Financiero</h3>
+            <table class="resumen-table">
+                <tr>
+                    <td>Arranque de Operación (<?= date('d/m/Y', strtotime($fecha_ini_input . ' - 1 day')) ?>):</td>
+                    <td align="right" style="color: <?= $arranque_operacion >= 0 ? '#27ae60' : '#c0392b' ?>; font-weight:bold;">$ <?= money($arranque_operacion) ?></td>
+                </tr>
+                <tr>
+                    <td>(+) Total Ingresos (Rango):</td>
+                    <td align="right" style="color:#27ae60; font-weight:bold;">$ <?= money($total_ingresos) ?></td>
+                </tr>
+                <tr>
+                    <td>(-) Total Egresos / Pagos (Rango):</td>
+                    <td align="right" style="color:#c0392b; font-weight:bold;">$ <?= money($total_egresos) ?></td>
+                </tr>
+                <tr>
+                    <td>Recaudo Sede Central:</td>
+                    <td align="right">$ <?= money($resumen_sedes['CENTRAL']) ?></td>
+                </tr>
+                <tr>
+                    <td>Recaudo Sede Drinks:</td>
+                    <td align="right">$ <?= money($resumen_sedes['DRINKS']) ?></td>
+                </tr>
+                <tr style="border-top: 2px solid #2c3e50; font-weight:bold;">
+                    <td>TOTAL GENERAL:</td>
+                    <td align="right" style="font-size:1.2em; color: <?= $gran_total >= 0 ? '#27ae60' : '#c0392b' ?>;">$ <?= money($gran_total) ?></td>
+                </tr>
+            </table>
+        </div>
+    </div>
 
-        <h2 style="color:#2c3e50; text-align:center;">📋 Listado de Responsables (Detalles en Modal)</h2>
-        
+    <hr style="border:0; border-top:1px solid #eee; margin-bottom:40px;">
+
+    <h2 style="color:#2c3e50; text-align:center;">📋 Listado de Responsables (Detalles en Modal)</h2>
+    
+    <?php if (empty($reporte)): ?>
+        <div style="text-align:center; padding:30px; color:#95a5a6;"><h3>No hay detalles para mostrar.</h3></div>
+    <?php else: ?>
         <?php foreach ($reporte as $cajero => $movs): $sub = 0; foreach ($movs as $m) { $sub += $m['VALOR']; } ?>
             <div class="cajero-card">
                 <div class="cajero-header">
@@ -459,7 +502,7 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                                     <td>#<?= $m['IDSALIDA'] ?></td>
                                     <td><small><?= $m['NOMBREPC'] ?></small></td>
                                     <td><?= $m['MOTIVO'] ?></td>
-                                    <td align="right" style="color: <?= $m['VALOR'] < 0 ? '#c0392b' : 'inherit' ?>"><strong>$ <?= money($m['VALOR']) ?></strong></td>
+                                    <td align="right" style="color: <?= $m['VALOR'] < 0 ? '#c0392b' : '#27ae60' ?>"><strong>$ <?= money($m['VALOR']) ?></strong></td>
                                     <td align="center" class="acciones-col">
                                         <?php if (!empty($m['ES_MANUAL'])): ?>
                                             <button class="btn-accion btn-editar" onclick="abrirEditar(
@@ -489,13 +532,12 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                 </div>
             </div>
         <?php endforeach; ?>
-
-        <div class="gran-total-banner">
-            <small style="font-size: 0.4em; display: block; opacity: 0.8;">BALANCE TOTAL (INGRESOS Y PAGOS)</small>
-            $ <?= money($gran_total) ?>
-        </div>
-
     <?php endif; ?>
+
+    <div class="gran-total-banner">
+        <small style="font-size: 0.4em; display: block; opacity: 0.8;">BALANCE TOTAL (INCLUYE ARRANQUE DÍA ANTERIOR Y RANGO)</small>
+        $ <?= money($gran_total) ?>
+    </div>
 </div>
 
 <script>
