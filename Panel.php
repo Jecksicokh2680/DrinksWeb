@@ -272,7 +272,7 @@ function abrirPopup(event, url) {
                         ⚙️ General / Compartido
                     </h6>
                     <div class="menu-seccion ps-2">
-                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Inventario / Grabar Conteo Web</a>
+                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Inv. / Grabar Conteo Web</a>
                         <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🔍 Auditoria de Pedidos</a>
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🚇 Ver Tunel</a>    
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">💬 Chat Interno</a>
