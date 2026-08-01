@@ -58,20 +58,22 @@ if (isset($mysqli) && !$mysqli->connect_error) {
   <title>Conteo de Billetes | BNMA</title>
   <style>
     /* --- ESTILOS PARA PANTALLA --- */
-    body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; display: flex; flex-direction: column; align-items: center; color: #1c1e21; margin: 0; }
-    h2 { margin-top: 5px; margin-bottom: 15px; color: #000; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
-    .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 15px; display: flex; flex-direction: column; align-items: center; color: #1c1e21; margin: 0; }
+    h2 { margin-top: 5px; margin-bottom: 15px; color: #000; text-transform: uppercase; letter-spacing: 1px; text-align: center; font-size: 20px; }
+    .card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; box-sizing: border-box; }
     
-    .user-badge-screen { background: #f8f9fa; border: 1px solid #e9ecef; padding: 8px 12px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #495057; line-height: 1.4; }
+    .user-badge-screen { background: #f8f9fa; border: 1px solid #e9ecef; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-size: 13px; font-weight: bold; color: #495057; line-height: 1.4; }
     
     table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
     th { background-color: #1a1a1a; color: white; padding: 10px; font-size: 13px; text-transform: uppercase; }
-    td { text-align: center; padding: 8px; border-bottom: 1px solid #edf0f2; font-weight: 600; }
-    input[type="number"], input[type="text"] { width: 90px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 14px; outline: none; }
+    td { text-align: center; padding: 6px 4px; border-bottom: 1px solid #edf0f2; font-weight: 600; }
+    
+    input[type="number"], input[type="text"] { width: 90%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 15px; outline: none; box-sizing: border-box; }
     input[readonly] { background-color: #f8f9fa; border: none; font-weight: bold; }
-    .total-input { background: #d4edda !important; color: #155724 !important; font-size: 18px !important; width: 110px !important; }
+    .total-input { background: #d4edda !important; color: #155724 !important; font-size: 18px !important; width: 100% !important; }
+    
     .buttons { margin-top: 20px; display: flex; gap: 12px; width: 100%; max-width: 400px; }
-    button { flex: 1; background-color: #1a1a1a; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    button { flex: 1; background-color: #1a1a1a; color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; }
     button.btn-clear { background-color: #dc3545; }
     
     .solo-impresion { display: none; }
@@ -79,24 +81,24 @@ if (isset($mysqli) && !$mysqli->connect_error) {
 
     /* --- AJUSTE PARA IMPRESIÓN --- */
     @media print {
-      @page { margin: 0; }
-      body { background: white !important; width: 100%; margin: 0; padding: 3px; font-family: 'Courier New', Courier, monospace; }
-      * { color: #000 !important; font-weight: 900 !important; -webkit-text-stroke: 0.2px black; }
-      .card { box-shadow: none; padding: 0; width: 100%; }
+      @page { margin: 0; size: auto; }
+      body { background: white !important; width: 100%; margin: 0; padding: 5px; font-family: 'Courier New', Courier, monospace; }
+      * { color: #000 !important; font-weight: bold !important; }
+      .card { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
       h2 { font-size: 12pt; margin: 5px 0 2px 0; text-align: center; }
-      h2::before { content: "BNMA COORPORACION"; display: block; font-size: 13pt; border-bottom: 2px solid #000; margin-bottom: 3px; }
+      h2::before { content: "BNMA CORPORACION"; display: block; font-size: 13pt; border-bottom: 2px solid #000; margin-bottom: 3px; }
       
       .user-info-print { display: block !important; text-align: center; font-size: 9pt; margin-bottom: 5px; line-height: 1.3; }
       .no-print { display: none !important; }
       
-      table { width: 98% !important; border: 1px solid #000; }
-      th { background: #000 !important; color: #fff !important; font-size: 9pt; -webkit-print-color-adjust: exact; padding: 2px !important; }
-      td { padding: 2px !important; font-size: 9pt; border: 1px solid #000 !important; }
-      input { border: none !important; background: transparent !important; font-size: 9pt !important; width: 100% !important; }
+      table { width: 100% !important; border: 1px solid #000; }
+      th { background: #000 !important; color: #fff !important; font-size: 9pt; -webkit-print-color-adjust: exact; padding: 4px !important; }
+      td { padding: 3px !important; font-size: 9pt; border: 1px solid #000 !important; }
+      input { border: none !important; background: transparent !important; font-size: 9pt !important; width: 100% !important; text-align: right !important; }
       
       .buttons { display: none !important; }
-      .solo-impresion { display: block !important; text-align: center; margin-top: 5px; font-size: 8pt; }
-      .firma-linea { border-top: 1.5px solid #000 !important; width: 70%; margin: 35px auto 5px; }
+      .solo-impresion { display: block !important; text-align: center; margin-top: 8px; font-size: 9pt; }
+      .firma-linea { border-top: 1.5px solid #000 !important; width: 70%; margin: 40px auto 5px; }
     }
   </style>
 </head>
@@ -126,21 +128,21 @@ if (isset($mysqli) && !$mysqli->connect_error) {
       <tbody id="billeteTable"></tbody>
       <tfoot>
         <tr style="background: #f8f9fa;">
-          <td colspan="2" style="text-align: right; font-weight: bold; padding-right: 15px;">TOTAL:</td>
+          <td colspan="2" style="text-align: right; font-weight: bold; padding-right: 10px;">TOTAL:</td>
           <td><input type="text" id="total" class="total-input" readonly value="0"></td>
         </tr>
       </tfoot>
     </table>
 
     <div class="solo-impresion">
-      <div style="text-align: center;">Fecha: <?= $fechaActual; ?></div>
+      <div style="text-align: center; margin-bottom: 5px;">Fecha: <?= $fechaActual; ?></div>
       <div class="firma-linea"></div>
       <div style="text-align: center; font-weight: bold; font-size: 9pt;">FIRMA RESPONSABLE</div>
       <div style="text-align: center; font-size: 8pt; text-transform: uppercase; margin-top: 2px;">(<?= htmlspecialchars($nombreUsuario) ?>)</div>
     </div>
   </div>
 
-  <div class="buttons">
+  <div class="buttons no-print">
     <button class="btn-clear" onclick="limpiar()">Limpiar</button>
     <button onclick="window.print()">Imprimir Ticket</button>
   </div>
@@ -164,8 +166,8 @@ if (isset($mysqli) && !$mysqli->connect_error) {
     denominaciones.forEach((den, i) => {
       const fila = document.createElement("tr");
       fila.innerHTML = `
-        <td style="text-align: left; padding-left: 10px;">${den.etiqueta}</td>
-        <td><input type="number" min="0" value="0" oninput="calcular()" id="cant_${i}"></td>
+        <td style="text-align: left; padding-left: 8px;">${den.etiqueta}</td>
+        <td><input type="number" inputmode="numeric" pattern="[0-9]*" min="0" value="0" oninput="calcular()" id="cant_${i}" onclick="this.select()"></td>
         <td><input type="text" value="0" readonly id="val_${i}"></td>
       `;
       tabla.appendChild(fila);
@@ -174,7 +176,8 @@ if (isset($mysqli) && !$mysqli->connect_error) {
     function calcular() {
       let granTotal = 0;
       denominaciones.forEach((den, i) => {
-        const cant = parseInt(document.getElementById(`cant_${i}`).value) || 0;
+        const inputCant = document.getElementById(`cant_${i}`);
+        const cant = parseInt(inputCant.value) || 0;
         const subtotal = cant * den.valor;
         document.getElementById(`val_${i}`).value = subtotal.toLocaleString('es-CO');
         granTotal += subtotal;
@@ -189,6 +192,7 @@ if (isset($mysqli) && !$mysqli->connect_error) {
           document.getElementById(`val_${i}`).value = 0;
         });
         document.getElementById("total").value = 0;
+        document.getElementById("cant_0").focus();
       }
     }
   </script>
