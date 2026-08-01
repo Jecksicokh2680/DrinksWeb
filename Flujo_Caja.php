@@ -21,10 +21,26 @@ $f_fin_db = str_replace('-', '', $fecha_fin_input);
 $mensaje_exito = "";
 
 /* ============================================================
-    PROCESAR ACCIONES MANUALES (INSERTAR, EDITAR, ELIMINAR)
+    PROCESAR ACCIONES MANUALES (INSERTAR, EDITAR, ELIMINAR, PURGAR)
 ============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instanceof mysqli) {
     
+    // 0. PURGAR / BORRAR REGISTROS ANTERIORES A UNA FECHA
+    if (isset($_POST['accion_purgar'])) {
+        $fecha_limite = $db_conexion->real_escape_string($_POST['fecha_limite']);
+        if (!empty($fecha_limite)) {
+            $pur_sql = "DELETE FROM flujo_efectivo WHERE fecha < '$fecha_limite'";
+            if ($db_conexion->query($pur_sql)) {
+                $registros_borrados = $db_conexion->affected_rows;
+                $mensaje_exito = "¡Se han eliminado $registros_borrados registros anteriores a $fecha_limite con éxito!";
+            } else {
+                $mensaje_exito = "❌ Error al purgar la tabla: " . $db_conexion->error;
+            }
+        } else {
+            $mensaje_exito = "❌ Error: Seleccione una fecha límite válida.";
+        }
+    }
+
     // 1. ELIMINAR MOVIMIENTO MANUAL
     if (isset($_POST['accion_eliminar'])) {
         $id_transaccion = (int)$_POST['id_transaccion'];
@@ -310,9 +326,29 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
             <label>Hasta: <input type="date" name="fecha_fin" value="<?= $fecha_fin_input ?>"></label>
             <button type="submit" style="background:#2c3e50; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer;">Actualizar</button>
         </form>
-        <div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button type="button" onclick="abrirFormManual()" style="background:#27ae60; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">➕ Nuevo Movimiento</button>
-            <button type="button" onclick="window.print()" style="padding:10px 15px; cursor:pointer;">🖨️ Imprimir</button>
+            <button type="button" onclick="abrirFormPurgar()" style="background:#c0392b; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">🗑️ Limpiar Historial Antiguo</button>
+            <button type="button" onclick="window.print()" style="padding:10px 15px; cursor:pointer; border: 1px solid #ccc; border-radius:5px; background:#fff;">🖨️ Imprimir</button>
+        </div>
+    </div>
+
+    <!-- Modal Formulario Purgar / Borrar Historial Antiguo -->
+    <div id="modalFormPurgar" class="form-overlay">
+        <div class="form-box">
+            <h3 style="margin-top:0; color:#c0392b;">🗑️ Purgar Registros Antiguos</h3>
+            <p style="font-size: 0.9em; color: #555;">Esto eliminará permanentemente todos los registros de la tabla <code>flujo_efectivo</code> con fecha anterior a la seleccionada.</p>
+            <form method="POST" onsubmit="return confirm('¿Estás COMPLETAMENTE SEGURO de eliminar los registros anteriores a esta fecha? Esta acción no se puede deshacer.');">
+                <input type="hidden" name="accion_purgar" value="1">
+                <div style="margin-bottom: 15px;">
+                    <label>Borrar todo lo anterior a:</label>
+                    <input type="date" name="fecha_limite" value="2026-07-31" required style="width:100%; padding:8px; margin-top:5px;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" onclick="cerrarFormPurgar()" style="background:#95a5a6; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Cancelar</button>
+                    <button type="submit" style="background:#c0392b; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Eliminar</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -552,6 +588,12 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
     }
     function cerrarFormManual() {
         document.getElementById('modalFormManual').style.display = 'none';
+    }
+    function abrirFormPurgar() {
+        document.getElementById('modalFormPurgar').style.display = 'flex';
+    }
+    function cerrarFormPurgar() {
+        document.getElementById('modalFormPurgar').style.display = 'none';
     }
     function abrirEditar(id, sede, tipo, fecha, tercero, motivo, valor) {
         document.getElementById('edit_id').value = id;
