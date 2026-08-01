@@ -105,10 +105,8 @@ if (isset($mysqli) && !$mysqli->connect_error) {
 <body>
 
   <div class="card">
-    <h2>Conteo Billetes</h2>
-    
     <div class="user-badge-screen no-print">
-      👤 Responsable: <?= htmlspecialchars($nombreUsuario) ?><br>
+      👤 Conteo Billetes<br>Responsable: <?= htmlspecialchars($nombreUsuario) ?><br>
       <span style="font-size: 11px; font-weight: normal; color: #65676b;">C.C. <?= htmlspecialchars($UsuarioSesion) ?></span>
     </div>
 
