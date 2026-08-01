@@ -215,7 +215,37 @@ body {
                         <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
                         <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">❌ Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">📋 Listado Facturas del Día</a>
-                        <a class="nav-link" href="Calculadora.php" target="contentFrame">🧮 Calculadora</a>
+                       <a class="nav-link" href="Calculadora.php" onclick="abrirPopup(event, this.href);">🧮 Calculadora</a>
+
+<script>
+// Variable global para guardar la referencia de la ventana
+var ventanaPopup = null;
+
+function abrirPopup(event, url) {
+    // Evita que el enlace se abra de forma normal
+    event.preventDefault();
+    
+    // Si la ventana ya existe y no está cerrada, simplemente la traemos al frente
+    if (ventanaPopup && !ventanaPopup.closed) {
+        ventanaPopup.focus();
+        return;
+    }
+    
+    // Dimensiones de la ventana
+    var ancho = 400;
+    var alto = 570;
+    
+    // Calcular la posición para centrarla en la pantalla
+    var left = (window.screen.width - ancho) / 2;
+    var top = (window.screen.height - alto) / 2;
+    
+    // Construir las opciones incluyendo la posición (left y top)
+    var opciones = "width=" + ancho + ",height=" + alto + ",top=" + top + ",left=" + left + ",resizable=no,scrollbars=yes,status=no";
+    
+    // Abrir la ventana emergente y guardarla en la variable
+    ventanaPopup = window.open(url, "CalculadoraPopup", opciones);
+}
+</script>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                    
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                        
                         <a class="nav-link" href="minequi.php"
