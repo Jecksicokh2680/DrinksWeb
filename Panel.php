@@ -233,7 +233,7 @@ function abrirPopup(event, url) {
     
     // Dimensiones de la ventana
     var ancho = 400;
-    var alto = 570;
+    var alto = 590;
     
     // Calcular la posición para centrarla en la pantalla
     var left = (window.screen.width - ancho) / 2;
