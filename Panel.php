@@ -303,7 +303,7 @@ function abrirPopup(event, url) {
                                     <!-- <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a> -->
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
-                                    <a class="nav-link" href="Compras.php" target="contentFrame">Listar Compras BNMA</a>
+                                    <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
                                     <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>

@@ -1,6 +1,4 @@
 <?php
-
-
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -14,13 +12,12 @@ $UsuarioSesion = $_SESSION['Usuario'] ?? '';
 <?php if ($sesionExpirada): ?>
 <script>
     window.addEventListener("DOMContentLoaded", function() {
-        // Muestra un aviso opcional y cierra la ventana emergente actual
         alert("La sesión ha expirado.");
         window.close();
     });
 </script>
 <?php 
-    exit; // Detiene la ejecución del resto del script en la ventana emergente
+    exit;
 endif;
 
 // Aseguramos que PHP use estrictamente la zona horaria de Bogotá
@@ -32,8 +29,6 @@ date_default_timezone_set('America/Bogota');
 require('Conexion.php');
 require('ConnCentral.php');
 require('ConnDrinks.php');
-
-
 
 // ---------------------------------------------------------
 // PROCESAMIENTO AJAX: GUARDAR FACTURA EN NEGATIVO CON HORA DE BOGOTÁ
@@ -138,7 +133,6 @@ function fmonedaNegativa($v) {
         h2 { margin-top: 0; color: #111; font-size: 1.5rem; }
         h3.resumen-title { margin-top: 35px; margin-bottom: 15px; color: #222; font-size: 1.25rem; }
 
-        /* Sistema de Filtros Responsivo */
         .filters { 
             display: grid; 
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
@@ -182,7 +176,6 @@ function fmonedaNegativa($v) {
 
         .btn-container { display: flex; align-items: flex-end; }
 
-        /* Contenedores de Tablas Responsivos */
         .table-container { 
             max-height: 65vh; 
             overflow: auto; 
@@ -208,12 +201,10 @@ function fmonedaNegativa($v) {
         .text-left { text-align: left; }
         .text-center { text-align: center; }
         
-        /* Badges */
         .badge { padding: 4px 10px; border-radius: 14px; color: #fff; font-size: 12px; font-weight: 700; display: inline-block; }
         .central { background: var(--primary); } 
         .drinks { background: var(--success); }
         
-        /* Estilos de Filas Especiales */
         .subtotal { background: #f4f8ff; font-weight: 700; color: #1e3a8a; }
         .total { background: #e6fffa; font-weight: 800; color: #065f46; }
         .porc-pos { color: #1b5e20; font-weight: 800; } 
@@ -235,10 +226,8 @@ function fmonedaNegativa($v) {
         }
         .btn-grabar-row:hover { background: #bb2d3b; }
 
-        /* Utilidades para ocultar filas dinámicamente */
         .hidden-row { display: none !important; }
 
-        /* Ajustes específicos para móviles */
         @media (max-width: 768px) {
             body { padding: 8px; }
             .card { padding: 15px; border-radius: 10px; }
@@ -340,9 +329,9 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     /* --- LOGICA PRECIO PROMEDIO VENTA --- */
     function precioProm($mysqli){
         $sql = "SELECT Q.Barcode, SUM(Q.CANTIDAD*Q.VALORPROD)/NULLIF(SUM(Q.CANTIDAD),0) pv FROM(
-                    SELECT P.Barcode, D.CANTIDAD, D.VALORPROD FROM DETPEDIDOS D JOIN PEDIDOS PE ON PE.IDPEDIDO=D.IDPEDIDO JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO WHERE PE.ESTADO='0' AND STR_TO_DATE(PE.FECHA,'%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
-                    UNION ALL
-                    SELECT P.Barcode, D.CANTIDAD, D.VALORPROD FROM FACTURAS F JOIN DETFACTURAS D ON D.IDFACTURA=F.IDFACTURA JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO WHERE F.ESTADO='0' AND STR_TO_DATE(F.FECHA,'%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
+                SELECT P.Barcode, D.CANTIDAD, D.VALORPROD FROM DETPEDIDOS D JOIN PEDIDOS PE ON PE.IDPEDIDO=D.IDPEDIDO JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO WHERE PE.ESTADO='0' AND STR_TO_DATE(PE.FECHA,'%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
+                UNION ALL
+                SELECT P.Barcode, D.CANTIDAD, D.VALORPROD FROM FACTURAS F JOIN DETFACTURAS D ON D.IDFACTURA=F.IDFACTURA JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO WHERE F.ESTADO='0' AND STR_TO_DATE(F.FECHA,'%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
                 ) Q GROUP BY Q.Barcode";
         $out = []; 
         $r = $mysqli->query($sql);
@@ -353,7 +342,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     $pvC = ($SucursalGet != 'DRINKS') ? precioProm($mysqliCentral) : [];
     $pvD = ($SucursalGet != 'CENTRAL') ? precioProm($mysqliDrinks) : [];
 
-    /* --- CONSULTA DE COMPRAS EN RANGO --- */
+    /* --- CONSULTA DE COMPRAS EN RANGO (Incluyendo Totales y Descuentos globales de la Factura si aplican, o agrupamos por idcompra) --- */
     function consultarCompras($mysqli, $suc, $fDesde, $fHasta, $p, $id){
         $cond = " WHERE C.ESTADO='0' ";
         if(!empty($id)){
@@ -364,7 +353,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         if(!empty($p)) $cond .= " AND T.NIT = '$p' ";
 
         return $mysqli->query("
-            SELECT '$suc' sucursal, C.idcompra, T.NIT, CONCAT(T.nombres,' ',T.apellidos) prov,
+            SELECT '$suc' sucursal, C.idcompra, C.VALORTOTAL as totalFacturaCabecera, T.NIT, CONCAT(T.nombres,' ',T.apellidos) prov,
                    P.Barcode, P.descripcion, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni
             FROM compras C
             JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
@@ -379,12 +368,35 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     if($SucursalGet != 'DRINKS') $resultados[] = consultarCompras($mysqliCentral, 'Central', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
     if($SucursalGet != 'CENTRAL') $resultados[] = consultarCompras($mysqliDrinks, 'Drinks', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
 
+    // PASO 1: Recolectar datos y calcular la suma de los ítems por cada factura para saber si hay diferencia con la cabecera (totalFacturaCabecera) y prorratearla o asignarla
+    $filasCrudas = [];
+    foreach($resultados as $res){
+        while($res && $x = $res->fetch_assoc()){
+            $filasCrudas[] = $x;
+        }
+    }
+
+    // Calcular el valor acumulado de ítems por cada idcompra para hacer el ajuste proporcional si la cabecera de la factura trae un total diferente (descuentos globales, fletes, etc.)
+    $sumaItemsPorCompra = [];
+    foreach($filasCrudas as $x){
+        $idC = $x['sucursal'] . '_' . $x['idcompra'];
+        $cant = $x['CANTIDAD'];
+        $net = ($x['VALOR'] - ($x['descuento'] / max($cant, 1)));
+        $costoItem = ($net + ($net * $x['porciva'] / 100) + $x['ValICUIUni']) * $cant;
+        
+        if(!isset($sumaItemsPorCompra[$idC])) {
+            $sumaItemsPorCompra[$idC] = [
+                'suma' => 0,
+                'totalCabecera' => (double)$x['totalFacturaCabecera']
+            ];
+        }
+        $sumaItemsPorCompra[$idC]['suma'] += $costoItem;
+    }
+
     /* --- RENDERIZADO DE TABLA PRINCIPAL --- */
     echo "<div class='table-container'><table id='tablaPrincipalCompras'><thead><tr>
           <th>Suc</th><th>ID</th><th>Proveedor</th><th>Sku</th><th>Producto</th>
-          <th>Cant</th><th>Costo</th><th>Total</th>";
-    $PuedeVerUtil = (Autorizacion($User, '9999') === 'SI');
-    if($PuedeVerUtil) echo "<th>P.Venta</th><th>Util</th><th>%</th>";
+          <th>Cant</th><th>Costo Unit.</th><th>Total Ítem</th><th>P. Venta</th><th>Util</th><th>% Util</th>";
     echo "</tr></thead><tbody>";
 
     $provAnt = ''; 
@@ -399,72 +411,81 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
 
     $resumenFacturas = [];
 
-    foreach($resultados as $res){
-        while($res && $x = $res->fetch_assoc()){
-            $hayRegistros = true;
-            
-            $cant = $x['CANTIDAD'];
-            $net = ($x['VALOR'] - ($x['descuento'] / max($cant, 1)));
-            $costo = $net + ($net * $x['porciva'] / 100) + $x['ValICUIUni'];
-            $totalItem = $costo * $cant;
+    foreach($filasCrudas as $x){
+        $hayRegistros = true;
+        
+        $cant = $x['CANTIDAD'];
+        $net = ($x['VALOR'] - ($x['descuento'] / max($cant, 1)));
+        $costoBruto = $net + ($net * $x['porciva'] / 100) + $x['ValICUIUni'];
+        $totalItemBruto = $costoBruto * $cant;
 
-            $pv = ($x['sucursal'] == 'Central') ? ($pvC[$x['Barcode']] ?? 0) : ($pvD[$x['Barcode']] ?? 0);
-            $util = ($pv - $costo) * $cant;
-            $porc = $costo > 0 ? (($pv - $costo) / $costo) * 100 : 0;
-
-            if (($idCompraAnt && $idCompraAnt != $x['idcompra']) || ($provAnt && $provAnt != $x['prov'])) {
-                echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'><td colspan='7' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td><td>".fmoneda($subCompra)."</td>";
-                if($PuedeVerUtil) echo "<td colspan='3'></td>";
-                echo "</tr>";
-                
-                $resumenFacturas[] = [
-                    'prov' => $provAnt,
-                    'nit' => $nitAnt,
-                    'sucursal' => $sucursalAnt,
-                    'idcompra' => $idCompraAnt,
-                    'total' => $subCompra
-                ];
-                $subCompra = 0;
-            }
-
-            if ($provAnt && $provAnt != $x['prov']) {
-                echo "<tr class='subtotal row-total-prov'><td colspan='7'>TOTAL PROVEEDOR: $provAnt</td><td>".fmoneda($subProveedor)."</td>";
-                if($PuedeVerUtil) echo "<td colspan='3'></td>";
-                echo "</tr>"; 
-                $subProveedor = 0;
-            }
-
-            $subCompra += $totalItem;
-            $subProveedor += $totalItem;
-            $gran += $totalItem;
-            
-            $provAnt = $x['prov'];
-            $nitAnt = $x['NIT'];
-            $idCompraAnt = $x['idcompra'];
-            $sucursalAnt = $x['sucursal'];
-            
-            $cls = $x['sucursal'] == 'Central' ? 'central' : 'drinks';
-            $clsP = $porc >= 0 ? 'porc-pos' : 'porc-neg';
-
-            // Marcamos las filas de datos con una clase y atributos data para el buscador dinámico
-            echo "<tr class='data-row' data-sku='".htmlspecialchars($x['Barcode'])."' data-descripcion='".htmlspecialchars(strtolower($x['descripcion']))."'>
-                <td><span class='badge $cls'>{$x['sucursal']}</span></td>
-                <td>{$x['idcompra']}</td>
-                <td class='text-left'>{$x['prov']}</td>
-                <td class='text-left'>{$x['Barcode']}</td>
-                <td class='text-left'>{$x['descripcion']}</td>
-                <td>".number_format($cant, 0)."</td>
-                <td>".fmoneda($costo)."</td><td>".fmoneda($totalItem)."</td>";
-            if($PuedeVerUtil){
-                echo "<td>".fmoneda($pv)."</td><td>".fmoneda($util)."</td><td class='$clsP'>".number_format($porc, 1)."%</td>";
-            }
-            echo "</tr>";
+        // Factor de ajuste si la cabecera de la factura difere del acumulado de los detalles (ej. descuentos globales de factura)
+        $idC = $x['sucursal'] . '_' . $x['idcompra'];
+        $factorAjuste = 1;
+        if(isset($sumaItemsPorCompra[$idC]) && $sumaItemsPorCompra[$idC]['suma'] > 0 && $sumaItemsPorCompra[$idC]['totalCabecera'] > 0){
+            // Si la cabecera tiene un total diferente al acumulado de detalles, ajustamos proporcionalmente el costo real del ítem basado en el total de la factura
+            $factorAjuste = $sumaItemsPorCompra[$idC]['totalCabecera'] / $sumaItemsPorCompra[$idC]['suma'];
         }
+
+        $costo = $costoBruto * $factorAjuste;
+        $totalItem = $totalItemBruto * $factorAjuste;
+
+        $pv = ($x['sucursal'] == 'Central') ? ($pvC[$x['Barcode']] ?? 0) : ($pvD[$x['Barcode']] ?? 0);
+        $util = ($pv - $costo) * $cant;
+        $porc = $costo > 0 ? (($pv - $costo) / $costo) * 100 : 0;
+
+        if (($idCompraAnt && $idCompraAnt != $x['idcompra']) || ($provAnt && $provAnt != $x['prov'])) {
+            echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'><td colspan='7' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td><td>".fmoneda($subCompra)."</td>";
+            echo "<td colspan='3'></td>";
+            echo "</tr>";
+            
+            $resumenFacturas[] = [
+                'prov' => $provAnt,
+                'nit' => $nitAnt,
+                'sucursal' => $sucursalAnt,
+                'idcompra' => $idCompraAnt,
+                'total' => $subCompra
+            ];
+            $subCompra = 0;
+        }
+
+        if ($provAnt && $provAnt != $x['prov']) {
+            echo "<tr class='subtotal row-total-prov'><td colspan='7'>TOTAL PROVEEDOR: $provAnt</td><td>".fmoneda($subProveedor)."</td>";
+            echo "<td colspan='3'></td>";
+            echo "</tr>"; 
+            $subProveedor = 0;
+        }
+
+        $subCompra += $totalItem;
+        $subProveedor += $totalItem;
+        $gran += $totalItem;
+        
+        $provAnt = $x['prov'];
+        $nitAnt = $x['NIT'];
+        $idCompraAnt = $x['idcompra'];
+        $sucursalAnt = $x['sucursal'];
+        
+        $cls = $x['sucursal'] == 'Central' ? 'central' : 'drinks';
+        $clsP = $porc >= 0 ? 'porc-pos' : 'porc-neg';
+
+        echo "<tr class='data-row' data-sku='".htmlspecialchars($x['Barcode'])."' data-descripcion='".htmlspecialchars(strtolower($x['descripcion']))."'>
+            <td><span class='badge $cls'>{$x['sucursal']}</span></td>
+            <td>{$x['idcompra']}</td>
+            <td class='text-left'>{$x['prov']}</td>
+            <td class='text-left'>{$x['Barcode']}</td>
+            <td class='text-left'>{$x['descripcion']}</td>
+            <td>".number_format($cant, 0)."</td>
+            <td>".fmoneda($costo)."</td>
+            <td>".fmoneda($totalItem)."</td>
+            <td>".fmoneda($pv)."</td>
+            <td>".fmoneda($util)."</td>
+            <td class='$clsP'>".number_format($porc, 1)."%</td>
+        </tr>";
     }
 
     if($hayRegistros){
         echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'><td colspan='7' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td><td>".fmoneda($subCompra)."</td>";
-        if($PuedeVerUtil) echo "<td colspan='3'></td>";
+        echo "<td colspan='3'></td>";
         echo "</tr>";
         
         $resumenFacturas[] = [
@@ -476,11 +497,11 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         ];
 
         echo "<tr class='subtotal row-total-prov'><td colspan='7'>TOTAL PROVEEDOR: $provAnt</td><td>".fmoneda($subProveedor)."</td>";
-        if($PuedeVerUtil) echo "<td colspan='3'></td>";
+        echo "<td colspan='3'></td>";
         echo "</tr>";
         
         echo "<tr class='total row-total-general'><td colspan='7'>TOTAL GENERAL DE COMPRAS</td><td>".fmoneda($gran)."</td>";
-        if($PuedeVerUtil) echo "<td colspan='3'></td>";
+        echo "<td colspan='3'></td>";
         echo "</tr>";
         echo "</tbody></table></div>";
 
@@ -551,7 +572,6 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
 </div>
 
 <script>
-// Filtrado instantáneo por producto sobre el DOM cargado
 function filtrarPorProductoHtml() {
     const input = document.getElementById('filtroProductoInput');
     const filter = input.value.toLowerCase().trim();
@@ -561,7 +581,6 @@ function filtrarPorProductoHtml() {
     const totalGeneral = document.querySelectorAll('#tablaPrincipalCompras .row-total-general');
 
     if (filter === '') {
-        // Mostrar absolutamente todo si el input de búsqueda está vacío
         rows.forEach(r => r.classList.remove('hidden-row'));
         subTotalsCompra.forEach(s => s.classList.remove('hidden-row'));
         subTotalsProv.forEach(p => p.classList.remove('hidden-row'));
@@ -569,7 +588,6 @@ function filtrarPorProductoHtml() {
         return;
     }
 
-    // Filtrar filas de datos
     rows.forEach(row => {
         const sku = row.getAttribute('data-sku') || '';
         const descripcion = row.getAttribute('data-descripcion') || '';
@@ -581,7 +599,6 @@ function filtrarPorProductoHtml() {
         }
     });
 
-    // Ocultar barras informativas de totales internos/proveedor para evitar confusión visual al buscar
     subTotalsCompra.forEach(s => s.classList.add('hidden-row'));
     subTotalsProv.forEach(p => p.classList.add('hidden-row'));
     totalGeneral.forEach(g => g.classList.add('hidden-row'));
