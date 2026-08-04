@@ -254,7 +254,7 @@ function abrirPopup(event, url) {
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
                         <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
-                        <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>           
+                             
                          <!-- <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a> -->             
                         
                     </div>

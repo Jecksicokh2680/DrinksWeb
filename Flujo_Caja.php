@@ -162,7 +162,7 @@ foreach ($sedes as $nombre_sede => $conexion_sede) {
               INNER JOIN TERCEROS AS T1 ON T1.IDTERCERO = V1.IDTERCERO
               WHERE (S1.FECHA BETWEEN '$f_ini_db' AND '$f_fin_db')
               AND (UPPER(S1.MOTIVO) LIKE '%ENTREGA%' OR UPPER(S1.MOTIVO) LIKE '%EFECTIVO%' OR UPPER(S1.MOTIVO) LIKE '%MONEDA%')
-              ORDER BY USUA ASC, S1.FECHA ASC";
+              ORDER BY S1.VALOR DESC";
 
     $res = $conexion_sede->query($query);
 
@@ -170,7 +170,12 @@ foreach ($sedes as $nombre_sede => $conexion_sede) {
         while ($row = $res->fetch_assoc()) {
             $row['SEDE_ORIGEN'] = $nombre_sede;
             $row['ES_MANUAL'] = false;
-            $cajero = $row['USUA'];
+            $cajero = trim($row['USUA']);
+            
+            // Omitir si el cajero viene vacío o es un nombre técnico erróneo de equipo/factura
+            if(empty($cajero) || stripos($cajero, 'FACT') !== false || stripos($cajero, 'INICIO') !== false) {
+                continue;
+            }
             
             $reporte[$cajero][] = $row;
             
@@ -213,11 +218,13 @@ foreach ($sedes as $nombre_sede => $conexion_sede) {
 
 // 2. Cargar los movimientos manuales guardados en la tabla flujo_efectivo dentro del rango
 if ($db_conexion) {
-    $query_manuales = "SELECT * FROM flujo_efectivo WHERE id_origen IS NULL AND fecha BETWEEN '$fecha_ini_input' AND '$fecha_fin_input'";
+    $query_manuales = "SELECT * FROM flujo_efectivo WHERE id_origen IS NULL AND fecha BETWEEN '$fecha_ini_input' AND '$fecha_fin_input' order by valor desc";
     $res_m = $db_conexion->query($query_manuales);
     if ($res_m) {
         while ($row_m = $res_m->fetch_assoc()) {
-            $cajero = $row_m['nombre_tercero'] ?? 'MANUAL';
+            $cajero = trim($row_m['nombre_tercero'] ?? 'MANUAL');
+            if(empty($cajero)) $cajero = 'MANUAL';
+            
             $valor_m = (float)$row_m['valor'];
             
             $tipo_real = $row_m['tipo']; // 'INGRESO' o 'PAGO'
@@ -443,12 +450,58 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
 
     <div class="summary-grid">
         <div class="summary-card">
-            <h3>👥 Totalizado por Tercero / Cajero</h3>
+            <h3>👥 Totalizado por Cajeros (Automáticos)</h3>
             <table class="resumen-table">
-                <?php if(empty($resumen_cajeros)): ?>
-                    <tr><td colspan="2" style="text-align:center; color:#95a5a6;">No hay movimientos en este rango.</td></tr>
+                <?php 
+                $cajeros_auto_totales = [];
+                foreach($reporte as $nom => $movs) {
+                    $suma_auto_pers = 0;
+                    $tiene_auto = false;
+                    foreach($movs as $m) {
+                        if(empty($m['ES_MANUAL'])) {
+                            $suma_auto_pers += $m['VALOR'];
+                            $tiene_auto = true;
+                        }
+                    }
+                    if($tiene_auto) {
+                        $cajeros_auto_totales[$nom] = $suma_auto_pers;
+                    }
+                }
+                
+                if(empty($cajeros_auto_totales)): ?>
+                    <tr><td colspan="2" style="text-align:center; color:#95a5a6;">No hay cajeros automáticos en este rango.</td></tr>
                 <?php else: ?>
-                    <?php foreach($resumen_cajeros as $nom => $valor): ?>
+                    <?php foreach($cajeros_auto_totales as $nom => $valor): ?>
+                    <tr>
+                        <td><strong><?= strtoupper($nom) ?></strong></td>
+                        <td align="right" style="color:<?= $valor >= 0 ? '#27ae60' : '#c0392b' ?>; font-weight:bold;">$ <?= money($valor) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </table>
+
+            <h3 style="margin-top: 25px; border-bottom: 2px solid #e67e22;">✏️ Movimientos y Facturas Manuales</h3>
+            <table class="resumen-table">
+                <?php 
+                $cajeros_man_totales = [];
+                foreach($reporte as $nom => $movs) {
+                    $suma_man_pers = 0;
+                    $tiene_man = false;
+                    foreach($movs as $m) {
+                        if(!empty($m['ES_MANUAL'])) {
+                            $suma_man_pers += $m['VALOR'];
+                            $tiene_man = true;
+                        }
+                    }
+                    if($tiene_man) {
+                        $cajeros_man_totales[$nom] = $suma_man_pers;
+                    }
+                }
+                
+                if(empty($cajeros_man_totales)): ?>
+                    <tr><td colspan="2" style="text-align:center; color:#95a5a6;">No hay registros manuales en este rango.</td></tr>
+                <?php else: ?>
+                    <?php foreach($cajeros_man_totales as $nom => $valor): ?>
                     <tr>
                         <td><strong><?= strtoupper($nom) ?></strong></td>
                         <td align="right" style="color:<?= $valor >= 0 ? '#27ae60' : '#c0392b' ?>; font-weight:bold;">$ <?= money($valor) ?></td>
@@ -496,7 +549,24 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
     <?php if (empty($reporte)): ?>
         <div style="text-align:center; padding:30px; color:#95a5a6;"><h3>No hay detalles para mostrar.</h3></div>
     <?php else: ?>
-        <?php foreach ($reporte as $cajero => $movs): $sub = 0; foreach ($movs as $m) { $sub += $m['VALOR']; } ?>
+        <?php foreach ($reporte as $cajero => $movs): 
+            $sub = 0; foreach ($movs as $m) { $sub += $m['VALOR']; } 
+            
+            $movs_auto = [];
+            $movs_man = [];
+            $sub_auto = 0;
+            $sub_man = 0;
+
+            foreach($movs as $m) {
+                if(empty($m['ES_MANUAL'])) {
+                    $movs_auto[] = $m;
+                    $sub_auto += $m['VALOR'];
+                } else {
+                    $movs_man[] = $m;
+                    $sub_man += $m['VALOR'];
+                }
+            }
+        ?>
             <div class="cajero-card">
                 <div class="cajero-header">
                     <div>
@@ -518,29 +588,72 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                         <button class="close-btn" onclick="cerrarModal('modal-<?= md5($cajero) ?>')">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Sede</th>
-                                    <th>Fecha</th>
-                                    <th>ID</th>
-                                    <th>PC</th>
-                                    <th>Motivo / Descripción</th>
-                                    <th align="right">Valor</th>
-                                    <th align="center" class="acciones-col">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($movs as $m): ?>
-                                <tr>
-                                    <td><span class="badge-sede badge-<?= $m['SEDE_ORIGEN'] ?>"><?= $m['SEDE_ORIGEN'] ?></span></td>
-                                    <td><?= formatFecha($m['FECHA']) ?></td>
-                                    <td>#<?= $m['IDSALIDA'] ?></td>
-                                    <td><small><?= $m['NOMBREPC'] ?></small></td>
-                                    <td><?= $m['MOTIVO'] ?></td>
-                                    <td align="right" style="color: <?= $m['VALOR'] < 0 ? '#c0392b' : '#27ae60' ?>"><strong>$ <?= money($m['VALOR']) ?></strong></td>
-                                    <td align="center" class="acciones-col">
-                                        <?php if (!empty($m['ES_MANUAL'])): ?>
+                        
+                        <!-- SECCIÓN 1: FLUJOS AUTOMÁTICOS -->
+                        <h3 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top: 0;">⚡ Flujos Automáticos</h3>
+                        <?php if(empty($movs_auto)): ?>
+                            <p style="color: #95a5a6; font-size: 0.9em;">No registra movimientos automáticos en este rango.</p>
+                        <?php else: ?>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Sede</th>
+                                        <th>Fecha</th>
+                                        <th>ID</th>
+                                        <th>PC</th>
+                                        <th>Motivo / Descripción</th>
+                                        <th align="right">Valor</th>
+                                        <th align="center" class="acciones-col">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($movs_auto as $m): ?>
+                                    <tr>
+                                        <td><span class="badge-sede badge-<?= $m['SEDE_ORIGEN'] ?>"><?= $m['SEDE_ORIGEN'] ?></span></td>
+                                        <td><?= formatFecha($m['FECHA']) ?></td>
+                                        <td>#<?= $m['IDSALIDA'] ?></td>
+                                        <td><small><?= $m['NOMBREPC'] ?></small></td>
+                                        <td><?= $m['MOTIVO'] ?></td>
+                                        <td align="right" style="color: #27ae60"><strong>$ <?= money($m['VALOR']) ?></strong></td>
+                                        <td align="center" class="acciones-col">
+                                            <span style="color:#bdc3c7; font-size: 0.8em;" title="Sincronizado de caja automática">Automático</span>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <div style="text-align: right; margin: 10px 0 25px 0; font-weight: bold; color: #2c3e50;">
+                                Subtotal Automáticos: <span style="color: #27ae60;">$ <?= money($sub_auto) ?></span>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- SECCIÓN 2: FLUJOS MANUALES -->
+                        <h3 style="color: #2c3e50; border-bottom: 2px solid #e67e22; padding-bottom: 5px; margin-top: 25px;">✏️ Flujos Manuales</h3>
+                        <?php if(empty($movs_man)): ?>
+                            <p style="color: #95a5a6; font-size: 0.9em;">No registra movimientos manuales en este rango.</p>
+                        <?php else: ?>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Sede</th>
+                                        <th>Fecha</th>
+                                        <th>ID</th>
+                                        <th>PC</th>
+                                        <th>Motivo / Descripción</th>
+                                        <th align="right">Valor</th>
+                                        <th align="center" class="acciones-col">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($movs_man as $m): ?>
+                                    <tr>
+                                        <td><span class="badge-sede badge-<?= $m['SEDE_ORIGEN'] ?>"><?= $m['SEDE_ORIGEN'] ?></span></td>
+                                        <td><?= formatFecha($m['FECHA']) ?></td>
+                                        <td>#<?= $m['IDSALIDA'] ?></td>
+                                        <td><small><?= $m['NOMBREPC'] ?></small></td>
+                                        <td><?= $m['MOTIVO'] ?></td>
+                                        <td align="right" style="color: <?= $m['VALOR'] < 0 ? '#c0392b' : '#27ae60' ?>"><strong>$ <?= money($m['VALOR']) ?></strong></td>
+                                        <td align="center" class="acciones-col">
                                             <button class="btn-accion btn-editar" onclick="abrirEditar(
                                                 '<?= $m['ID_TRANSACCION_REAL'] ?>',
                                                 '<?= $m['SEDE_ORIGEN'] ?>',
@@ -556,14 +669,16 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                                                 <input type="hidden" name="id_transaccion" value="<?= $m['ID_TRANSACCION_REAL'] ?>">
                                                 <button type="submit" class="btn-accion btn-eliminar">🗑️</button>
                                             </form>
-                                        <?php else: ?>
-                                            <span style="color:#bdc3c7; font-size: 0.8em;" title="Sincronizado de caja automática">Automático</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <div style="text-align: right; margin: 10px 0 10px 0; font-weight: bold; color: #2c3e50;">
+                                Subtotal Manuales: <span style="color: <?= $sub_man >= 0 ? '#27ae60' : '#c0392b' ?>;">$ <?= money($sub_man) ?></span>
+                            </div>
+                        <?php endif; ?>
+
                     </div>
                 </div>
             </div>

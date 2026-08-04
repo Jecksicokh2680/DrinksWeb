@@ -35,37 +35,51 @@ $fechaSQL = date('Y-m-d');
 $fechaSinGuion = date('Ymd');
 $mes = date('m');
 $anio = date('Y');
-$fecha_45_atras = date('Y-m-d', strtotime('-45 days'));
+$fecha_45_atras = date('Y-m-d', strtotime('-60 days'));
 
 $nitSedes = ['CENTRAL' => '86057267-8', 'DRINKS' => '901724534-7'];
 
-function analizarSucursal($mysqli_conn, $nombreSede){
-    global $mes, $anio, $fechaSQL, $mysqli, $nitSedes, $fecha_45_atras; 
-    if (!$mysqli_conn) return ['inventario'=>0, 'inv_venta'=>0, 'venta_dia'=>0, 'trans_dia'=>0, 'venta_mes'=>0, 'utilidad'=>0];
+// Función para calcular el precio promedio de compra ponderado
+function precioPromCompra($mysqli_conn, $fDesde, $fHasta){
+    $sql = "SELECT P.Barcode, SUM(Q.CANTIDAD * Q.VALOR) / NULLIF(SUM(Q.CANTIDAD), 0) pv_compra 
+            FROM (
+                SELECT D.IDPRODUCTO, D.CANTIDAD, D.VALOR 
+                FROM DETCOMPRAS D 
+                JOIN COMPRAS C ON C.idcompra = D.idcompra 
+                WHERE C.ESTADO = '0' AND C.FECHA BETWEEN '$fDesde' AND '$fHasta'
+            ) Q 
+            JOIN PRODUCTOS P ON P.IDPRODUCTO = Q.IDPRODUCTO 
+            GROUP BY P.Barcode";
+    
+    $out = []; 
+    $r = $mysqli_conn->query($sql);
+    while($r && $x = $r->fetch_assoc()) {
+        $out[$x['Barcode']] = $x['pv_compra'];
+    }
+    return $out;
+}
+
+// Generamos los diccionarios de precios promedios de compra corregidos
+$pcC = ($mysqliCentral) ? precioPromCompra($mysqliCentral, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+$pcD = ($mysqliDrinks) ? precioPromCompra($mysqliDrinks, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+
+function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
+    global $mes, $anio, $fechaSQL, $mysqli, $nitSedes; 
+    if (!$mysqli_conn) return ['inventario'=>0, 'inv_venta'=>0, 'venta_dia'=>0, 'trans_dia'=>0, 'trans_auto_val'=>0, 'trans_auto_cant'=>0, 'venta_mes'=>0, 'utilidad'=>0];
     
     $nit = $nitSedes[$nombreSede];
 
-    // 1. PROMEDIOS DE VENTA (45 DÍAS)
-    $promedios = [];
-    $sqlProm = "SELECT IDPRODUCTO, SUM(CANTIDAD * VALORPROD) / SUM(CANTIDAD) as promedio 
-                FROM (
-                    SELECT IDPRODUCTO, CANTIDAD, VALORPROD FROM DETFACTURAS DF INNER JOIN FACTURAS F ON F.IDFACTURA=DF.IDFACTURA WHERE F.ESTADO='0' AND F.FECHA >= '$fecha_45_atras'
-                    UNION ALL
-                    SELECT IDPRODUCTO, CANTIDAD, VALORPROD FROM DETPEDIDOS DP INNER JOIN PEDIDOS P ON P.IDPEDIDO=DP.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA >= '$fecha_45_atras'
-                ) AS historial GROUP BY IDPRODUCTO";
-    
-    $resProm = $mysqli_conn->query($sqlProm);
-    if($resProm) while($p = $resProm->fetch_assoc()) $promedios[$p['IDPRODUCTO']] = $p['promedio'];
-
-    // 2. INVENTARIOS (COSTO Y VENTA)
+    // 2. INVENTARIOS (COSTO Y VENTA DIRECTA)
     $invCosto = 0;
     $invVenta = 0;
-    $resInv = $mysqli_conn->query("SELECT I.idproducto, I.cantidad, P.costo FROM inventario I INNER JOIN productos P ON P.idproducto = I.idproducto WHERE I.estado='0'");
+    $resInv = $mysqli_conn->query("SELECT I.idproducto, I.cantidad, P.costo, P.precioventa, P.Barcode FROM inventario I INNER JOIN productos P ON P.idproducto = I.idproducto WHERE I.estado='0'");
     
     if($resInv){
         while($i = $resInv->fetch_assoc()){
-            $invCosto += ($i['cantidad'] * $i['costo']);
-            $p_venta = $promedios[$i['idproducto']] ?? $i['costo'];
+            $costoReal = $pcData[$i['Barcode']] ?? $i['costo'];
+            $invCosto += ($i['cantidad'] * $costoReal);
+            
+            $p_venta = $i['precioventa'] ?? $costoReal;
             $invVenta += ($i['cantidad'] * $p_venta);
         }
     }
@@ -77,29 +91,62 @@ function analizarSucursal($mysqli_conn, $nombreSede){
         SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
     ) X")->fetch_assoc()['v'] ?? 0;
 
-    // 4. TRANSFERENCIAS
+    // 4. TRANSFERENCIAS MANUALES (Relaciontransferencias)
     $tr_res = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha = '$fechaSQL' AND NitEmpresa = '$nit' AND Estado = 1");
     $transDia = ($tr_res) ? $tr_res->fetch_assoc()['total'] : 0;
 
+    // 4.1. TRANSFERENCIAS AUTOMÁTICAS (Nequi)
+    $transAutoVal = 0;
+    $transAutoCant = 0;
+    if ($mysqli) {
+        $stmtAuto = $mysqli->prepare("SELECT COUNT(n.id) AS total, COALESCE(SUM(n.monto), 0) AS valor FROM notificaciones_nequi n INNER JOIN control_checks_nequi c ON n.id = c.id_transferencia WHERE DATE(n.fecha_correo) = ? AND c.nit_empresa = ? AND n.estado_sesion = 'Recibido'");
+        if ($stmtAuto) {
+            $stmtAuto->bind_param("ss", $fechaSQL, $nit);
+            $stmtAuto->execute();
+            $resAuto = $stmtAuto->get_result()->fetch_assoc();
+            if ($resAuto) {
+                $transAutoVal = (float)$resAuto['valor'];
+                $transAutoCant = (int)$resAuto['total'];
+            }
+            $stmtAuto->close();
+        }
+    }
+
     // 5. VENTA MES Y UTILIDAD
-    $r = $mysqli_conn->query("SELECT SUM(venta) AS ventas, SUM(util) AS utilidad FROM (
-        SELECT D.CANTIDAD * D.VALORPROD AS venta, (D.CANTIDAD * D.VALORPROD) - (D.CANTIDAD * P.costo) AS util FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA INNER JOIN productos P ON P.idproducto = D.IDPRODUCTO WHERE F.ESTADO='0' AND MONTH(F.FECHA)='$mes' AND YEAR(F.FECHA)='$anio'
-        UNION ALL
-        SELECT DP.CANTIDAD * DP.VALORPROD, (DP.CANTIDAD * DP.VALORPROD) - (DP.CANTIDAD * P.costo) FROM PEDIDOS PE INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'
-    ) T")->fetch_assoc();
+    $sqlMesF = "SELECT D.CANTIDAD, D.VALORPROD, P.costo, P.Barcode FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA INNER JOIN productos P ON P.idproducto = D.IDPRODUCTO WHERE F.ESTADO='0' AND MONTH(F.FECHA)='$mes' AND YEAR(F.FECHA)='$anio'";
+    $sqlMesP = "SELECT DP.CANTIDAD, DP.VALORPROD, P.costo, P.Barcode FROM PEDIDOS PE INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'";
+
+    $totalVentasMes = 0;
+    $totalUtilidadMes = 0;
+
+    foreach([$sqlMesF, $sqlMesP] as $queryMes) {
+        $resM = $mysqli_conn->query($queryMes);
+        if($resM) {
+            while($rowM = $resM->fetch_assoc()) {
+                $vta = $rowM['CANTIDAD'] * $rowM['VALORPROD'];
+                $cst = $pcData[$rowM['Barcode']] ?? $rowM['costo'];
+                $util = $vta - ($rowM['CANTIDAD'] * $cst);
+                
+                $totalVentasMes += $vta;
+                $totalUtilidadMes += $util;
+            }
+        }
+    }
 
     return [
-        'inventario' => $invCosto, 
-        'inv_venta'  => $invVenta,
-        'venta_dia'  => $ventaDia, 
-        'trans_dia'  => $transDia, 
-        'venta_mes'  => $r['ventas'] ?? 0, 
-        'utilidad'   => $r['utilidad'] ?? 0
+        'inventario'     => $invCosto, 
+        'inv_venta'      => $invVenta,
+        'venta_dia'      => $ventaDia, 
+        'trans_dia'      => $transDia, 
+        'trans_auto_val' => $transAutoVal,
+        'trans_auto_cant'=> $transAutoCant,
+        'venta_mes'      => $totalVentasMes, 
+        'utilidad'       => $totalUtilidadMes
     ];
 }
 
-$central = analizarSucursal($mysqliCentral, 'CENTRAL');
-$drinks  = analizarSucursal($mysqliDrinks, 'DRINKS');
+$central = analizarSucursal($mysqliCentral, 'CENTRAL', $pcC);
+$drinks  = analizarSucursal($mysqliDrinks, 'DRINKS', $pcD);
 
 // Compras del día
 $todasLasCompras = [];
@@ -235,8 +282,8 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
     <div class="header-top">
         <h2>Panel Administrativo</h2>
         <div class="header-actions">
-            <button class="btn-refresh" onclick="location.reload()">🔄 Actualizar</button>
-            <div class="timer-box">⏱️ <span id="countdown">03:00</span></div>
+            <button class="btn-refresh" onclick="location.reload();">🔄 Actualizar</button>
+            <div class="timer-box">⏱️ Act: <span id="countdown">03:00</span></div>
         </div>
     </div>
 
@@ -245,7 +292,11 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             <div>
                 <h3>🏢 Central</h3>
                 <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
-                <div class="details">Trans: <?= moneda($central['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia']-$central['trans_dia']) ?></b></div>
+                <div class="details">
+                    Trans. Manual: <?= moneda($central['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($central['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia'] - ($central['trans_dia'] + $central['trans_auto_val'])) ?></b>
+                </div>
             </div>
             <div>
                 <div class="separator"></div>
@@ -262,7 +313,11 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
             <div>
                 <h3>🍹 Drinks</h3>
                 <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
-                <div class="details">Trans: <?= moneda($drinks['trans_dia']) ?><br>Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia']-$drinks['trans_dia']) ?></b></div>
+                <div class="details">
+                    Trans. Manual: <?= moneda($drinks['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($drinks['trans_auto_val']) ?> <small>(<?= $drinks['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia'] - ($drinks['trans_dia'] + $drinks['trans_auto_val'])) ?></b>
+                </div>
             </div>
             <div>
                 <div class="separator"></div>
@@ -280,8 +335,9 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <h3>📌 Totales Consolidados</h3>
                 <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
                 <div class="details">
-                    Trans: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
-                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - ($central['trans_dia']+$drinks['trans_dia'])) ?></b>
+                    Trans. Manual: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($central['trans_auto_val']+$drinks['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant']+$drinks['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - (($central['trans_dia']+$drinks['trans_auto_val']) + ($drinks['trans_dia']+$drinks['trans_auto_val']))) ?></b>
                 </div>
             </div>
             <div>

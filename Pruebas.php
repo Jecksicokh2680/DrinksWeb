@@ -1,306 +1,478 @@
 <?php
-require('ConnCentral.php'); // $mysqliCentral
-require('ConnDrinks.php');  // $mysqliDrinks
-require('Conexion.php');    // $mysqliWeb / $mysqli
-
-define('NIT_CENTRAL', '86057267-8');
-define('NIT_DRINKS',  '901724534-7');
-
 session_start();
-mysqli_report(MYSQLI_REPORT_OFF);
+require_once("ConnCentral.php");
+require_once("ConnDrinks.php");
+require_once("Conexion.php"); 
 
 date_default_timezone_set('America/Bogota');
 
-/* =====================================================
-    1. PARÁMETROS DE FILTRO (Mes para Objetivos / Día Actual para Ventas)
-===================================================== */
-$mes_sel  = (int)($_GET['mm'] ?? date('m'));
-$anio_sel = (int)($_GET['aa'] ?? date('Y'));
+// --- Lógica de guardado de egresos ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] == 'update_compra') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    if ($data) {
+        $idCompra = intval($data['id']);
+        $nuevoValor = floatval(preg_replace('/[^0-9.]/', '', str_replace(',', '.', $data['valor'])));
+        $db = ($data['sede'] === 'CENTRAL') ? $mysqliCentral : $mysqliDrinks;
+        
+        if ($db) {
+            $stmt = $db->prepare("UPDATE DETCOMPRAS SET VALOR = (? / NULLIF(CANTIDAD, 0)), descuento = 0, porciva = 0, ValICUIUni = 0 WHERE idcompra = ?");
+            $stmt->bind_param("di", $nuevoValor, $idCompra);
+            $echo_success = $stmt->execute();
+            echo json_encode(['success' => $echo_success]);
+            $stmt->close();
+        }
+    }
+    exit;
+}
 
-// Rango de fechas ajustado estrictamente al DÍA ACTUAL para las ventas
-$f_ini = date('Ymd'); 
-$f_fin = date('Ymd'); 
+function moneda($v){ return '$' . number_format((float)$v, 0, ',', '.'); }
+function porcentaje($parte, $total) { 
+    if ($total <= 0) return '0%';
+    return number_format(($parte / $total) * 100, 1, ',', '.') . '%'; 
+}
 
-/* =====================================================
-    2. OBTENER EQUIVALENCIAS UNICAJA DE PRODUCTOS
-===================================================== */
-$unicaja = [];
-if (isset($mysqliWeb) && !$mysqliWeb->connect_error) {
-    $mysqliWeb->set_charset("utf8mb4");
-    $qUnicaja = $mysqliWeb->query("SELECT cp.Sku, cat.Unicaja FROM catproductos cp INNER JOIN categorias cat ON cp.CodCat = cat.CodCat");
-    if ($qUnicaja) {
-        while ($u = $qUnicaja->fetch_assoc()) {
-            $unicaja[$u['Sku']] = (float)$u['Unicaja'];
+$fechaSQL = date('Y-m-d');
+$fechaSinGuion = date('Ymd');
+$mes = date('m');
+$anio = date('Y');
+$fecha_45_atras = date('Y-m-d', strtotime('-60 days'));
+
+$nitSedes = ['CENTRAL' => '86057267-8', 'DRINKS' => '901724534-7'];
+
+// Función para calcular el precio promedio de compra ponderado
+function precioPromCompra($mysqli_conn, $fDesde, $fHasta){
+    $sql = "SELECT P.Barcode, SUM(Q.CANTIDAD * Q.VALOR) / NULLIF(SUM(Q.CANTIDAD), 0) pv_compra 
+            FROM (
+                SELECT D.IDPRODUCTO, D.CANTIDAD, D.VALOR 
+                FROM DETCOMPRAS D 
+                JOIN COMPRAS C ON C.idcompra = D.idcompra 
+                WHERE C.ESTADO = '0' AND C.FECHA BETWEEN '$fDesde' AND '$fHasta'
+            ) Q 
+            JOIN PRODUCTOS P ON P.IDPRODUCTO = Q.IDPRODUCTO 
+            GROUP BY P.Barcode";
+    
+    $out = []; 
+    $r = $mysqli_conn->query($sql);
+    while($r && $x = $r->fetch_assoc()) {
+        $out[$x['Barcode']] = $x['pv_compra'];
+    }
+    return $out;
+}
+
+// Generamos los diccionarios de precios promedios de compra corregidos
+$pcC = ($mysqliCentral) ? precioPromCompra($mysqliCentral, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+$pcD = ($mysqliDrinks) ? precioPromCompra($mysqliDrinks, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+
+function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
+    global $mes, $anio, $fechaSQL, $mysqli, $nitSedes; 
+    if (!$mysqli_conn) return ['inventario'=>0, 'inv_venta'=>0, 'venta_dia'=>0, 'trans_dia'=>0, 'trans_auto_val'=>0, 'trans_auto_cant'=>0, 'venta_mes'=>0, 'utilidad'=>0];
+    
+    $nit = $nitSedes[$nombreSede];
+
+    // 2. INVENTARIOS (COSTO Y VENTA DIRECTA)
+    $invCosto = 0;
+    $invVenta = 0;
+    $resInv = $mysqli_conn->query("SELECT I.idproducto, I.cantidad, P.costo, P.precioventa, P.Barcode FROM inventario I INNER JOIN productos P ON P.idproducto = I.idproducto WHERE I.estado='0'");
+    
+    if($resInv){
+        while($i = $resInv->fetch_assoc()){
+            $costoReal = $pcData[$i['Barcode']] ?? $i['costo'];
+            $invCosto += ($i['cantidad'] * $costoReal);
+            
+            $p_venta = $i['precioventa'] ?? $costoReal;
+            $invVenta += ($i['cantidad'] * $p_venta);
+        }
+    }
+    
+    // 3. VENTA DÍA
+    $ventaDia = $mysqli_conn->query("SELECT SUM(total) AS v FROM (
+        SELECT D.CANTIDAD * D.VALORPROD AS total FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DATE(F.FECHA)='$fechaSQL'
+        UNION ALL
+        SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
+    ) X")->fetch_assoc()['v'] ?? 0;
+
+    // 4. TRANSFERENCIAS MANUALES (Relaciontransferencias)
+    $tr_res = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha = '$fechaSQL' AND NitEmpresa = '$nit' AND Estado = 1");
+    $transDia = ($tr_res) ? $tr_res->fetch_assoc()['total'] : 0;
+
+    // 4.1. TRANSFERENCIAS AUTOMÁTICAS (Nequi)
+    $transAutoVal = 0;
+    $transAutoCant = 0;
+    if ($mysqli) {
+        $stmtAuto = $mysqli->prepare("SELECT COUNT(n.id) AS total, COALESCE(SUM(n.monto), 0) AS valor FROM notificaciones_nequi n INNER JOIN control_checks_nequi c ON n.id = c.id_transferencia WHERE DATE(n.fecha_correo) = ? AND c.nit_empresa = ? AND n.estado_sesion = 'Recibido'");
+        if ($stmtAuto) {
+            $stmtAuto->bind_param("ss", $fechaSQL, $nit);
+            $stmtAuto->execute();
+            $resAuto = $stmtAuto->get_result()->fetch_assoc();
+            if ($resAuto) {
+                $transAutoVal = (float)$resAuto['valor'];
+                $transAutoCant = (int)$resAuto['total'];
+            }
+            $stmtAuto->close();
+        }
+    }
+
+    // 5. VENTA MES Y UTILIDAD
+    $sqlMesF = "SELECT D.CANTIDAD, D.VALORPROD, P.costo, P.Barcode FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA INNER JOIN productos P ON P.idproducto = D.IDPRODUCTO WHERE F.ESTADO='0' AND MONTH(F.FECHA)='$mes' AND YEAR(F.FECHA)='$anio'";
+    $sqlMesP = "SELECT DP.CANTIDAD, DP.VALORPROD, P.costo, P.Barcode FROM PEDIDOS PE INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'";
+
+    $totalVentasMes = 0;
+    $totalUtilidadMes = 0;
+
+    foreach([$sqlMesF, $sqlMesP] as $queryMes) {
+        $resM = $mysqli_conn->query($queryMes);
+        if($resM) {
+            while($rowM = $resM->fetch_assoc()) {
+                $vta = $rowM['CANTIDAD'] * $rowM['VALORPROD'];
+                $cst = $pcData[$rowM['Barcode']] ?? $rowM['costo'];
+                $util = $vta - ($rowM['CANTIDAD'] * $cst);
+                
+                $totalVentasMes += $vta;
+                $totalUtilidadMes += $util;
+            }
+        }
+    }
+
+    return [
+        'inventario'     => $invCosto, 
+        'inv_venta'      => $invVenta,
+        'venta_dia'      => $ventaDia, 
+        'trans_dia'      => $transDia, 
+        'trans_auto_val' => $transAutoVal,
+        'trans_auto_cant'=> $transAutoCant,
+        'venta_mes'      => $totalVentasMes, 
+        'utilidad'       => $totalUtilidadMes
+    ];
+}
+
+$central = analizarSucursal($mysqliCentral, 'CENTRAL', $pcC);
+$drinks  = analizarSucursal($mysqliDrinks, 'DRINKS', $pcD);
+
+// Compras del día
+$todasLasCompras = [];
+foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $s => $db){
+    if (!$db) continue;
+    $res = $db->query("SELECT C.idcompra, CONCAT(T.nombres, ' ', T.apellidos) AS prov, SUM(D.CANTIDAD * (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0)) + ( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * D.porciva / 100) + D.ValICUIUni)) AS total FROM compras C INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra WHERE C.FECHA = '$fechaSinGuion' AND C.ESTADO = '0' GROUP BY C.idcompra");
+    if($res) {
+        while($row = $res->fetch_assoc()){ $row['sede'] = $s; $todasLasCompras[] = $row; }
+    }
+}
+
+$deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
+
+// ============================================================
+// RENDIMIENTO DE VENTAS POR CAJERO
+// ============================================================
+$rankingCajeros = [];
+$ventaGlobalConsolidada = $central['venta_dia'] + $drinks['venta_dia'];
+
+foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre => $dbActiva){
+    if (!$dbActiva) continue;
+    
+    $sqlCajeros = "SELECT NIT, NOMBRE FROM (
+        SELECT T1.NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOMBRE FROM FACTURAS F 
+        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fechaSinGuion'
+        UNION 
+        SELECT V.NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS NOMBRE FROM PEDIDOS P 
+        INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO 
+        INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fechaSinGuion'
+    ) X GROUP BY NIT";
+    
+    $resCajeros = $dbActiva->query($sqlCajeros);
+    if($resCajeros){
+        while($caj = $resCajeros->fetch_assoc()){
+            $nitCajero = $caj['NIT'];
+            $nombreCajero = $caj['NOMBRE'];
+            
+            $sqlVentaCajero = "SELECT SUM(T) AS TOTAL FROM (
+                SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
+                INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
+                LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fechaSinGuion' AND T1.NIT='$nitCajero'
+                UNION ALL 
+                SELECT (DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
+                INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO=P.IDUSUARIO 
+                INNER JOIN TERCEROS V ON V.IDTERCERO=UV.IDTERCERO WHERE P.ESTADO='0' AND P.FECHA='$fechaSinGuion' AND V.NIT='$nitCajero'
+            ) AS X";
+            
+            $vtaNeto = (float)($dbActiva->query($sqlVentaCajero)->fetch_assoc()['TOTAL'] ?? 0);
+            if($vtaNeto > 0){
+                $rankingCajeros[] = [
+                    'nombre' => $nombreCajero,
+                    'sede' => $sedeNombre,
+                    'total' => $vtaNeto
+                ];
+            }
         }
     }
 }
-
-/* =====================================================
-    3. OBTENER VENTAS EJECUTADAS (CENTRAL Y DRINKS)
-===================================================== */
-function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
-    if (!$cnx || $cnx->connect_error) return [];
-
-    $sql = "
-        SELECT 
-            T1.NOMBRES AS FACTURADOR,
-            PRODUCTOS.Barcode AS SKU,
-            DETFACTURAS.CANTIDAD,
-            (DETFACTURAS.CANTIDAD * DETFACTURAS.VALORPROD) AS TOTAL_VENTA
-        FROM FACTURAS
-        INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA = FACTURAS.IDFACTURA
-        INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETFACTURAS.IDPRODUCTO
-        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = FACTURAS.IDVENDEDOR
-        WHERE FACTURAS.ESTADO = '0' AND FACTURAS.FECHA BETWEEN ? AND ?
-
-        UNION ALL
-
-        SELECT 
-            T2.NOMBRES AS FACTURADOR,
-            PRODUCTOS.Barcode AS SKU,
-            DETPEDIDOS.CANTIDAD,
-            (DETPEDIDOS.CANTIDAD * DETPEDIDOS.VALORPROD) AS TOTAL_VENTA
-        FROM PEDIDOS
-        INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO = DETPEDIDOS.IDPEDIDO
-        INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETPEDIDOS.IDPRODUCTO
-        INNER JOIN USUVENDEDOR V ON V.IDUSUARIO = PEDIDOS.IDUSUARIO
-        INNER JOIN TERCEROS T2 ON T2.IDTERCERO = V.IDTERCERO
-        WHERE PEDIDOS.ESTADO = '0' AND PEDIDOS.FECHA BETWEEN ? AND ?
-    ";
-
-    $stmt = $cnx->prepare($sql);
-    if (!$stmt) return [];
-    $stmt->bind_param("ssss", $f_ini, $f_fin, $f_ini, $f_fin);
-    $stmt->execute();
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-}
-
-$rawVentas = [];
-if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
-    $rawVentas = array_merge($rawVentas, obtenerVentasEjecutadas($mysqliCentral, $f_ini, $f_fin));
-}
-if (isset($mysqliDrinks) && !$mysqliDrinks->connect_error) {
-    $rawVentas = array_merge($rawVentas, obtenerVentasEjecutadas($mysqliDrinks, $f_ini, $f_fin));
-}
-
-// Consolidar ventas por Facturador y SKU
-$ventasPorFacturador = [];
-foreach ($rawVentas as $v) {
-    $facturador = trim($v['FACTURADOR']);
-    $sku        = trim($v['SKU']);
-    $cantidad   = (float)$v['CANTIDAD'];
-    $valor      = (float)$v['TOTAL_VENTA'];
-
-    if (!isset($ventasPorFacturador[$facturador])) {
-        $ventasPorFacturador[$facturador] = [
-            'total_valor' => 0.0,
-            'skus'        => []
-        ];
-    }
-
-    $ventasPorFacturador[$facturador]['total_valor'] += $valor;
-
-    if (!isset($ventasPorFacturador[$facturador]['skus'][$sku])) {
-        $ventasPorFacturador[$facturador]['skus'][$sku] = 0.0;
-    }
-    $ventasPorFacturador[$facturador]['skus'][$sku] += $cantidad;
-}
-
-/* =====================================================
-    4. OBTENER OBJETIVOS DE LA BASE DE DATOS (WEB)
-===================================================== */
-$sqlObjetivos = "
-    SELECT 
-        t.CedulaNit,
-        t.Nombre,
-        t.NombreCom,
-        cab.id_cabecera,
-        cab.NitEmpresa,
-        cab.mm,
-        cab.aa,
-        cab.meta_valor_total,
-        det.Sku,
-        det.meta_cajas
-    FROM terceros t
-    INNER JOIN objetivos_cajeros_cab cab ON t.CedulaNit = cab.CedulaNit
-    LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
-    WHERE cab.mm = ? AND cab.aa = ?
-    ORDER BY t.Nombre ASC, det.Sku ASC
-";
-
-$stmtObj = $mysqliWeb->prepare($sqlObjetivos);
-$stmtObj->bind_param("ii", $mes_sel, $anio_sel);
-$stmtObj->execute();
-$resObj = $stmtObj->get_result();
-
-$reporte = [];
-
-while ($row = $resObj->fetch_assoc()) {
-    $cedula     = $row['CedulaNit'];
-    $nombre     = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
-    $idCabecera = $row['id_cabecera'];
-
-    if (!isset($reporte[$cedula])) {
-        $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
-
-        $reporte[$cedula] = [
-            'nombre'           => $nombre,
-            'cedula'           => $cedula,
-            'meta_valor_total' => (float)$row['meta_valor_total'],
-            'ejecutado_valor'  => $ejecutadoValor,
-            'detalles'         => []
-        ];
-    }
-
-    if (!empty($row['Sku'])) {
-        $sku       = $row['Sku'];
-        $metaCajas = (float)$row['meta_cajas'];
-
-        $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
-
-        $reporte[$cedula]['detalles'][] = [
-            'sku'            => $sku,
-            'meta_cajas'     => $metaCajas,
-            'cajas_vendidas' => $cantVendida,
-            'unds_vendidas'  => $cantVendida
-        ];
-    }
-}
+usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; });
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Seguimiento de Cumplimiento de Objetivos</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Administrative</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
-        .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
-        .filter-box { background: #eef2f5; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 25px; }
-        select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
-        button { background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; color: #374151; box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; }
         
-        .grid-paneles { 
-            display: grid; 
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 20px; 
-        }
-        @media (max-width: 900px) {
-            .grid-paneles { grid-template-columns: 1fr; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .header-top h2 { margin:0; font-size: 1.4rem; color: #1f2937; }
+
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .timer-box span { color: #60a5fa; min-width: 45px; }
+
+        .btn-refresh { background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.2s; }
+        .btn-refresh:hover { background: #1d4ed8; }
+
+        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        
+        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
+        .card:hover { transform: translateY(-2px); }
+        .card h3 { font-size: 1.1rem; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #111827; }
+
+        .main-value { font-size: 1.6rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; word-break: break-all; }
+        .details { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
+        .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; width: 100%; }
+
+        .sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .full-width { grid-column: 1 / -1; }
+
+        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
+
+        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e5e7eb; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
+        th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; position: sticky; top: 0; }
+        td { padding: 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+        
+        .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; display: inline-block; }
+
+        .ranking-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; gap: 10px; }
+        .ranking-user { width: 30%; font-weight: 600; min-width: 110px; }
+        .ranking-bar-bg { flex-grow: 1; background: #e5e7eb; height: 100%; min-height: 8px; max-height: 8px; border-radius: 4px; overflow: hidden; }
+        .ranking-bar-fill { background: #8b5cf6; height: 8px; border-radius: 4px; }
+        .ranking-total { width: 30%; text-align: right; font-weight: bold; min-width: 140px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+        @media (max-width: 768px) {
+            .sections-grid { grid-template-columns: 1fr; }
+            .full-width { grid-column: unset; }
         }
 
-        .tercero-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; background: #fff; }
-        .tercero-header { background: #263238; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .tercero-header h3 { margin: 0; font-size: 18px; }
-        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0; }
-        .metric-box { flex: 1; text-align: center; }
-        .metric-box .title { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; }
-        .metric-box .value { font-size: 16px; font-weight: bold; margin-top: 5px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; font-size: 13px; }
-        th { background: #eceff1; font-size: 11px; text-transform: uppercase; color: #455a64; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
-        .bg-success { background-color: #2e7d32; }
-        .bg-warning { background-color: #f57c00; }
-        .bg-danger { background-color: #c62828; }
-        .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 10px; width: 100%; overflow: hidden; margin-top: 4px; }
-        .progress-bar-fill { height: 100%; border-radius: 10px; }
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .header-top { flex-direction: column; align-items: flex-start; }
+            .header-actions { align-self: flex-end; width: 100%; justify-content: space-between; }
+            .main-value { font-size: 1.4rem; }
+            .card { padding: 15px; }
+            
+            .ranking-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; }
+            .ranking-user { width: 100%; }
+            .ranking-bar-bg { width: 100%; height: 6px; }
+            .ranking-total { width: 100%; text-align: left; justify-content: space-between; }
+        }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <form method="GET" class="filter-box">
-        <label><strong>Mes:</strong></label>
-        <select name="mm">
-            <?php for ($m = 1; $m <= 12; $m++): ?>
-                <option value="<?=$m?>" <?=$m == $mes_sel ? 'selected' : ''?>><?=date('F', mktime(0, 0, 0, $m, 1))?> (<?=$m?>)</option>
-            <?php endfor; ?>
-        </select>
-
-        <label><strong>Año:</strong></label>
-        <select name="aa">
-            <?php for ($a = date('Y'); $a >= date('Y') - 2; $a--): ?>
-                <option value="<?=$a?>" <?=$a == $anio_sel ? 'selected' : ''?>><?=$a?></option>
-            <?php endfor; ?>
-        </select>
-
-        <button type="submit">🔍 Cargar Cumplimiento</button>
-    </form>
-
-    <?php if (empty($reporte)): ?>
-        <p style="text-align:center; color:#777;">No se registraron objetivos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>).</p>
-    <?php else: ?>
-        <div class="grid-paneles">
-            <?php foreach ($reporte as $tercero): 
-                $metaVal  = $tercero['meta_valor_total'];
-                $ejecVal  = $tercero['ejecutado_valor'];
-                $pctValor = ($metaVal > 0) ? min(100, round(($ejecVal / $metaVal) * 100, 1)) : 0;
-                $badgeValClass = ($pctValor >= 100) ? 'bg-success' : (($pctValor >= 70) ? 'bg-warning' : 'bg-danger');
-            ?>
-                <div class="tercero-card">
-                    <div class="tercero-header">
-                        <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
-                        <span style="font-size: 12px;">NIT: <?= htmlspecialchars($tercero['cedula']) ?></span>
-                    </div>
-
-                    <div class="resumen-meta">
-                        <div class="metric-box">
-                            <div class="title">Meta Total</div>
-                            <div class="value" style="color:#0288d1; font-size:14px;">$ <?= number_format($metaVal, 0, ',', '.') ?></div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="title">Ejecutado Hoy</div>
-                            <div class="value" style="color:#2e7d32; font-size:14px;">$ <?= number_format($ejecVal, 0, ',', '.') ?></div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="title">% Cumplimiento</div>
-                            <div class="value">
-                                <span class="badge <?= $badgeValClass ?>"><?= $pctValor ?>%</span>
-                            </div>
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar-fill <?= $badgeValClass ?>" style="width: <?= $pctValor ?>%;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <?php if (!empty($tercero['detalles'])): ?>
-                        <div style="overflow-x: auto;">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>SKU</th>
-                                        <th>Meta</th>
-                                        <th>Hoy</th>
-                                        <th>% SKU</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($tercero['detalles'] as $det): 
-                                        $metaValSku = $det['meta_cajas'];
-                                        $cantValSku = $det['cajas_vendidas'];
-                                        $pctSku     = ($metaValSku > 0) ? round(($cantValSku / $metaValSku) * 100, 1) : 0;
-                                        $badgeSkuClass = ($pctSku >= 100) ? 'bg-success' : (($pctSku >= 70) ? 'bg-warning' : 'bg-danger');
-                                    ?>
-                                        <tr>
-                                            <td><code><?= htmlspecialchars($det['sku']) ?></code></td>
-                                            <td><?= number_format($metaValSku, 2, ',', '.') ?></td>
-                                            <td><strong><?= number_format($cantValSku, 0, ',', '.') ?></strong></td>
-                                            <td>
-                                                <span class="badge <?= $badgeSkuClass ?>"><?= $pctSku ?>%</span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p style="padding:15px; margin:0; color:#888; font-size:13px;"><em>Sin metas específicas por SKU.</em></p>
-                    <?php endif; ?>
-                </div>
-            <?php endforeach; ?>
+    <div class="header-top">
+        <h2>Panel Administrativo</h2>
+        <div class="header-actions">
+            <button class="btn-refresh" onclick="location.reload();">🔄 Actualizar</button>
+            <div class="timer-box">⏱️ Act: <span id="countdown">03:00</span></div>
         </div>
-    <?php endif; ?>
-</div>
+    </div>
 
+    <div class="grid-cards">
+        <div class="card">
+            <div>
+                <h3>🏢 Central</h3>
+                <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
+                <div class="details">
+                    Trans. Manual: <?= moneda($central['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($central['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia'] - ($central['trans_dia'] + $central['trans_auto_val'])) ?></b>
+                </div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad'], $central['venta_mes']) ?>)</b><br>
+                    Bodega Costo: <?= moneda($central['inventario']) ?><br>
+                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div>
+                <h3>🍹 Drinks</h3>
+                <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
+                <div class="details">
+                    Trans. Manual: <?= moneda($drinks['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($drinks['trans_auto_val']) ?> <small>(<?= $drinks['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia'] - ($drinks['trans_dia'] + $drinks['trans_auto_val'])) ?></b>
+                </div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($drinks['utilidad']) ?></span> <b>(<?= porcentaje($drinks['utilidad'], $drinks['venta_mes']) ?>)</b><br>
+                    Bodega Costo: <?= moneda($drinks['inventario']) ?><br>
+                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="border: 2px solid #3b82f6; background-color: #eff6ff;">
+            <div>
+                <h3>📌 Totales Consolidados</h3>
+                <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
+                <div class="details">
+                    Trans. Manual: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
+                    Trans. Automática: <?= moneda($central['trans_auto_val']+$drinks['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant']+$drinks['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - (($central['trans_dia']+$drinks['trans_auto_val']) + ($drinks['trans_dia']+$drinks['trans_auto_val']))) ?></b>
+                </div>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">
+                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad']+$drinks['utilidad'], $central['venta_mes']+$drinks['venta_mes']) ?>)</b><br>
+                    Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br>
+                    <b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div>
+                <h3>💼 Proveedores</h3>
+                <span class="main-value" style="color:#ef4444"><?= moneda($deudaProv) ?></span>
+            </div>
+            <div>
+                <div class="separator"></div>
+                <div class="details">
+                    <b>Inv. Neto a Compra:</b><br><span style="color:#2563eb"><?= moneda(($central['inventario']+$drinks['inventario'])+$deudaProv) ?></span><br>
+                    <b>Inv. Neto a Venta:</b><br><span style="color:#10b981"><?= moneda(($central['inv_venta']+$drinks['inv_venta'])+$deudaProv) ?></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sections-grid">
+        <div class="wrap-box">
+            <h4 style="text-align:center; margin-top:0; color:#4b5563;">📊 % PARTICIPACION INVENTARIOS</h4>
+            <div style="position: relative; height:200px;"><canvas id="chartInv"></canvas></div>
+        </div>
+        <div class="wrap-box">
+            <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION VENTAS</h4>
+            <div style="position: relative; height:200px;"><canvas id="chartVenta"></canvas></div>
+        </div>
+
+        <div class="wrap-box full-width">
+            <h3 style="margin-top:0; color:#111827; font-size:1.1rem; display:flex; align-items:center; gap:8px;">🏆 Rendimiento de Ventas por Cajero</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <?php if(empty($rankingCajeros)): ?>
+                    <div style="text-align:center; color:#9ca3af; padding: 10px; font-size: 0.85rem;">No se registran ventas de cajeros el día de hoy</div>
+                <?php else: ?>
+                    <?php foreach($rankingCajeros as $index => $caj): 
+                        $porcentaje = $ventaGlobalConsolidada > 0 ? ($caj['total'] / $ventaGlobalConsolidada) * 100 : 0;
+                    ?>
+                    <div class="ranking-item">
+                        <div class="ranking-user">
+                            <span><?= $index + 1 ?>. <?= htmlspecialchars($caj['nombre']) ?></span>
+                            <small style="display:block; color:#9ca3af; font-size:10px; font-weight: normal;"><?= $caj['sede'] ?></small>
+                        </div>
+                        <div class="ranking-bar-bg">
+                            <div class="ranking-bar-fill" style="width: <?= $porcentaje ?>%;"></div>
+                        </div>
+                        <div class="ranking-total">
+                            <span style="color: #6b7280; font-weight: 600;"><?= number_format($porcentaje, 1) ?>%</span>
+                            <span><?= moneda($caj['total']) ?></span>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <div class="wrap-box full-width">
+            <h3 style="margin-top:0; color:#111827; font-size:1.1rem;">🚚 Compras del Día</h3>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Sede</th><th>Proveedor</th><th style="text-align:right">Valor Compra</th></tr></thead>
+                    <tbody>
+                        <?php foreach($todasLasCompras as $c): ?>
+                        <tr>
+                            <td><small style="background:#f3f4f6; color:#4b5563; padding:4px 8px; border-radius:6px; font-weight:bold;"><?= $c['sede'] ?></small></td>
+                            <td><?= $c['prov'] ?></td>
+                            <td style="text-align:right"><span contenteditable="true" class="editable edit-compra" data-id="<?= $c['idcompra'] ?>" data-sede="<?= $c['sede'] ?>"><?= number_format($c['total'], 0, ',', '.') ?></span></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if(empty($todasLasCompras)): ?>
+                            <tr><td colspan="3" style="text-align:center; color:#9ca3af;">No hay compras hoy</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script>
+    let secondsLeft = 180;
+    const timerDisplay = document.getElementById('countdown');
+    const timer = setInterval(() => {
+        secondsLeft--;
+        let mins = Math.floor(secondsLeft / 60);
+        let secs = secondsLeft % 60;
+        timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        if (secondsLeft <= 0) { clearInterval(timer); location.reload(); }
+    }, 1000);
+
+    Chart.register(ChartDataLabels);
+    const chartOptions = { 
+        maintainAspectRatio: false, responsive: true, 
+        plugins: { legend: { display: false }, datalabels: { color: '#fff', font: { weight: 'bold', size: 11 }, formatter: (v, c) => { let s = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 ? (v * 100 / s).toFixed(1) + "%" : "0%"; } } } 
+    };
+    
+    new Chart(document.getElementById('chartInv'), { 
+        type: 'bar', 
+        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['inventario'] ?>, <?= $drinks['inventario'] ?>], backgroundColor: ['#2563eb', '#10b981'], borderRadius: 6 }] }, 
+        options: chartOptions 
+    });
+
+    new Chart(document.getElementById('chartVenta'), { 
+        type: 'pie', 
+        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?= $drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
+        options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } 
+    });
+
+    document.querySelectorAll('.edit-compra').forEach(el => {
+        el.addEventListener('blur', function() {
+            const rawVal = this.innerText.replace(/\./g, '').replace(/,/g, '.');
+            const val = parseFloat(rawVal);
+            if(isNaN(val)) return;
+            
+            fetch('?action=update_compra', { 
+                method: 'POST', 
+                body: JSON.stringify({ id: this.dataset.id, sede: this.dataset.sede, valor: val }), 
+                headers: { 'Content-Type': 'application/json' } 
+            }).then(res => res.json()).then(data => { 
+                if(data.success) { 
+                    this.innerText = new Intl.NumberFormat('es-CO').format(val); 
+                    this.style.backgroundColor = "#dcfce7"; 
+                    setTimeout(() => this.style.backgroundColor = "transparent", 1000); 
+                } 
+            });
+        });
+    });
+</script>
 </body>
 </html>
