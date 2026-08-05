@@ -5,12 +5,12 @@ session_start();
 require 'auth_check.php';
 
 // Si no hay sesión, redirigimos al Login rompiendo cualquier iframe
-if (empty($_SESSION['Usuario'])) {
+if (empty($_SESSION['CedulaNit'])) {
     echo "<script>window.top.location.href='Login.php?msg=Debe iniciar sesión';</script>";
     exit;
 }
 
-$UsuarioSesion = $_SESSION['Usuario'];
+$UsuarioSesion = $_SESSION['CedulaNit'];
 
 /* ============================================
     FUNCIÓN AUTORIZACIÓN
@@ -389,6 +389,7 @@ function abrirPopup(event, url) {
                             </button>
                             <div id="adminConf" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
+                                    <a class="nav-link" href="SacaUsuarios.php" target="contentFrame">Cerrar Sesiones</a>
                                     <a class="nav-link" href="CrearUsuarios.php" target="contentFrame">Crear Usuarios</a>
                                     <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Crear Autorizaciones</a>
                                     <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Crear Auto por Usuario</a>

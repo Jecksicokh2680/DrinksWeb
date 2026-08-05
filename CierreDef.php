@@ -42,7 +42,7 @@ if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > 
 $_SESSION['ultimo_acceso'] = time();
 
 // Validación de usuario
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 if ($UsuarioSesion === '') { 
     header("Location: logout.php?msg=Sesion expirada");
     exit; 

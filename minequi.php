@@ -5,10 +5,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 $sesionExpirada = false;
-if (!isset($_SESSION['Usuario']) || empty($_SESSION['Usuario'])) {
+if (!isset($_SESSION['CedulaNit']) || empty($_SESSION['CedulaNit'])) {
     $sesionExpirada = true;
 }
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 ?>
 <?php if ($sesionExpirada): ?>
 <script>

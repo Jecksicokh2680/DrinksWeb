@@ -25,7 +25,7 @@ $_SESSION['ultimo_acceso'] = time();
 /* ============================================================
     VARIABLES DE SESIÓN
 ============================================================ */
-$UsuarioSesion   = $_SESSION['Usuario']    ?? '';
+$UsuarioSesion   = $_SESSION['CedulaNit']    ?? '';
 $NitSesion       = $_SESSION['NitEmpresa']  ?? '';
 $SucursalSesion  = $_SESSION['NroSucursal'] ?? '';
 

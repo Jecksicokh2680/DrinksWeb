@@ -13,7 +13,7 @@ date_default_timezone_set('America/Bogota');
 define('NIT_CENTRAL', '86057267-8');
 define('NIT_DRINKS',  '901724534-7');
 
-if (!isset($_SESSION['Usuario'])) {
+if (!isset($_SESSION['CedulaNit'])) {
     die("Sesión no válida. Por favor inicie sesión.");
 }
 

@@ -19,13 +19,13 @@ if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > 
 $_SESSION['ultimo_acceso'] = time();
 
 // Si no hay sesión válida, redirige al Login (Protección de ruta)
-if (!isset($_SESSION['Usuario'])) {
+if (!isset($_SESSION['CedulaNit'])) {
     header("Location: login.php?msg=Debe iniciar sesion");
     exit;
 }
 
 // Ahora sí tomará la Cédula/Nit del usuario real logueado
-$UsuarioSesion   = $_SESSION['Usuario'];
+$UsuarioSesion   = $_SESSION['CedulaNit'];
 $fechaActual     = date("Y-m-d H:i");
 $nombreUsuario   = "Usuario desconocido"; // Valor por defecto si no se encuentra en la base de datos
 

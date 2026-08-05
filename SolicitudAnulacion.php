@@ -13,7 +13,7 @@ define('NIT_DRINKS', '901724534-7');
 /* ============================================================
     ASIGNACIÓN DE VARIABLES DE SESIÓN Y SEGURIDAD
 ============================================================ */
-$Usuario     = $_SESSION['Usuario']     ?? 'INVITADO'; 
+$Usuario     = $_SESSION['CedulaNit']     ?? 'INVITADO'; 
 $NitEmpresa  = $_SESSION['NitEmpresa'] ?? 'SIN_NIT';
 $NroSucursal = $_SESSION['NroSucursal'] ?? NIT_CENTRAL; 
 

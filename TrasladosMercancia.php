@@ -11,7 +11,7 @@ define('NIT_DRINKS',  '901724534-7');
 define('SUC_DEFAULT', '001');
 
 $mysqli = $mysqliWeb; 
-$UsuarioSesion = $_SESSION['Usuario'] ?? 'SISTEMA';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? 'SISTEMA';
 
 $nombresSedesMap = [
     '86057267-8'  => 'CENTRAL',
