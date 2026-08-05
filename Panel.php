@@ -254,7 +254,7 @@ function abrirPopup(event, url) {
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
                         <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
-                             
+                      <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a>           
                          <!-- <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a> -->             
                         
                     </div>
@@ -420,13 +420,18 @@ function abrirPopup(event, url) {
     </div>
 </div>
 
-<iframe name="contentFrame" class="content-frame" srcdoc="
-    <html style='height:100%; margin:0; padding:0;'>
-    <body style='margin:0; padding:0; height:100%; width:100%; overflow:hidden;'>
-        <img src='ment_promo_breb.png' style='width:100%; height:100%; object-fit:cover;'>
+<iframe name="contentFrame" class="content-frame" srcdoc='
+    <html style="height:100%; margin:0; padding:0;">
+    <body style="margin:0; padding:0; height:100%; width:100%; overflow:hidden; display:flex; flex-direction:row; flex-wrap:wrap;">
+        <div style="flex:1; height:100%; min-width:300px;">
+            <img src="FachadaCentral.jpeg" style="width:100%; height:100%; object-fit:cover; display:block;">
+        </div>
+        <div style="flex:1; height:100%; min-width:300px;">
+            <img src="FachadaDrinks.jpeg" style="width:100%; height:100%; object-fit:cover; display:block;">
+        </div>
     </body>
     </html>
-"></iframe>
+'></iframe>
 
 <?php if ($EsAgenteAdmin): ?>
 <div class="ai-agent-wrap" id="aiAgentWrap">

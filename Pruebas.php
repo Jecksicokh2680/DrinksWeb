@@ -1,478 +1,453 @@
 <?php
+/* ============================================================
+    CONFIGURACIÓN Y CONEXIONES
+============================================================ */
+$session_timeout = 3600;
 session_start();
-require_once("ConnCentral.php");
-require_once("ConnDrinks.php");
-require_once("Conexion.php"); 
+date_default_timezone_set('America/Bogota'); 
+require("ConnCentral.php"); 
+require("Conexion.php");    // Define $mysqliWeb que apunta a BnmaWeb
+require("ConnDrinks.php");  
 
-date_default_timezone_set('America/Bogota');
+$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+if ($UsuarioSesion === '') { die("Debe iniciar sesión."); }
 
-// --- Lógica de guardado de egresos ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] == 'update_compra') {
-    $data = json_decode(file_get_contents('php://input'), true);
-    if ($data) {
-        $idCompra = intval($data['id']);
-        $nuevoValor = floatval(preg_replace('/[^0-9.]/', '', str_replace(',', '.', $data['valor'])));
-        $db = ($data['sede'] === 'CENTRAL') ? $mysqliCentral : $mysqliDrinks;
-        
-        if ($db) {
-            $stmt = $db->prepare("UPDATE DETCOMPRAS SET VALOR = (? / NULLIF(CANTIDAD, 0)), descuento = 0, porciva = 0, ValICUIUni = 0 WHERE idcompra = ?");
-            $stmt->bind_param("di", $nuevoValor, $idCompra);
-            $echo_success = $stmt->execute();
-            echo json_encode(['success' => $echo_success]);
-            $stmt->close();
-        }
-    }
-    exit;
+function Autorizacion($User, $Solicitud) {
+    global $mysqliWeb; 
+    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=?");
+    $stmt->bind_param("ss", $User, $Solicitud);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
 
-function moneda($v){ return '$' . number_format((float)$v, 0, ',', '.'); }
-function porcentaje($parte, $total) { 
-    if ($total <= 0) return '0%';
-    return number_format(($parte / $total) * 100, 1, ',', '.') . '%'; 
+$permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
+$permiso0003 = Autorizacion($UsuarioSesion, '0003');
+
+if ($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
+    die("No tiene autorización para ver este módulo.");
 }
 
-$fechaSQL = date('Y-m-d');
-$fechaSinGuion = date('Ymd');
-$mes = date('m');
-$anio = date('Y');
-$fecha_45_atras = date('Y-m-d', strtotime('-60 days'));
+$fecha_input = $_GET['fecha'] ?? date('Y-m-d');
+$fecha_esc   = str_replace('-', '', $fecha_input);
 
-$nitSedes = ['CENTRAL' => '86057267-8', 'DRINKS' => '901724534-7'];
+function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-// Función para calcular el precio promedio de compra ponderado
-function precioPromCompra($mysqli_conn, $fDesde, $fHasta){
-    $sql = "SELECT P.Barcode, SUM(Q.CANTIDAD * Q.VALOR) / NULLIF(SUM(Q.CANTIDAD), 0) pv_compra 
-            FROM (
-                SELECT D.IDPRODUCTO, D.CANTIDAD, D.VALOR 
-                FROM DETCOMPRAS D 
-                JOIN COMPRAS C ON C.idcompra = D.idcompra 
-                WHERE C.ESTADO = '0' AND C.FECHA BETWEEN '$fDesde' AND '$fHasta'
-            ) Q 
-            JOIN PRODUCTOS P ON P.IDPRODUCTO = Q.IDPRODUCTO 
-            GROUP BY P.Barcode";
-    
-    $out = []; 
-    $r = $mysqli_conn->query($sql);
-    while($r && $x = $r->fetch_assoc()) {
-        $out[$x['Barcode']] = $x['pv_compra'];
-    }
-    return $out;
-}
+$sedes = [
+    ['conn' => $mysqliCentral, 'nombre' => 'CENTRAL', 'id' => 'central'],
+    ['conn' => $mysqliDrinks,  'nombre' => 'DRINKS (AWS)', 'id' => 'drinks']
+];
 
-// Generamos los diccionarios de precios promedios de compra corregidos
-$pcC = ($mysqliCentral) ? precioPromCompra($mysqliCentral, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
-$pcD = ($mysqliDrinks) ? precioPromCompra($mysqliDrinks, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+$globalVentas = 0; 
+$globalEgresos = 0; 
+$globalTransf = 0; 
+$globalFisico = 0;
+$globalEfectivoEntregado = 0;
+$globalTrfNequiAuto = 0; 
 
-function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
-    global $mes, $anio, $fechaSQL, $mysqli, $nitSedes; 
-    if (!$mysqli_conn) return ['inventario'=>0, 'inv_venta'=>0, 'venta_dia'=>0, 'trans_dia'=>0, 'trans_auto_val'=>0, 'trans_auto_cant'=>0, 'venta_mes'=>0, 'utilidad'=>0];
-    
-    $nit = $nitSedes[$nombreSede];
+$dataConsolidada = [];
+$egresosAgrupados = [];
+$resumenSedes = []; 
 
-    // 2. INVENTARIOS (COSTO Y VENTA DIRECTA)
-    $invCosto = 0;
-    $invVenta = 0;
-    $resInv = $mysqli_conn->query("SELECT I.idproducto, I.cantidad, P.costo, P.precioventa, P.Barcode FROM inventario I INNER JOIN productos P ON P.idproducto = I.idproducto WHERE I.estado='0'");
-    
-    if($resInv){
-        while($i = $resInv->fetch_assoc()){
-            $costoReal = $pcData[$i['Barcode']] ?? $i['costo'];
-            $invCosto += ($i['cantidad'] * $costoReal);
-            
-            $p_venta = $i['precioventa'] ?? $costoReal;
-            $invVenta += ($i['cantidad'] * $p_venta);
-        }
+foreach ($sedes as $s) {
+    $mysqliActiva = $s['conn'];
+    $nombreSede   = $s['nombre'];
+    $idSede       = $s['id'];
+
+    if ($idSede === 'drinks') {
+        $nitEmpresa = '901331637-7'; // NIT para Drinks
+    } else {
+        $nitEmpresa = '86057267-8'; // NIT para Central
     }
     
-    // 3. VENTA DÍA
-    $ventaDia = $mysqli_conn->query("SELECT SUM(total) AS v FROM (
-        SELECT D.CANTIDAD * D.VALORPROD AS total FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DATE(F.FECHA)='$fechaSQL'
-        UNION ALL
-        SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
-    ) X")->fetch_assoc()['v'] ?? 0;
+    $nroSucursal = '1'; 
 
-    // 4. TRANSFERENCIAS MANUALES (Relaciontransferencias)
-    $tr_res = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha = '$fechaSQL' AND NitEmpresa = '$nit' AND Estado = 1");
-    $transDia = ($tr_res) ? $tr_res->fetch_assoc()['total'] : 0;
-
-    // 4.1. TRANSFERENCIAS AUTOMÁTICAS (Nequi)
-    $transAutoVal = 0;
-    $transAutoCant = 0;
-    if ($mysqli) {
-        $stmtAuto = $mysqli->prepare("SELECT COUNT(n.id) AS total, COALESCE(SUM(n.monto), 0) AS valor FROM notificaciones_nequi n INNER JOIN control_checks_nequi c ON n.id = c.id_transferencia WHERE DATE(n.fecha_correo) = ? AND c.nit_empresa = ? AND n.estado_sesion = 'Recibido'");
-        if ($stmtAuto) {
-            $stmtAuto->bind_param("ss", $fechaSQL, $nit);
-            $stmtAuto->execute();
-            $resAuto = $stmtAuto->get_result()->fetch_assoc();
-            if ($resAuto) {
-                $transAutoVal = (float)$resAuto['valor'];
-                $transAutoCant = (int)$resAuto['total'];
-            }
-            $stmtAuto->close();
-        }
-    }
-
-    // 5. VENTA MES Y UTILIDAD
-    $sqlMesF = "SELECT D.CANTIDAD, D.VALORPROD, P.costo, P.Barcode FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA INNER JOIN productos P ON P.idproducto = D.IDPRODUCTO WHERE F.ESTADO='0' AND MONTH(F.FECHA)='$mes' AND YEAR(F.FECHA)='$anio'";
-    $sqlMesP = "SELECT DP.CANTIDAD, DP.VALORPROD, P.costo, P.Barcode FROM PEDIDOS PE INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'";
-
-    $totalVentasMes = 0;
-    $totalUtilidadMes = 0;
-
-    foreach([$sqlMesF, $sqlMesP] as $queryMes) {
-        $resM = $mysqli_conn->query($queryMes);
-        if($resM) {
-            while($rowM = $resM->fetch_assoc()) {
-                $vta = $rowM['CANTIDAD'] * $rowM['VALORPROD'];
-                $cst = $pcData[$rowM['Barcode']] ?? $rowM['costo'];
-                $util = $vta - ($rowM['CANTIDAD'] * $cst);
-                
-                $totalVentasMes += $vta;
-                $totalUtilidadMes += $util;
-            }
-        }
-    }
-
-    return [
-        'inventario'     => $invCosto, 
-        'inv_venta'      => $invVenta,
-        'venta_dia'      => $ventaDia, 
-        'trans_dia'      => $transDia, 
-        'trans_auto_val' => $transAutoVal,
-        'trans_auto_cant'=> $transAutoCant,
-        'venta_mes'      => $totalVentasMes, 
-        'utilidad'       => $totalUtilidadMes
+    $resumenSedes[$idSede] = [
+        'nombre' => $nombreSede, 
+        'nit_empresa' => $nitEmpresa,
+        'ventas' => 0, 
+        'egresos' => 0, 
+        'transf' => 0, 
+        'efectivo' => 0, 
+        'nequi_auto' => 0, 
+        'neto' => 0
     ];
-}
 
-$central = analizarSucursal($mysqliCentral, 'CENTRAL', $pcC);
-$drinks  = analizarSucursal($mysqliDrinks, 'DRINKS', $pcD);
-
-// Compras del día
-$todasLasCompras = [];
-foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $s => $db){
-    if (!$db) continue;
-    $res = $db->query("SELECT C.idcompra, CONCAT(T.nombres, ' ', T.apellidos) AS prov, SUM(D.CANTIDAD * (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0)) + ( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * D.porciva / 100) + D.ValICUIUni)) AS total FROM compras C INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra WHERE C.FECHA = '$fechaSinGuion' AND C.ESTADO = '0' GROUP BY C.idcompra");
-    if($res) {
-        while($row = $res->fetch_assoc()){ $row['sede'] = $s; $todasLasCompras[] = $row; }
-    }
-}
-
-$deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
-
-// ============================================================
-// RENDIMIENTO DE VENTAS POR CAJERO
-// ============================================================
-$rankingCajeros = [];
-$ventaGlobalConsolidada = $central['venta_dia'] + $drinks['venta_dia'];
-
-foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre => $dbActiva){
-    if (!$dbActiva) continue;
-    
-    $sqlCajeros = "SELECT NIT, NOMBRE FROM (
+    $qryCajeros = "SELECT NIT, NOMBRE FROM (
         SELECT T1.NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOMBRE FROM FACTURAS F 
-        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fechaSinGuion'
+        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fecha_esc'
         UNION 
         SELECT V.NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS NOMBRE FROM PEDIDOS P 
         INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO 
-        INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fechaSinGuion'
-    ) X GROUP BY NIT";
-    
-    $resCajeros = $dbActiva->query($sqlCajeros);
-    if($resCajeros){
-        while($caj = $resCajeros->fetch_assoc()){
-            $nitCajero = $caj['NIT'];
-            $nombreCajero = $caj['NOMBRE'];
-            
-            $sqlVentaCajero = "SELECT SUM(T) AS TOTAL FROM (
-                SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
-                INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
-                LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fechaSinGuion' AND T1.NIT='$nitCajero'
+        INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fecha_esc'
+    ) X GROUP BY NIT ORDER BY NOMBRE ASC";
+
+    $resCajeros = $mysqliActiva->query($qryCajeros);
+
+    if ($resCajeros) {
+        while ($c = $resCajeros->fetch_assoc()) {
+            $nitCajero = $c['NIT']; 
+            $nombreCajero = $c['NOMBRE'];
+
+            $qryUsuarioSesion = "SELECT UV.IDUSUARIO FROM USUVENDEDOR UV 
+                                 INNER JOIN TERCEROS T ON T.IDTERCERO = UV.IDTERCERO 
+                                 WHERE T.NIT = '$nitCajero' LIMIT 1";
+            $resUsr = $mysqliActiva->query($qryUsuarioSesion);
+            $usuarioLogin = ($resUsr && $rowUsr = $resUsr->fetch_assoc()) ? $rowUsr['IDUSUARIO'] : 'N/D';
+
+            $cierreCajero = false;
+            $qryCheck = "SELECT T2.NIT FROM ARQUEO AS A1
+                         INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
+                         INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
+                         WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
+                         AND T2.NIT = '$nitCajero' LIMIT 1";
+            $resCheck = $mysqliActiva->query($qryCheck);
+            if ($resCheck && $resCheck->num_rows > 0) { $cierreCajero = true; }
+
+            $qV = "SELECT SUM(VAL) AS TOTAL FROM (
+                SELECT SUM(DF.CANTIDAD*DF.VALORPROD) AS VAL FROM FACTURAS F 
+                INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA WHERE F.ESTADO='0' AND F.FECHA='$fecha_esc' AND F.IDVENDEDOR IN (SELECT IDTERCERO FROM TERCEROS WHERE NIT='$nitCajero')
                 UNION ALL 
-                SELECT (DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
-                INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO=P.IDUSUARIO 
-                INNER JOIN TERCEROS V ON V.IDTERCERO=UV.IDTERCERO WHERE P.ESTADO='0' AND P.FECHA='$fechaSinGuion' AND V.NIT='$nitCajero'
+                SELECT SUM(DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
+                INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA='$fecha_esc' AND P.IDUSUARIO IN (SELECT IDUSUARIO FROM USUVENDEDOR UV INNER JOIN TERCEROS T ON T.IDTERCERO=UV.IDTERCERO WHERE T.NIT='$nitCajero')
             ) AS X";
+            $vts = (float)($mysqliActiva->query($qV)->fetch_assoc()['TOTAL'] ?? 0);
+
+            $fechaInicio = $fecha_input . ' 00:00:00';
+            $fechaFin    = $fecha_input . ' 23:59:59';
+
+            // Consulta Nequi Auto con validación de resultados
+            $qNequiAuto = $mysqliWeb->prepare("SELECT 
+                    c.nit_empresa,
+                    c.nro_sucursal,
+                    c.usuario_cedula,
+                    COUNT(n.id) AS total_transferencias,
+                    COALESCE(SUM(n.monto), 0) AS valor_total
+                FROM 
+                    control_checks_nequi c
+                JOIN 
+                    notificaciones_nequi n ON c.id_transferencia = n.id
+                WHERE 
+                    c.fecha_hora_check BETWEEN ? AND ?
+                    AND c.nit_empresa = ? 
+                    AND c.nro_sucursal = ? 
+                    AND c.usuario_cedula = ?
+                GROUP BY 
+                    c.nit_empresa, 
+                    c.nro_sucursal, 
+                    c.usuario_cedula");
             
-            $vtaNeto = (float)($dbActiva->query($sqlVentaCajero)->fetch_assoc()['TOTAL'] ?? 0);
-            if($vtaNeto > 0){
-                $rankingCajeros[] = [
-                    'nombre' => $nombreCajero,
-                    'sede' => $sedeNombre,
-                    'total' => $vtaNeto
-                ];
+            $qNequiAuto->bind_param("sssss", $fechaInicio, $fechaFin, $nitEmpresa, $nroSucursal, $nitCajero);
+            $qNequiAuto->execute();
+            $resultadoNequi = $qNequiAuto->get_result();
+            
+            $valorNequiAuto = 0;
+            $cantNequiAuto  = 0;
+
+            if ($resultadoNequi && $resNequiAuto = $resultadoNequi->fetch_assoc()) {
+                $valorNequiAuto = (float)($resNequiAuto['valor_total'] ?? 0);
+                $cantNequiAuto  = (int)($resNequiAuto['total_transferencias'] ?? 0);
             }
+
+            $qE = "SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
+                   INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
+                   WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$nitCajero'";
+            $resE = $mysqliActiva->query($qE);
+            
+            $egrTotalCajero = 0;
+            $efectivoCajero = 0;
+            $tieneTransferenciaEnEgresos = false;
+
+            if($resE->num_rows > 0){
+                if(!isset($egresosAgrupados[$nitCajero])){
+                    $egresosAgrupados[$nitCajero] = ['nit' => $nitCajero, 'nombre' => $nombreCajero, 'sede' => $nombreSede, 'nit_empresa' => $nitEmpresa, 'id_sede' => $idSede, 'detalles' => [], 'total' => 0];
+                }
+                while($eg = $resE->fetch_assoc()){
+                    $motivo = $eg['MOTIVO'];
+                    $valor  = (float)$eg['VALOR'];
+                    $egresosAgrupados[$nitCajero]['detalles'][] = $eg;
+                    $egresosAgrupados[$nitCajero]['total'] += $valor;
+                    $egrTotalCajero += $valor;
+
+                    if (stripos($motivo, 'TRANSF') !== false) { $tieneTransferenciaEnEgresos = true; }
+                    if (stripos($motivo, 'ENTREGA') !== false || stripos($motivo, 'EFECTIVO') !== false || stripos($motivo, 'MONEDA') !== false) {
+                        $efectivoCajero += $valor;
+                    }
+                }
+            }
+
+            $qT = "SELECT SUM(Monto) AS TOTAL FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$nitCajero'";
+            $trf_auto = (float)($mysqliWeb->query($qT)->fetch_assoc()['TOTAL'] ?? 0);
+            
+            $trf_a_operar = ($tieneTransferenciaEnEgresos) ? 0 : $trf_auto;
+            $diferencia = ($egrTotalCajero + $trf_a_operar) - $vts;
+            
+            $leyenda = "CUADRADO";
+            if($diferencia > 0) $leyenda = "SOBRA";
+            if($diferencia < 0) $leyenda = "FALTA";
+
+            $dataConsolidada[] = [
+                'sede' => $nombreSede, 
+                'nit_empresa' => $nitEmpresa,
+                'nombre' => $nombreCajero, 
+                'nit' => $nitCajero,
+                'usuario_login' => $usuarioLogin,
+                'ventas' => $vts, 
+                'egr' => $egrTotalCajero, 
+                'trf' => $trf_auto, 
+                'efectivo' => $efectivoCajero,
+                'nequi_auto' => $valorNequiAuto, 
+                'cant_nequi' => $cantNequiAuto,
+                'diferencia' => $diferencia, 
+                'cerrado' => $cierreCajero, 
+                'leyenda' => $leyenda,
+                'debug_nit_empresa' => $nitEmpresa,
+                'debug_sucursal' => $nroSucursal,
+                'debug_cedula' => $nitCajero,
+                'debug_f_inicio' => $fechaInicio,
+                'debug_f_fin' => $fechaFin
+            ];
+
+            $globalVentas += $vts; 
+            $globalEgresos += $egrTotalCajero; 
+            $globalTransf += $trf_auto; 
+            $globalFisico += $diferencia;
+            $globalEfectivoEntregado += $efectivoCajero;
+            $globalTrfNequiAuto += $valorNequiAuto;
+
+            $resumenSedes[$idSede]['ventas']     += $vts;
+            $resumenSedes[$idSede]['egresos']    += $egrTotalCajero;
+            $resumenSedes[$idSede]['transf']     += $trf_auto;
+            $resumenSedes[$idSede]['efectivo']   += $efectivoCajero;
+            $resumenSedes[$idSede]['nequi_auto'] += $valorNequiAuto;
+            $resumenSedes[$idSede]['neto']       += $diferencia;
         }
     }
 }
-usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; });
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Administrative</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <title>Auditoría Consolidada</title>
     <style>
-        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; color: #374151; box-sizing: border-box; }
-        *, *:before, *:after { box-sizing: inherit; }
-        
-        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-        .header-top h2 { margin:0; font-size: 1.4rem; color: #1f2937; }
-
-        .header-actions { display: flex; align-items: center; gap: 10px; }
-        .timer-box { background: #1e293b; color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .timer-box span { color: #60a5fa; min-width: 45px; }
-
-        .btn-refresh { background: #2563eb; color: #fff; border: none; padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.2s; }
-        .btn-refresh:hover { background: #1d4ed8; }
-
-        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        
-        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); text-align: center; border: 1px solid #e5e7eb; transition: transform 0.2s; height: 100%; display: flex; flex-direction: column; justify-content: space-between; }
-        .card:hover { transform: translateY(-2px); }
-        .card h3 { font-size: 1.1rem; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: #111827; }
-
-        .main-value { font-size: 1.6rem; font-weight: 800; color: #2563eb; display: block; margin-bottom: 8px; letter-spacing: -0.5px; word-break: break-all; }
-        .details { font-size: 0.85rem; line-height: 1.5; color: #4b5563; }
-        .separator { border-top: 1px solid #f3f4f6; margin: 12px 0; width: 100%; }
-
-        .sections-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .full-width { grid-column: 1 / -1; }
-
-        .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
-
-        .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e5e7eb; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
-        th { text-align: left; padding: 12px; background: #1f2937; color: #fff; font-weight: 600; position: sticky; top: 0; }
-        td { padding: 12px; border-bottom: 1px solid #f3f4f6; color: #374151; }
-        
-        .editable { color: #2563eb; font-weight: bold; border-bottom: 2px dashed #bfdbfe; cursor: pointer; padding: 2px 4px; border-radius: 4px; display: inline-block; }
-
-        .ranking-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem; gap: 10px; }
-        .ranking-user { width: 30%; font-weight: 600; min-width: 110px; }
-        .ranking-bar-bg { flex-grow: 1; background: #e5e7eb; height: 100%; min-height: 8px; max-height: 8px; border-radius: 4px; overflow: hidden; }
-        .ranking-bar-fill { background: #8b5cf6; height: 8px; border-radius: 4px; }
-        .ranking-total { width: 30%; text-align: right; font-weight: bold; min-width: 140px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-
-        @media (max-width: 768px) {
-            .sections-grid { grid-template-columns: 1fr; }
-            .full-width { grid-column: unset; }
-        }
-
-        @media (max-width: 480px) {
-            body { padding: 10px; }
-            .header-top { flex-direction: column; align-items: flex-start; }
-            .header-actions { align-self: flex-end; width: 100%; justify-content: space-between; }
-            .main-value { font-size: 1.4rem; }
-            .card { padding: 15px; }
-            
-            .ranking-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; }
-            .ranking-user { width: 100%; }
-            .ranking-bar-bg { width: 100%; height: 6px; }
-            .ranking-total { width: 100%; text-align: left; justify-content: space-between; }
-        }
+        :root { --primary: #2c3e50; --secondary: #1f2d3d; --accent: #f39c12; --success: #27ae60; --danger: #e74c3c; --bg: #f4f7f6; --info: #3498db; --nequi: #e91e63; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
+        .header-box { background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 25px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; }
+        .header-box h2 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.8rem); }
+        .universal-grid { display: grid; gap: 20px; margin-bottom: 30px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 5px solid var(--primary); display: flex; flex-direction: column; height: 100%; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-3px); }
+        .card-egreso { border-top: 5px solid var(--danger); }
+        .sede-label { font-size: 10px; font-weight: bold; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .cajero-name { margin: 5px 0 10px 0; color: var(--primary); font-size: 1.1rem; }
+        .cajero-nit { font-size: 0.85rem; color: #666; font-weight: normal; display: block; margin-bottom: 8px; }
+        .debug-box { background: #f8f9fa; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px; font-size: 11px; color: #475569; margin-bottom: 12px; }
+        .debug-box b { color: #1e293b; }
+        .row-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .total-box { margin-top: auto; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; }
+        .bg-sobra { background: #d4edda; color: #155724; } 
+        .bg-falta { background: #f8d7da; color: #721c24; } 
+        .bg-ok { background: #e3f2fd; color: #0d47a1; }
+        .status-badge { margin-top: 15px; padding: 8px; border-radius: 6px; text-align: center; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .status-open { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .status-closed { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .input-edit { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 13px; margin-bottom: 5px; background: #fafafa; }
+        .btn-save { background: var(--success); color: white; border: none; border-radius: 6px; cursor: pointer; padding: 8px 15px; font-size: 14px; width: 100%; transition: 0.3s; }
+        .footer-summary { background: var(--secondary); color: white; padding: 25px; border-radius: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; text-align: center; margin-top: 40px; }
+        .footer-item b { display: block; font-size: 1.2rem; margin-top: 5px; }
+        .neto-destaque { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); }
+        #timer { background: var(--accent); color: white; padding: 8px 16px; border-radius: 8px; font-weight: bold; font-family: monospace; }
+        .sede-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
     </style>
 </head>
 <body>
 
-    <div class="header-top">
-        <h2>Panel Administrativo</h2>
-        <div class="header-actions">
-            <button class="btn-refresh" onclick="location.reload();">🔄 Actualizar</button>
-            <div class="timer-box">⏱️ Act: <span id="countdown">03:00</span></div>
+<div class="header-box">
+    <h2>🚀 Panel de Auditoría</h2>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <input type="date" value="<?= $fecha_input ?>" onchange="location.href='?fecha='+this.value" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
+        <div id="timer">03:00</div>
+    </div>
+</div>
+
+<h3 style="color: var(--primary); font-size: 1.1rem; margin-bottom: 15px; border-left: 5px solid var(--info); padding-left: 10px;">🏢 Resumen de Operación</h3>
+<div class="sede-summary-grid">
+    <?php 
+    $sumVentas = 0; $sumEgresos = 0; $sumNeto = 0; $sumTransf = 0; $sumEfectivo = 0; $sumNequiAuto = 0;
+    foreach($resumenSedes as $rSede): 
+        $sumVentas += $rSede['ventas'];
+        $sumEgresos += $rSede['egresos'];
+        $sumNeto += $rSede['neto'];
+        $sumTransf += $rSede['transf'];
+        $sumEfectivo += $rSede['efectivo'];
+        $sumNequiAuto += $rSede['nequi_auto'];
+        
+        $claseSede = "bg-ok";
+        $leyendaSede = "CUADRADO";
+        if($rSede['neto'] > 0) { $claseSede = "bg-sobra"; $leyendaSede = "SOBRA"; }
+        if($rSede['neto'] < 0) { $claseSede = "bg-falta"; $leyendaSede = "FALTA"; }
+    ?>
+    <div class="card" style="border-top: 5px solid <?= ($rSede['nombre'] == 'CENTRAL') ? '#3498db' : '#9b59b6' ?>;">
+        <span class="sede-label">INDICADORES (NIT: <?= $rSede['nit_empresa'] ?>)</span>
+        <h4 class="cajero-name"><?= $rSede['nombre'] ?></h4>
+        <div class="row-item"><span>Ventas:</span> <b>$<?= money($rSede['ventas']) ?></b></div>
+        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($rSede['egresos']) ?></b></div>
+        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($rSede['efectivo']) ?></b></div>
+        <div class="row-item"><span>Transf (Manuales):</span> <b style="color:blue;">$<?= money($rSede['transf']) ?></b></div>
+        <div class="row-item"><span>Nequi Auto:</span> <b style="color:var(--nequi);">$<?= money($rSede['nequi_auto']) ?></b></div>
+        
+        <div class="total-box <?= $claseSede ?>" style="margin-top: 15px;">
+            <span><?= $leyendaSede ?> SEDE:</span> 
+            <span>$<?= money(abs($rSede['neto'])) ?></span>
         </div>
     </div>
+    <?php endforeach; ?>
 
-    <div class="grid-cards">
-        <div class="card">
-            <div>
-                <h3>🏢 Central</h3>
-                <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
-                <div class="details">
-                    Trans. Manual: <?= moneda($central['trans_dia']) ?><br>
-                    Trans. Automática: <?= moneda($central['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia'] - ($central['trans_dia'] + $central['trans_auto_val'])) ?></b>
-                </div>
-            </div>
-            <div>
-                <div class="separator"></div>
-                <div class="details">
-                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad'], $central['venta_mes']) ?>)</b><br>
-                    Bodega Costo: <?= moneda($central['inventario']) ?><br>
-                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <div>
-                <h3>🍹 Drinks</h3>
-                <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
-                <div class="details">
-                    Trans. Manual: <?= moneda($drinks['trans_dia']) ?><br>
-                    Trans. Automática: <?= moneda($drinks['trans_auto_val']) ?> <small>(<?= $drinks['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia'] - ($drinks['trans_dia'] + $drinks['trans_auto_val'])) ?></b>
-                </div>
-            </div>
-            <div>
-                <div class="separator"></div>
-                <div class="details">
-                    Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($drinks['utilidad']) ?></span> <b>(<?= porcentaje($drinks['utilidad'], $drinks['venta_mes']) ?>)</b><br>
-                    Bodega Costo: <?= moneda($drinks['inventario']) ?><br>
-                    <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span>
-                </div>
-            </div>
-        </div>
-
-        <div class="card" style="border: 2px solid #3b82f6; background-color: #eff6ff;">
-            <div>
-                <h3>📌 Totales Consolidados</h3>
-                <span class="main-value"><?= moneda($central['venta_dia']+$drinks['venta_dia']) ?></span>
-                <div class="details">
-                    Trans. Manual: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
-                    Trans. Automática: <?= moneda($central['trans_auto_val']+$drinks['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant']+$drinks['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - (($central['trans_dia']+$drinks['trans_auto_val']) + ($drinks['trans_dia']+$drinks['trans_auto_val']))) ?></b>
-                </div>
-            </div>
-            <div>
-                <div class="separator"></div>
-                <div class="details">
-                    Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']+$drinks['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']+$drinks['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad']+$drinks['utilidad'], $central['venta_mes']+$drinks['venta_mes']) ?>)</b><br>
-                    Tot. Bodega Costo: <?= moneda($central['inventario']+$drinks['inventario']) ?><br>
-                    <b>Tot. Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']+$drinks['inv_venta']) ?></span>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <div>
-                <h3>💼 Proveedores</h3>
-                <span class="main-value" style="color:#ef4444"><?= moneda($deudaProv) ?></span>
-            </div>
-            <div>
-                <div class="separator"></div>
-                <div class="details">
-                    <b>Inv. Neto a Compra:</b><br><span style="color:#2563eb"><?= moneda(($central['inventario']+$drinks['inventario'])+$deudaProv) ?></span><br>
-                    <b>Inv. Neto a Venta:</b><br><span style="color:#10b981"><?= moneda(($central['inv_venta']+$drinks['inv_venta'])+$deudaProv) ?></span>
-                </div>
-            </div>
+    <div class="card" style="border-top: 5px solid #2c3e50; background: #f8f9fa;">
+        <span class="sede-label">GLOBAL</span>
+        <h4 class="cajero-name">TOTAL CONSOLIDADO</h4>
+        <div class="row-item"><span>Ventas:</span> <b>$<?= money($sumVentas) ?></b></div>
+        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($sumEgresos) ?></b></div>
+        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($sumEfectivo) ?></b></div>
+        <div class="row-item"><span>Transf (Manuales):</span> <b style="color:blue;">$<?= money($sumTransf) ?></b></div>
+        <div class="row-item"><span>Nequi Auto Total:</span> <b style="color:var(--nequi);">$<?= money($sumNequiAuto) ?></b></div>
+        
+        <?php 
+            $claseGlobal = "bg-ok";
+            $leyendaGlobal = "CUADRADO";
+            if($sumNeto > 0) { $claseGlobal = "bg-sobra"; $leyendaGlobal = "SOBRA"; }
+            if($sumNeto < 0) { $claseGlobal = "bg-falta"; $leyendaGlobal = "FALTA"; }
+        ?>
+        <div class="total-box <?= $claseGlobal ?>" style="margin-top: 15px; background: #2c3e50; color: white;">
+            <span><?= $leyendaGlobal ?> GLOBAL:</span> 
+            <span>$<?= money(abs($sumNeto)) ?></span>
         </div>
     </div>
+</div>
 
-    <div class="sections-grid">
-        <div class="wrap-box">
-            <h4 style="text-align:center; margin-top:0; color:#4b5563;">📊 % PARTICIPACION INVENTARIOS</h4>
-            <div style="position: relative; height:200px;"><canvas id="chartInv"></canvas></div>
-        </div>
-        <div class="wrap-box">
-            <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION VENTAS</h4>
-            <div style="position: relative; height:200px;"><canvas id="chartVenta"></canvas></div>
+<h3 style="color: var(--primary); font-size: 1.1rem; margin-bottom: 15px; border-left: 5px solid var(--primary); padding-left: 10px;">👤 Detalle por Cajero</h3>
+<div class="universal-grid">
+    <?php foreach($dataConsolidada as $item): 
+        $claseFisico = "bg-ok";
+        if($item['diferencia'] > 0) $claseFisico = "bg-sobra";
+        if($item['diferencia'] < 0) $claseFisico = "bg-falta";
+    ?>
+    <div class="card">
+        <span class="sede-label"><?= $item['sede'] ?> (NIT: <?= $item['nit_empresa'] ?>)</span>
+        <h4 class="cajero-name" style="margin-bottom: 5px;">
+            <?= htmlspecialchars($item['nombre']) ?>
+        </h4>
+
+        <div style="font-size: 0.82rem; color: #555; background: #f1f5f9; padding: 8px; border-radius: 6px; margin-bottom: 12px; line-height: 1.4;">
+            <div>🆔 <b>NIT / Cédula:</b> <?= htmlspecialchars($item['nit']) ?></div>
+            <div>👤 <b>Usuario de Sesión:</b> <span style="color: var(--info); font-weight: bold;"><?= htmlspecialchars($item['usuario_login']) ?></span></div>
+            <div>🏢 <b>Sede de Operación:</b> <?= htmlspecialchars($item['sede']) ?> <span style="color: #666; font-size: 0.78rem;">(NIT: <?= htmlspecialchars($item['nit_empresa']) ?>)</span></div>
         </div>
 
-        <div class="wrap-box full-width">
-            <h3 style="margin-top:0; color:#111827; font-size:1.1rem; display:flex; align-items:center; gap:8px;">🏆 Rendimiento de Ventas por Cajero</h3>
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-                <?php if(empty($rankingCajeros)): ?>
-                    <div style="text-align:center; color:#9ca3af; padding: 10px; font-size: 0.85rem;">No se registran ventas de cajeros el día de hoy</div>
-                <?php else: ?>
-                    <?php foreach($rankingCajeros as $index => $caj): 
-                        $porcentaje = $ventaGlobalConsolidada > 0 ? ($caj['total'] / $ventaGlobalConsolidada) * 100 : 0;
-                    ?>
-                    <div class="ranking-item">
-                        <div class="ranking-user">
-                            <span><?= $index + 1 ?>. <?= htmlspecialchars($caj['nombre']) ?></span>
-                            <small style="display:block; color:#9ca3af; font-size:10px; font-weight: normal;"><?= $caj['sede'] ?></small>
-                        </div>
-                        <div class="ranking-bar-bg">
-                            <div class="ranking-bar-fill" style="width: <?= $porcentaje ?>%;"></div>
-                        </div>
-                        <div class="ranking-total">
-                            <span style="color: #6b7280; font-weight: 600;"><?= number_format($porcentaje, 1) ?>%</span>
-                            <span><?= moneda($caj['total']) ?></span>
-                        </div>
+        <div class="debug-box">
+            <div>🔍 <b>Query Check Nequi:</b></div>
+            <div>• Empresa: <b><?= $item['debug_nit_empresa'] ?></b></div>
+            <div>• Sucursal: <b><?= $item['debug_sucursal'] ?></b></div>
+            <div>• Cédula: <b><?= $item['debug_cedula'] ?></b></div>
+            <hr style="border:0; border-top:1px dashed #cbd5e1; margin: 4px 0;">
+            <div>• Desde: <b><?= $item['debug_f_inicio'] ?></b></div>
+            <div>• Hasta: <b><?= $item['debug_f_fin'] ?></b></div>
+        </div>
+
+        <div class="row-item"><span>Ventas:</span> <b>$<?= money($item['ventas']) ?></b></div>
+        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($item['egr']) ?></b></div>
+        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($item['efectivo']) ?></b></div>
+        <div class="row-item"><span>Transf (Manuales):</span> <b style="color:blue;">$<?= money($item['trf']) ?></b></div>
+        <div class="row-item"><span>Nequi Auto (<?= $item['cant_nequi'] ?>):</span> <b style="color:var(--nequi);">$<?= money($item['nequi_auto']) ?></b></div>
+        
+        <div class="total-box <?= $claseFisico ?>">
+            <span><?= $item['leyenda'] ?>:</span>
+            <span>$<?= money(abs($item['diferencia'])) ?></span>
+        </div>
+        <div class="status-badge <?= $item['cerrado'] ? 'status-closed' : 'status-open' ?>">
+            <?= $item['cerrado'] ? '🔒 SESIÓN CERRADA' : '🔓 SESIÓN ABIERTA' ?>
+        </div>
+    </div>
+    <?php endforeach; ?>
+</div>
+
+<h3 style="color: var(--danger); border-left: 5px solid var(--danger); padding-left: 15px; margin: 40px 0 20px 0;">💸 Gestión de Egresos</h3>
+<div class="universal-grid">
+    <?php if(count($egresosAgrupados) > 0): foreach($egresosAgrupados as $nit => $egAg): ?>
+    <div class="card card-egreso">
+        <span class="sede-label"><?= $egAg['sede'] ?> (NIT: <?= $egAg['nit_empresa'] ?>)</span>
+        <h4 class="cajero-name">
+            <?= htmlspecialchars($egAg['nombre']) ?>
+            <span class="cajero-nit">Cédula/NIT: <?= htmlspecialchars($egAg['nit']) ?></span>
+        </h4>
+        <div style="flex-grow: 1; overflow-y: auto; max-height: 250px; margin-bottom: 15px; padding-right: 5px;">
+            <?php foreach($egAg['detalles'] as $det): $idE = $det['IDSALIDA']; ?>
+            <div style="margin-bottom: 15px; border-bottom: 1px dashed #eee; padding-bottom: 10px;">
+                <?php if($permiso9999 === 'SI'): ?>
+                    <label style="font-size: 11px; color: #888;">Motivo:</label>
+                    <input type="text" id="motivo_<?= $idE ?>" class="input-edit" value="<?= htmlspecialchars($det['MOTIVO']) ?>">
+                    <label style="font-size: 11px; color: #888;">Valor:</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="number" id="valor_<?= $idE ?>" class="input-edit" value="<?= $det['VALOR'] ?>">
+                        <button class="btn-save" style="width: 50px;" onclick="guardarEgreso(<?= $idE ?>, '<?= $egAg['id_sede'] ?>')">💾</button>
                     </div>
-                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="row-item">
+                        <span><?= htmlspecialchars($det['MOTIVO']) ?></span>
+                        <b style="color: var(--danger);">$<?= money($det['VALOR']) ?></b>
+                    </div>
                 <?php endif; ?>
             </div>
+            <?php endforeach; ?>
         </div>
-        
-        <div class="wrap-box full-width">
-            <h3 style="margin-top:0; color:#111827; font-size:1.1rem;">🚚 Compras del Día</h3>
-            <div class="table-container">
-                <table>
-                    <thead><tr><th>Sede</th><th>Proveedor</th><th style="text-align:right">Valor Compra</th></tr></thead>
-                    <tbody>
-                        <?php foreach($todasLasCompras as $c): ?>
-                        <tr>
-                            <td><small style="background:#f3f4f6; color:#4b5563; padding:4px 8px; border-radius:6px; font-weight:bold;"><?= $c['sede'] ?></small></td>
-                            <td><?= $c['prov'] ?></td>
-                            <td style="text-align:right"><span contenteditable="true" class="editable edit-compra" data-id="<?= $c['idcompra'] ?>" data-sede="<?= $c['sede'] ?>"><?= number_format($c['total'], 0, ',', '.') ?></span></td>
-                        </tr>
-                        <?php endforeach; ?>
-                        <?php if(empty($todasLasCompras)): ?>
-                            <tr><td colspan="3" style="text-align:center; color:#9ca3af;">No hay compras hoy</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+        <div class="total-box bg-ok" style="background: #f8f9fa; border: 1px solid #eee; color: var(--danger);">
+            <span>TOTAL EGRESOS:</span>
+            <span>$<?= money($egAg['total']) ?></span>
         </div>
     </div>
+    <?php endforeach; endif; ?>
+</div>
+
+<div class="footer-summary">
+    <div class="footer-item"><span>VENTAS TOTALES</span><b>$<?= money($globalVentas) ?></b></div>
+    <div class="footer-item"><span>EGRESOS TOTALES</span><b>$<?= money($globalEgresos) ?></b></div>
+    <div class="footer-item"><span style="color: #00d4ff;">EFECTIVO ENTREGADO</span><b style="color: #00d4ff;">$<?= money($globalEfectivoEntregado) ?></b></div>
+    <div class="footer-item"><span>TRANSF MANUALES</span><b>$<?= money($globalTransf) ?></b></div>
+    <div class="footer-item"><span>NEQUI AUTO</span><b style="color: #e91e63;">$<?= money($globalTrfNequiAuto) ?></b></div>
+    <div class="footer-item neto-destaque"><span>NETO TOTAL</span><b>$<?= money($globalFisico) ?></b></div>
+</div>
 
 <script>
-    let secondsLeft = 180;
-    const timerDisplay = document.getElementById('countdown');
-    const timer = setInterval(() => {
-        secondsLeft--;
-        let mins = Math.floor(secondsLeft / 60);
-        let secs = secondsLeft % 60;
-        timerDisplay.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        if (secondsLeft <= 0) { clearInterval(timer); location.reload(); }
-    }, 1000);
+    function guardarEgreso(id, sede){
+        const mot = document.getElementById('motivo_'+id).value;
+        const val = document.getElementById('valor_'+id).value;
+        if(!confirm('¿Actualizar este egreso?')) return;
+        fetch('update_egreso.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=${sede}`
+        }).then(r => r.text()).then(t => { alert(t); location.reload(); });
+    }
 
-    Chart.register(ChartDataLabels);
-    const chartOptions = { 
-        maintainAspectRatio: false, responsive: true, 
-        plugins: { legend: { display: false }, datalabels: { color: '#fff', font: { weight: 'bold', size: 11 }, formatter: (v, c) => { let s = c.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); return s > 0 ? (v * 100 / s).toFixed(1) + "%" : "0%"; } } } 
-    };
-    
-    new Chart(document.getElementById('chartInv'), { 
-        type: 'bar', 
-        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['inventario'] ?>, <?= $drinks['inventario'] ?>], backgroundColor: ['#2563eb', '#10b981'], borderRadius: 6 }] }, 
-        options: chartOptions 
-    });
-
-    new Chart(document.getElementById('chartVenta'), { 
-        type: 'pie', 
-        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?= $drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
-        options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } 
-    });
-
-    document.querySelectorAll('.edit-compra').forEach(el => {
-        el.addEventListener('blur', function() {
-            const rawVal = this.innerText.replace(/\./g, '').replace(/,/g, '.');
-            const val = parseFloat(rawVal);
-            if(isNaN(val)) return;
-            
-            fetch('?action=update_compra', { 
-                method: 'POST', 
-                body: JSON.stringify({ id: this.dataset.id, sede: this.dataset.sede, valor: val }), 
-                headers: { 'Content-Type': 'application/json' } 
-            }).then(res => res.json()).then(data => { 
-                if(data.success) { 
-                    this.innerText = new Intl.NumberFormat('es-CO').format(val); 
-                    this.style.backgroundColor = "#dcfce7"; 
-                    setTimeout(() => this.style.backgroundColor = "transparent", 1000); 
-                } 
-            });
-        });
-    });
+    (function() {
+        let timeLeft = 180; 
+        const timerElement = document.getElementById('timer');
+        const countdown = setInterval(() => {
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                window.location.reload(true);
+            } else {
+                timeLeft--;
+                let m = Math.floor(timeLeft / 60);
+                let s = timeLeft % 60;
+                timerElement.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+            }
+        }, 1000);
+    })();
 </script>
 </body>
 </html>
