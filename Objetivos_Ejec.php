@@ -9,6 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cedulaNit      = trim($_POST['CedulaNit'] ?? '');
     $nitEmpresa     = trim($_POST['NitEmpresa'] ?? '');
     $periodo        = $_POST['periodo'] ?? '';
+    $estado         = isset($_POST['estado']) ? 1 : 0; 
     
     // Limpiamos los puntos de miles antes de guardar en la BD
     $metaValorTotal = floatval(str_replace('.', '', $_POST['meta_valor_total'] ?? '0'));
@@ -30,12 +31,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mysqliWeb->begin_transaction();
 
         try {
-            $sqlCab = "INSERT INTO objetivos_cajeros_cab (CedulaNit, NitEmpresa, mm, aa, meta_valor_total) 
-                       VALUES (?, ?, ?, ?, ?)
-                       ON DUPLICATE KEY UPDATE meta_valor_total = VALUES(meta_valor_total), id_cabecera = LAST_INSERT_ID(id_cabecera)";
+            $sqlCab = "INSERT INTO objetivos_cajeros_cab (CedulaNit, NitEmpresa, mm, aa, meta_valor_total, estado) 
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       ON DUPLICATE KEY UPDATE meta_valor_total = VALUES(meta_valor_total), estado = VALUES(estado), id_cabecera = LAST_INSERT_ID(id_cabecera)";
             
             $stmtCab = $mysqliWeb->prepare($sqlCab);
-            $stmtCab->bind_param("ssiid", $cedulaNit, $nitEmpresa, $mm, $aa, $metaValorTotal);
+            $stmtCab->bind_param("ssiidi", $cedulaNit, $nitEmpresa, $mm, $aa, $metaValorTotal, $estado);
             $stmtCab->execute();
             
             $idCabecera = $mysqliWeb->insert_id;
@@ -112,8 +113,8 @@ if (isset($mysqliWeb)) {
 // Consultar todos los objetivos registrados para JS
 $todosObjetivos = [];
 if (isset($mysqliWeb)) {
-    $sqlList = "SELECT c.id_cabecera, c.CedulaNit, c.NitEmpresa, c.mm, c.aa, c.meta_valor_total, 
-                       d.Sku, d.meta_cajas 
+    $sqlList = "SELECT c.id_cabecera, c.CedulaNit, c.NitEmpresa, c.mm, c.aa, c.meta_valor_total, c.estado,
+                        d.Sku, d.meta_cajas 
                 FROM objetivos_cajeros_cab c 
                 LEFT JOIN objetivos_cajeros_det d ON c.id_cabecera = d.id_cabecera 
                 ORDER BY c.aa DESC, c.mm DESC, c.id_cabecera DESC";
@@ -126,6 +127,7 @@ if (isset($mysqliWeb)) {
                 'nit_empresa' => trim($r['NitEmpresa']),
                 'periodo_input' => sprintf("%04d-%02d", $r['aa'], $r['mm']),
                 'meta_valor' => $r['meta_valor_total'],
+                'estado' => isset($r['estado']) ? (int)$r['estado'] : 1,
                 'detalles' => []
             ];
         }
@@ -177,6 +179,85 @@ if (isset($mysqliWeb)) {
         .form-row .form-group { 
             flex: 1; 
             min-width: 280px; 
+        }
+
+        /* Estilo Switch Dinámico con Etiquetas de Texto Integradas */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 6px;
+            height: 43px;
+            margin-top: 28px;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 75px;
+            height: 26px;
+        }
+        .switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ef4444; /* Rojo por defecto (Inactivo) */
+            transition: background-color 0.3s ease;
+            border-radius: 26px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: transform 0.3s ease;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        input:checked + .slider {
+            background-color: #10b981; /* Verde cuando está Activo */
+        }
+        input:checked + .slider:before {
+            transform: translateX(49px);
+        }
+        
+        /* Textos dinámicos en el interior del switch */
+        .slider-text-on, .slider-text-off {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 9px;
+            font-weight: bold;
+            color: white;
+            z-index: 1;
+            transition: opacity 0.3s ease;
+            user-select: none;
+        }
+        .slider-text-on {
+            left: 8px;
+            opacity: 0; /* Oculto cuando está apagado */
+        }
+        .slider-text-off {
+            right: 8px;
+            opacity: 1; /* Visible cuando está apagado */
+        }
+        
+        /* Cambios al activar el checkbox */
+        input:checked ~ .slider-text-on {
+            opacity: 1;
+        }
+        input:checked ~ .slider-text-off {
+            opacity: 0;
         }
 
         .producto-row { 
@@ -255,6 +336,23 @@ if (isset($mysqliWeb)) {
             </div>
         </div>
 
+        <div class="form-row">
+            <div class="form-group">
+                <div class="switch-container">
+                    <label for="estado" style="margin:0; cursor:pointer;">Estado del Objetivo:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="estado" name="estado" value="1" checked>
+                        <span class="slider"></span>
+                        <span class="slider-text-on">ACTIVO</span>
+                        <span class="slider-text-off">INACTIVO</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <!-- Espaciador visual para mantener simetría -->
+            </div>
+        </div>
+
         <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
         
         <label style="font-weight: bold; margin-bottom: 10px; display: block;">Productos Objetivo (SKUs y sus Metas en Cajas):</label>
@@ -293,14 +391,14 @@ const productosDisponibles = <?= json_encode($productosCentral) ?>;
 let tsCajero = new TomSelect("#CedulaNit", { 
     create: false, 
     sortField: { field: "text", direction: "asc" },
-    maxOptions: null, // Permite ver todos los elementos sin límite
+    maxOptions: null, 
     onChange: function(value) { verificarObjetivoExistente(); }
 });
 
 let tsEmpresa = new TomSelect("#NitEmpresa", { 
     create: false, 
     sortField: { field: "text", direction: "asc" },
-    maxOptions: null, // Permite ver todos los elementos sin límite
+    maxOptions: null, 
     onChange: function(value) { verificarObjetivoExistente(); }
 });
 
@@ -308,7 +406,7 @@ function inicializarTomSelectSku(element) {
     return new TomSelect(element, {
         create: false,
         sortField: { field: "text", direction: "asc" },
-        maxOptions: null, // 🔥 AQUÍ ESTÁ LA CLAVE: Elimina el límite de 50 elementos
+        maxOptions: null, 
         placeholder: "-- Seleccione o busque producto --"
     });
 }
@@ -340,9 +438,11 @@ function verificarObjetivoExistente() {
     );
 
     let inputValor = document.getElementById('meta_valor_total');
+    let inputEstado = document.getElementById('estado');
 
     if (encontrado) {
         inputValor.value = Number(encontrado.meta_valor).toLocaleString("es-CO");
+        inputEstado.checked = (encontrado.estado === 1);
 
         if (encontrado.detalles && encontrado.detalles.length > 0) {
             let container = document.getElementById('productos-container');
@@ -373,6 +473,7 @@ function verificarObjetivoExistente() {
         }
     } else {
         inputValor.value = "0";
+        inputEstado.checked = true; // Por defecto activo para nuevos registros
     }
 }
 

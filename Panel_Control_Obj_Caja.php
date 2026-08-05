@@ -1,10 +1,7 @@
 <?php
-require('ConnCentral.php'); // $mysqliCentral
-require('ConnDrinks.php');  // $mysqliDrinks
-require('Conexion.php');    // $mysqliWeb / $mysqli
-
-define('NIT_CENTRAL', '86057267-8');
-define('NIT_DRINKS',  '901724534-7');
+require_once("ConnCentral.php"); // $mysqliCentral
+require_once("ConnDrinks.php");  // $mysqliDrinks
+require_once("Conexion.php");    // $mysqliWeb / $mysqli
 
 session_start();
 mysqli_report(MYSQLI_REPORT_OFF);
@@ -12,19 +9,10 @@ mysqli_report(MYSQLI_REPORT_OFF);
 date_default_timezone_set('America/Bogota');
 
 /* =====================================================
-    1. PARÁMETROS DE FILTRO Y SEDE ACTIVA
+    1. PARÁMETROS DE FILTRO (SOLO MES Y AÑO)
 ===================================================== */
 $mes_sel  = (int)($_GET['mm'] ?? date('m'));
 $anio_sel = (int)($_GET['aa'] ?? date('Y'));
-$sede_actual = $_GET['sede'] ?? 'central';
-
-if ($sede_actual === 'drinks') {
-    $nit_empresa_filtro = NIT_DRINKS; 
-    $nombre_sede_display = "DRINKS (AWS)";
-} else {
-    $nit_empresa_filtro = NIT_CENTRAL;  
-    $nombre_sede_display = "CENTRAL";
-}
 
 // Rango de fechas ajustado estrictamente al DÍA ACTUAL para las ventas
 $f_ini = date('Ymd'); 
@@ -48,7 +36,7 @@ if (isset($mysqliWeb) && !$mysqliWeb->connect_error) {
 }
 
 /* =====================================================
-    3. OBTENER VENTAS EJECUTADAS (CENTRAL Y DRINKS)
+    3. OBTENER VENTAS EJECUTADAS (DE AMBAS SEDES: CENTRAL Y DRINKS)
 ===================================================== */
 function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
     if (!$cnx || $cnx->connect_error) return [];
@@ -132,7 +120,7 @@ if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
 }
 
 /* =====================================================
-    5. OBTENER OBJETIVOS DE LA BASE DE DATOS (WEB) CON VALIDACIÓN ESTRICTA
+    5. OBTENER OBJETIVOS DE LA BASE DE DATOS (TODAS LAS EMPRESAS/SEDES)
 ===================================================== */
 $sqlObjetivos = "
     SELECT 
@@ -141,36 +129,44 @@ $sqlObjetivos = "
         t.NombreCom,
         cab.id_cabecera,
         cab.NitEmpresa,
+        e.RazonSocial AS NombreEmpresa,
         cab.mm,
         cab.aa,
         cab.meta_valor_total,
+        cab.estado,
         det.Sku,
         det.meta_cajas
     FROM terceros t
     INNER JOIN objetivos_cajeros_cab cab ON t.CedulaNit = cab.CedulaNit
+    LEFT JOIN empresa e ON cab.NitEmpresa = e.Nit
     LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
-    WHERE cab.mm = ? AND cab.aa = ? AND cab.NitEmpresa = ?
+    WHERE cab.mm = ? AND cab.aa = ? AND cab.estado = 1
+    ORDER BY t.Nombre ASC, det.Sku ASC
 ";
 
-$sqlObjetivos .= " ORDER BY t.Nombre ASC, det.Sku ASC";
-
 $stmtObj = $mysqliWeb->prepare($sqlObjetivos);
-$stmtObj->bind_param("iis", $mes_sel, $anio_sel, $nit_empresa_filtro);
+$stmtObj->bind_param("ii", $mes_sel, $anio_sel);
 $stmtObj->execute();
 $resObj = $stmtObj->get_result();
 
 $reporte = [];
 
 while ($row = $resObj->fetch_assoc()) {
-    $cedula     = $row['CedulaNit'];
-    $nombre     = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
+    $cedula  = $row['CedulaNit'];
+    $empresa = $row['NitEmpresa'];
+    // Clave única por cajero y empresa para evitar sobreescrituras si un cajero tiene objetivos en múltiples empresas
+    $claveUnica = $cedula . '_' . $empresa;
+    
+    $nombre  = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
+    $nombreEmpresaDisplay = $row['NombreEmpresa'] ?: $empresa;
 
-    if (!isset($reporte[$cedula])) {
+    if (!isset($reporte[$claveUnica])) {
         $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
 
-        $reporte[$cedula] = [
+        $reporte[$claveUnica] = [
             'nombre'           => $nombre,
             'cedula'           => $cedula,
+            'nombre_empresa'   => $nombreEmpresaDisplay,
             'meta_valor_total' => (float)$row['meta_valor_total'],
             'ejecutado_valor'  => $ejecutadoValor,
             'detalles'         => []
@@ -178,12 +174,12 @@ while ($row = $resObj->fetch_assoc()) {
     }
 
     if (!empty($row['Sku'])) {
-        $sku       = trim($row['Sku']);
-        $metaCajas = (float)$row['meta_cajas'];
+        $sku        = trim($row['Sku']);
+        $metaCajas  = (float)$row['meta_cajas'];
         $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
         $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
-        $reporte[$cedula]['detalles'][] = [
+        $reporte[$claveUnica]['detalles'][] = [
             'sku'             => $sku,
             'nombre_producto' => $nombreProducto,
             'meta_cajas'      => $metaCajas,
@@ -239,14 +235,6 @@ while ($row = $resObj->fetch_assoc()) {
 <div class="card">
     <form method="GET" class="filter-box">
         <div>
-            <label><strong>Sede:</strong></label>
-            <select name="sede" onchange="this.form.submit()">
-                <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
-                <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
-            </select>
-        </div>
-
-        <div>
             <label><strong>Mes:</strong></label>
             <select name="mm">
                 <?php for ($m = 1; $m <= 12; $m++): ?>
@@ -270,7 +258,7 @@ while ($row = $resObj->fetch_assoc()) {
     </form>
 
     <?php if (empty($reporte)): ?>
-        <p style="text-align:center; color:#777;">No se registraron objetivos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>) en la sede <strong><?= htmlspecialchars($nombre_sede_display) ?></strong>.</p>
+        <p style="text-align:center; color:#777;">No se registraron objetivos activos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>).</p>
     <?php else: ?>
         <div class="grid-paneles">
             <?php foreach ($reporte as $tercero): 
@@ -285,7 +273,7 @@ while ($row = $resObj->fetch_assoc()) {
                         <div class="tercero-meta-info">
                             <span><strong>Cédula/NIT:</strong> <?= htmlspecialchars($tercero['cedula']) ?></span>
                             <span>|</span>
-                            <span><strong>Sede:</strong> <?= htmlspecialchars($nombre_sede_display) ?></span>
+                            <span><strong>Empresa:</strong> <?= htmlspecialchars($tercero['nombre_empresa']) ?></span>
                         </div>
                     </div>
 

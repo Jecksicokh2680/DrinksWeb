@@ -1,4 +1,5 @@
 <?php
+require 'ValidarSesion.php';
 require('ConnCentral.php'); // $mysqliCentral
 require('ConnDrinks.php');  // $mysqliDrinks
 require('Conexion.php');    // $mysqliWeb + $mysqli
@@ -12,7 +13,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 /* =====================================================
     CONFIGURACIÓN Y AUTORIZACIÓN
 ===================================================== */
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 if (!$UsuarioSesion) {
     header("Location: Login.php");
     exit;
@@ -183,7 +184,7 @@ if ($fCat != '') {
 }
 
 // ---------------------------------------------------------
-// OBTENER STOCK INICIAL (Del día anterior a $f_ini_raw desde historial_stock agrupado por codcat)
+// OBTENER STOCK INICIAL
 // ---------------------------------------------------------
 $fechaAnterior = date('Y-m-d', strtotime($f_ini_raw . ' -1 day'));
 $stockInicialAgrupado = [];
@@ -206,7 +207,7 @@ if (isset($mysqliWeb)) {
 }
 
 // ---------------------------------------------------------
-// OBTENER MOVIMIENTOS DE INVENTARIO DESGLOSADOS (Traslados y Ajustes)
+// OBTENER MOVIMIENTOS DE INVENTARIO DESGLOSADOS
 // ---------------------------------------------------------
 $trasladosEntradasAgrupadas = [];
 $trasladosSalidasAgrupadas  = [];
@@ -253,7 +254,7 @@ if (isset($mysqliWeb)) {
             if ($codCatSku == 'N/A') continue;
 
             $cantMov = floatval($m['cant']);
-            $tipoMov = $m['tipo']; // 'ENTRA', 'SALE', 'AJUSTE_IN', 'AJUSTE_OUT'
+            $tipoMov = $m['tipo']; 
 
             $sucOrig = '';
             if ($m['NitEmpresa_Orig'] == $nitCentralVal) $sucOrig = 'CENTRAL';
@@ -263,17 +264,14 @@ if (isset($mysqliWeb)) {
             if ($m['NitEmpresa_Dest'] == $nitCentralVal) $sucDest = 'CENTRAL';
             elseif ($m['NitEmpresa_Dest'] == $nitDrinksVal) $sucDest = 'DRINKS';
 
-            // 1. TRASLADOS ENTRANTES (Entradas que provienen de la otra sucursal interna)
             if ($tipoMov == 'ENTRA' && !empty($sucOrig) && !empty($sucDest) && $sucOrig != $sucDest) {
                 $trasladosEntradasAgrupadas[$codCatSku][$sucDest] = ($trasladosEntradasAgrupadas[$codCatSku][$sucDest] ?? 0) + $cantMov;
             }
 
-            // 2. TRASLADOS SALIENTES (Salidas que van hacia la otra sucursal interna)
             if ($tipoMov == 'SALE' && !empty($sucOrig) && !empty($sucDest) && $sucOrig != $sucDest) {
                 $trasladosSalidasAgrupadas[$codCatSku][$sucOrig] = ($trasladosSalidasAgrupadas[$codCatSku][$sucOrig] ?? 0) + $cantMov;
             }
 
-            // 3. AJUSTES (+/-)
             if ($tipoMov == 'AJUSTE_IN') {
                 $targetSuc = !empty($sucOrig) ? $sucOrig : $sucDest;
                 if ($targetSuc != '') {
@@ -366,7 +364,6 @@ foreach($allCodCats as $codCat) {
             continue;
         }
 
-        // Fórmula solicitada: Stock Final = (Stock Inicial + Compras + Traslado Entrando) - (Traslado Saliendo + Ventas) + Ajustes
         $stockFinal = ($stockIniCat + $comprasCat + $traslEntra) - ($traslSalida + $ventasCat) + $ajusteCat;
 
         if (!isset($categoriasAgrupadas[$key])) {
@@ -394,12 +391,10 @@ foreach($allCodCats as $codCat) {
     }
 }
 
-// Ordenar las categorías por CodCat
 usort($categoriasAgrupadas, function($a, $b) {
     return strcmp($a['CODCAT'], $b['CODCAT']);
 });
 
-// Mantener lista de facturadores para el select
 if ($fFac == '' && !empty($rows)) {
     $listaFacturadores = array_unique(array_column($rows, 'FACTURADOR'));
     $_SESSION['UltimosFacturadores'] = $listaFacturadores;
@@ -431,6 +426,8 @@ sort($listaFacturadores);
         .gran-total{ background: #263238; color: #fff; font-weight: 900; }
         .badge{ padding: 4px 8px; border-radius: 4px; font-size: 11px; color: white; font-weight: bold; }
         .central{ background: #1565c0; } .drinks{ background: #2e7d32; }
+        .editable-cell { background-color: #fffde7; cursor: pointer; border: 1px dashed #fbc02d; }
+        .editable-cell:focus { background-color: #ffffff; outline: 2px solid #0288d1; }
     </style>
     <script src="https://cdn.jsdelivr.net/gh/linways/table-to-excel@v1.0.4/dist/tableToExcel.js"></script>
 </head>
@@ -511,7 +508,7 @@ sort($listaFacturadores);
                         <td align='center' style="color: #0288d1;"><strong><?=number_format($cat['TRASLADO_ENTRADA'], 2, '.', ',')?></strong></td>
                         <td align='center' style="color: #d32f2f;"><strong><?=number_format($cat['TRASLADO_SALIDA'], 2, '.', ',')?></strong></td>
                         <td align='center'><?=number_format($cat['TOTAL_VENDIDO_CANTIDAD'], 2, '.', ',')?></td>
-                        <td align='center' style="color: <?=$cat['AJUSTES'] >= 0 ? '#2e7d32' : '#d32f2f'?>;"><strong><?=number_format($cat['AJUSTES'], 2, '.', ',')?></strong></td>
+                        <td align='center' class="editable-cell" contenteditable="true" title="Haga clic para editar ajustes" style="color: <?=$cat['AJUSTES'] >= 0 ? '#2e7d32' : '#d32f2f'?>;"><strong><?=number_format($cat['AJUSTES'], 2, '.', ',')?></strong></td>
                         <td align='center' style="background-color: #f1f8e9;"><strong><?=number_format($cat['STOCK_FINAL'], 2, '.', ',')?></strong></td>
                     </tr>
                 <?php endforeach; ?>
