@@ -5,8 +5,8 @@ error_reporting(E_ALL);
 
 session_start();
 
-$session_timeout   = 3600;
-$inactive_timeout  = 2700;
+$session_timeout    = 3600;
+$inactive_timeout   = 2700;
 
 require 'Conexion.php';
 require 'helpers.php';
@@ -24,13 +24,16 @@ if ($cedula=="" || $nit=="" || $sucursal=="" || $pass=="") {
 $stmt = $mysqli->prepare("
     SELECT u.PasswordHash, u.Bloqueado, u.DebeCambiarClave, u.Estado AS UsuarioActivo,
            e.Estado AS EmpresaActiva,
-           s.Estado AS SucursalActiva
+           s.Estado AS SucursalActiva,
+           t.Nombre, t.NombreCom
     FROM usuarios_Seguridad u
     INNER JOIN empresa e 
         ON u.NitEmpresa = e.Nit
     INNER JOIN empresa_sucursal s 
         ON u.NitEmpresa = s.Nit 
         AND u.NroSucursal = s.NroSucursal
+    LEFT JOIN terceros t 
+        ON u.CedulaNit = t.CedulaNit
     WHERE u.CedulaNit=? AND u.NitEmpresa=? AND u.NroSucursal=?
 ");
 
@@ -40,7 +43,6 @@ $result = $stmt->get_result();
 
 if ($row = $result->fetch_assoc()) {
 
-    // Validar si el estado del usuario es distinto de 1
     if ($row['UsuarioActivo'] != 1) {
         header("Location: login.php?msg=Usuario inactivo");
         exit;
@@ -63,9 +65,20 @@ if ($row = $result->fetch_assoc()) {
 
     if (password_verify($pass, $row['PasswordHash'])) {
 
-        $_SESSION['Usuario']     = $cedula;
-        $_SESSION['NitEmpresa']  = $nit;
-        $_SESSION['NroSucursal'] = $sucursal;
+        $nombreUsuario = $row['NombreCom'] ?: $row['Nombre'] ?: 'Usuario';
+
+        // Guardado estructurado de variables de sesión
+        $_SESSION['Usuario']        = $nombreUsuario; 
+        $_SESSION['CedulaNit']      = $cedula;        
+        $_SESSION['NitEmpresa']     = $nit;           
+        $_SESSION['NroSucursal']    = $sucursal;      
+        
+        // Asignar sede predeterminada según el NIT de inicio de sesión
+        if ($nit === '901724534-7') {
+            $_SESSION['SedeActual'] = 'drinks';
+        } else {
+            $_SESSION['SedeActual'] = 'central';
+        }
 
         actualizarUltimoIngreso($cedula, $nit, $sucursal);
 

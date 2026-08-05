@@ -12,14 +12,26 @@ mysqli_report(MYSQLI_REPORT_OFF);
 date_default_timezone_set('America/Bogota');
 
 /* =====================================================
-    1. PARÁMETROS DE FILTRO (Mes para Objetivos / Día Actual para Ventas)
+    1. PARÁMETROS DE FILTRO Y SEDE ACTIVA
 ===================================================== */
 $mes_sel  = (int)($_GET['mm'] ?? date('m'));
 $anio_sel = (int)($_GET['aa'] ?? date('Y'));
+$sede_actual = $_GET['sede'] ?? 'central';
+
+if ($sede_actual === 'drinks') {
+    $nit_empresa_filtro = NIT_DRINKS; 
+    $nombre_sede_display = "DRINKS (AWS)";
+} else {
+    $nit_empresa_filtro = NIT_CENTRAL;  
+    $nombre_sede_display = "CENTRAL";
+}
 
 // Rango de fechas ajustado estrictamente al DÍA ACTUAL para las ventas
 $f_ini = date('Ymd'); 
 $f_fin = date('Ymd'); 
+
+// Validación del usuario en sesión
+$UsuarioSesion = $_SESSION['Usuario'] ?? '';
 
 /* =====================================================
     2. OBTENER EQUIVALENCIAS UNICAJA DE PRODUCTOS
@@ -107,7 +119,20 @@ foreach ($rawVentas as $v) {
 }
 
 /* =====================================================
-    4. OBTENER OBJETIVOS DE LA BASE DE DATOS (WEB)
+    4. OBTENER NOMBRES DE PRODUCTOS DESDE CENTRAL
+===================================================== */
+$nombresProductos = [];
+if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
+    $qProd = $mysqliCentral->query("SELECT Barcode, descripcion FROM productos");
+    if ($qProd) {
+        while ($p = $qProd->fetch_assoc()) {
+            $nombresProductos[trim($p['Barcode'])] = $p['descripcion'];
+        }
+    }
+}
+
+/* =====================================================
+    5. OBTENER OBJETIVOS DE LA BASE DE DATOS (WEB) CON VALIDACIÓN ESTRICTA
 ===================================================== */
 $sqlObjetivos = "
     SELECT 
@@ -124,12 +149,13 @@ $sqlObjetivos = "
     FROM terceros t
     INNER JOIN objetivos_cajeros_cab cab ON t.CedulaNit = cab.CedulaNit
     LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
-    WHERE cab.mm = ? AND cab.aa = ?
-    ORDER BY t.Nombre ASC, det.Sku ASC
+    WHERE cab.mm = ? AND cab.aa = ? AND cab.NitEmpresa = ?
 ";
 
+$sqlObjetivos .= " ORDER BY t.Nombre ASC, det.Sku ASC";
+
 $stmtObj = $mysqliWeb->prepare($sqlObjetivos);
-$stmtObj->bind_param("ii", $mes_sel, $anio_sel);
+$stmtObj->bind_param("iis", $mes_sel, $anio_sel, $nit_empresa_filtro);
 $stmtObj->execute();
 $resObj = $stmtObj->get_result();
 
@@ -138,7 +164,6 @@ $reporte = [];
 while ($row = $resObj->fetch_assoc()) {
     $cedula     = $row['CedulaNit'];
     $nombre     = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
-    $idCabecera = $row['id_cabecera'];
 
     if (!isset($reporte[$cedula])) {
         $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
@@ -153,16 +178,17 @@ while ($row = $resObj->fetch_assoc()) {
     }
 
     if (!empty($row['Sku'])) {
-        $sku       = $row['Sku'];
+        $sku       = trim($row['Sku']);
         $metaCajas = (float)$row['meta_cajas'];
-
         $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
+        $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
         $reporte[$cedula]['detalles'][] = [
-            'sku'            => $sku,
-            'meta_cajas'     => $metaCajas,
-            'cajas_vendidas' => $cantVendida,
-            'unds_vendidas'  => $cantVendida
+            'sku'             => $sku,
+            'nombre_producto' => $nombreProducto,
+            'meta_cajas'      => $metaCajas,
+            'cajas_vendidas'  => $cantVendida,
+            'unds_vendidas'   => $cantVendida
         ];
     }
 }
@@ -175,7 +201,7 @@ while ($row = $resObj->fetch_assoc()) {
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
         .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
-        .filter-box { background: #eef2f5; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 25px; }
+        .filter-box { background: #eef2f5; padding: 15px; border-radius: 8px; display: flex; gap: 15px; align-items: center; margin-bottom: 25px; flex-wrap: wrap; }
         select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
         button { background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; }
         
@@ -189,10 +215,12 @@ while ($row = $resObj->fetch_assoc()) {
         }
 
         .tercero-card { border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; background: #fff; }
-        .tercero-header { background: #263238; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .tercero-header h3 { margin: 0; font-size: 18px; }
-        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0; }
-        .metric-box { flex: 1; text-align: center; }
+        .tercero-header { background: #263238; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .tercero-header h3 { margin: 0; font-size: 16px; }
+        .tercero-meta-info { font-size: 12px; background: rgba(255, 255, 255, 0.15); padding: 4px 8px; border-radius: 4px; display: inline-flex; gap: 8px; align-items: center; }
+        
+        .resumen-meta { display: flex; gap: 15px; background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
+        .metric-box { flex: 1; text-align: center; min-width: 110px; }
         .metric-box .title { font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold; }
         .metric-box .value { font-size: 16px; font-weight: bold; margin-top: 5px; }
         table { width: 100%; border-collapse: collapse; }
@@ -210,25 +238,39 @@ while ($row = $resObj->fetch_assoc()) {
 
 <div class="card">
     <form method="GET" class="filter-box">
-        <label><strong>Mes:</strong></label>
-        <select name="mm">
-            <?php for ($m = 1; $m <= 12; $m++): ?>
-                <option value="<?=$m?>" <?=$m == $mes_sel ? 'selected' : ''?>><?=date('F', mktime(0, 0, 0, $m, 1))?> (<?=$m?>)</option>
-            <?php endfor; ?>
-        </select>
+        <div>
+            <label><strong>Sede:</strong></label>
+            <select name="sede" onchange="this.form.submit()">
+                <option value="central" <?= ($sede_actual==='central'?'selected':'') ?>>CENTRAL</option>
+                <option value="drinks" <?= ($sede_actual==='drinks'?'selected':'') ?>>DRINKS (AWS)</option>
+            </select>
+        </div>
 
-        <label><strong>Año:</strong></label>
-        <select name="aa">
-            <?php for ($a = date('Y'); $a >= date('Y') - 2; $a--): ?>
-                <option value="<?=$a?>" <?=$a == $anio_sel ? 'selected' : ''?>><?=$a?></option>
-            <?php endfor; ?>
-        </select>
+        <div>
+            <label><strong>Mes:</strong></label>
+            <select name="mm">
+                <?php for ($m = 1; $m <= 12; $m++): ?>
+                    <option value="<?=$m?>" <?=$m == $mes_sel ? 'selected' : ''?>><?=date('F', mktime(0, 0, 0, $m, 1))?> (<?=$m?>)</option>
+                <?php endfor; ?>
+            </select>
+        </div>
 
-        <button type="submit">🔍 Cargar Cumplimiento</button>
+        <div>
+            <label><strong>Año:</strong></label>
+            <select name="aa">
+                <?php for ($a = date('Y'); $a >= date('Y') - 2; $a--): ?>
+                    <option value="<?=$a?>" <?=$a == $anio_sel ? 'selected' : ''?>><?=$a?></option>
+                <?php endfor; ?>
+            </select>
+        </div>
+
+        <div style="align-self: flex-end;">
+            <button type="submit">🔍 Cargar Cumplimiento</button>
+        </div>
     </form>
 
     <?php if (empty($reporte)): ?>
-        <p style="text-align:center; color:#777;">No se registraron objetivos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>).</p>
+        <p style="text-align:center; color:#777;">No se registraron objetivos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>) en la sede <strong><?= htmlspecialchars($nombre_sede_display) ?></strong>.</p>
     <?php else: ?>
         <div class="grid-paneles">
             <?php foreach ($reporte as $tercero): 
@@ -240,7 +282,11 @@ while ($row = $resObj->fetch_assoc()) {
                 <div class="tercero-card">
                     <div class="tercero-header">
                         <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
-                        <span style="font-size: 12px;">NIT: <?= htmlspecialchars($tercero['cedula']) ?></span>
+                        <div class="tercero-meta-info">
+                            <span><strong>Cédula/NIT:</strong> <?= htmlspecialchars($tercero['cedula']) ?></span>
+                            <span>|</span>
+                            <span><strong>Sede:</strong> <?= htmlspecialchars($nombre_sede_display) ?></span>
+                        </div>
                     </div>
 
                     <div class="resumen-meta">
@@ -268,7 +314,7 @@ while ($row = $resObj->fetch_assoc()) {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>SKU</th>
+                                        <th>SKU / Producto</th>
                                         <th>Meta</th>
                                         <th>Hoy</th>
                                         <th>% SKU</th>
@@ -278,12 +324,15 @@ while ($row = $resObj->fetch_assoc()) {
                                     <?php foreach ($tercero['detalles'] as $det): 
                                         $metaValSku = $det['meta_cajas'];
                                         $cantValSku = $det['cajas_vendidas'];
-                                        $pctSku     = ($metaValSku > 0) ? round(($cantValSku / $metaValSku) * 100, 1) : 0;
+                                        $pctSku     = ($metaValSku > 0) ? min(100, round(($cantValSku / $metaValSku) * 100, 1)) : 0;
                                         $badgeSkuClass = ($pctSku >= 100) ? 'bg-success' : (($pctSku >= 70) ? 'bg-warning' : 'bg-danger');
                                     ?>
                                         <tr>
-                                            <td><code><?= htmlspecialchars($det['sku']) ?></code></td>
-                                            <td><?= number_format($metaValSku, 2, ',', '.') ?></td>
+                                            <td>
+                                                <code><?= htmlspecialchars($det['sku']) ?></code><br>
+                                                <span style="font-size:11px; color:#666;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
+                                            </td>
+                                            <td><?= number_format($metaValSku, 1, ',', '.') ?></td>
                                             <td><strong><?= number_format($cantValSku, 0, ',', '.') ?></strong></td>
                                             <td>
                                                 <span class="badge <?= $badgeSkuClass ?>"><?= $pctSku ?>%</span>
