@@ -1,4 +1,5 @@
 <?php
+require 'ValidarSesion.php';
 require 'Conexion.php';
 require 'helpers.php';
 

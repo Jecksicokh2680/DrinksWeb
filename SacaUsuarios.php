@@ -27,9 +27,8 @@ if (isset($_POST['accion']) && $_POST['accion'] === 'cerrar_sesion') {
 }
 
 /* =====================================================
-    2. OBTENER USUARIOS CON SESIÓN ACTIVA
+    2. OBTENER USUARIOS CON SESIÓN ACTIVA (Ordenados por Sede y Hora)
 ===================================================== */
-// Corrección de la consulta SQL agregando el "FROM sesiones_activas sa" faltante
 $sqlSesiones = "
     SELECT 
         sa.id_sesion,
@@ -41,7 +40,7 @@ $sqlSesiones = "
         sa.fecha_ingreso
     FROM sesiones_activas sa
     INNER JOIN terceros t ON sa.CedulaNit = t.CedulaNit
-    ORDER BY sa.fecha_ingreso DESC
+    ORDER BY sa.NitEmpresa ASC, sa.fecha_ingreso DESC
 ";
 
 $resultSesiones = $mysqli->query($sqlSesiones);
@@ -77,7 +76,8 @@ if ($resultSesiones) {
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
         .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); max-width: 1000px; margin: auto; }
-        h2 { margin-top: 0; color: #263238; }
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { margin: 0; color: #263238; }
         .alert { background: #d4edda; color: #155724; padding: 10px 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px 15px; border-bottom: 1px solid #eee; text-align: left; font-size: 14px; }
@@ -85,6 +85,8 @@ if ($resultSesiones) {
         .badge-sede { background: #0288d1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
         .btn-danger { background: #c62828; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
         .btn-danger:hover { background: #b71c1c; }
+        .btn-refresh { background: #0288d1; color: white; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-refresh:hover { background: #0277bd; }
         .text-center { text-align: center; }
         .text-muted { color: #777; }
     </style>
@@ -92,7 +94,10 @@ if ($resultSesiones) {
 <body>
 
 <div class="card">
-    <h2>Control de Sesiones Activas</h2>
+    <div class="header-container">
+        <h2>Control de Sesiones Activas</h2>
+        <a href="" class="btn-refresh">🔄 Refrescar</a>
+    </div>
     
     <?php if (!empty($mensajeAlerta)): ?>
         <div class="alert"><?= htmlspecialchars($mensajeAlerta) ?></div>
