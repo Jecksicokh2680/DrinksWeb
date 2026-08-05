@@ -137,10 +137,10 @@ if ($fSuc == '' || $fSuc == 'DRINKS') {
     }
 }
 
-// Obtener listado completo de categorías para llenar el select del filtro
+// Obtener listado completo de categorías ordenado alfabéticamente por nombre
 $listaCategorias = [];
 if (isset($mysqliWeb)) {
-    $qCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE ESTADO='1' ORDER BY CodCat ASC");
+    $qCat = $mysqliWeb->query("SELECT CodCat, Nombre FROM categorias WHERE ESTADO='1' ORDER BY Nombre ASC");
     if ($qCat) {
         while ($c = $qCat->fetch_assoc()) {
             $listaCategorias[] = $c;
@@ -446,7 +446,7 @@ sort($listaFacturadores);
                 <option value="">-- Todas --</option>
                 <?php foreach($listaCategorias as $cat): ?>
                     <option value="<?=$cat['CodCat']?>" <?=$fCat == $cat['CodCat'] ? 'selected' : ''?>>
-                        [<?=$cat['CodCat']?>] <?=$cat['Nombre']?>
+                        <?=htmlspecialchars($cat['Nombre'])?>
                     </option>
                 <?php endforeach; ?>
             </select>
