@@ -129,6 +129,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'toggle_gerencia_check') {
     $fecha_actual = date('Y-m-d H:i:s');
 
     if ($estado === 1) {
+        // Actualizamos o insertamos asegurando que gerencia_verificado quede en 1
+        // Primero verificamos si ya existe un registro en control_checks_nequi para este id_transferencia
         $stmt_chk = $mysqliWeb->prepare("SELECT id FROM control_checks_nequi WHERE id_transferencia = ?");
         $stmt_chk->bind_param("i", $id_trans);
         $stmt_chk->execute();
@@ -146,6 +148,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'toggle_gerencia_check') {
             $stmt_upd->close();
         } else {
             $stmt_chk->close();
+            // Si no existe, lo creamos con los datos mínimos y gerencia activado
             $stmt_ins = $mysqliWeb->prepare("INSERT INTO control_checks_nequi (id_transferencia, nit_empresa, nro_sucursal, usuario_cedula, fecha_hora_check, gerencia_verificado, gerencia_usuario_cedula, gerencia_fecha_hora) VALUES (?, ?, ?, ?, ?, 1, ?, ?)");
             $stmt_ins->bind_param("issssss", $id_trans, $nit_empresa, $nro_sucursal, $usuario_actual, $fecha_actual, $usuario_actual, $fecha_actual);
             if ($stmt_ins->execute()) {
@@ -168,7 +171,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'toggle_gerencia_check') {
     exit;
 }
 
-// --- PROCESAR ACCIÓN UPDATE SUCURSAL (SOLO AUTORIZACIÓN 9999) - CORREGIDO CON FILTRO DE NIT ---
+// --- PROCESAR ACCIÓN UPDATE SUCURSAL (SOLO AUTORIZACIÓN 9999) ---
 if (isset($_POST['action']) && $_POST['action'] === 'update_sucursal') {
     header('Content-Type: application/json');
 
@@ -177,17 +180,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_sucursal') {
         exit;
     }
 
-    $stmt_suc = $mysqliWeb->prepare("UPDATE control_checks_nequi SET nro_sucursal = '1' WHERE nit_empresa = ?");
-    if ($stmt_suc) {
-        $stmt_suc->bind_param("s", $nit_empresa);
-        if ($stmt_suc->execute()) {
-            echo json_encode(['status' => 'success', 'message' => 'Sucursal actualizada correctamente a 1 para la empresa actual.']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Error al actualizar la base de datos: ' . $stmt_suc->error]);
-        }
-        $stmt_suc->close();
+    $update_sql = "UPDATE control_checks_nequi SET nro_sucursal = '1'";
+    if ($mysqliWeb->query($update_sql)) {
+        echo json_encode(['status' => 'success', 'message' => 'Sucursal actualizada correctamente a 1.']);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Error en la preparación de la consulta.']);
+        echo json_encode(['status' => 'error', 'message' => 'Error al actualizar la base de datos: ' . $mysqliWeb->error]);
     }
     exit;
 }
@@ -259,12 +256,13 @@ $hoy = date('Y-m-d');
 // --- CONDICIÓN DE FILTRADO PARA EL RESUMEN ACUMULADO ---
 $filtro_resumen = "";
 if (!$esAdminStock) {
+    // Si no es admin, filtramos estrictamente por su cédula Y el NIT de la sesión actual
     $user_escapado = $mysqliWeb->real_escape_string($usuario_actual);
     $nit_escapado  = $mysqliWeb->real_escape_string($nit_empresa);
     $filtro_resumen = " AND c.usuario_cedula = '$user_escapado' AND c.nit_empresa = '$nit_escapado' ";
 }
 
-// --- CONSULTA TOTALES ---
+// --- CONSULTA TOTALES (FILTRADA SEGÚN EL ROL Y EL NIT) ---
 $sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre AS nombre_usuario, SUM(n.monto) AS total_monto, COUNT(n.id) AS total_cantidad
                 FROM control_checks_nequi c
                 INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
@@ -280,7 +278,7 @@ if ($res_totales && $res_totales->num_rows > 0) {
     }
 }
 
-// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA
+// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA (Sigue visible para todos)
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
                      c.usuario_cedula, c.nit_empresa, c.nro_sucursal, c.gerencia_verificado, c.gerencia_usuario_cedula, c.gerencia_fecha_hora, t.Nombre AS nombre_dueno, tg.Nombre AS nombre_gerencia_dueno
                FROM notificaciones_nequi n
@@ -327,23 +325,41 @@ if ($resultado && $resultado->num_rows > 0) {
         @media (max-width: 768px) {
             body { padding: 4px !important; }
             .container-main { padding: 8px !important; border-radius: 6px !important; }
+            
             .table th, .table td { padding: 6px 4px !important; font-size: 0.78rem !important; }
             .fs-mobile-amount { font-size: 1.05rem !important; }
             .badge-mobile { font-size: 0.65rem !important; padding: 3px 5px !important; }
-            .badge-green-flexible { white-space: normal !important; word-break: break-word; text-align: left; }
+            
+            .badge-green-flexible {
+                white-space: normal !important;
+                word-break: break-word;
+                text-align: left;
+            }
         }
 
-        .busqueda-container { display: flex; justify-content: center; margin-bottom: 20px; }
+        /* Contenedor del buscador centrado */
+        .busqueda-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        /* Estilo para que el input destaque */
         .input-filtro {
             width: 100%;
-            max-width: 500px;
+            max-width: 500px; /* Tamaño máximo para que no se vea gigante en desktop */
             padding: 10px 20px;
-            border-radius: 50px !important;
+            border-radius: 50px !important; /* Estilo redondeado moderno */
             border: 2px solid #ced4da;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             transition: all 0.3s ease;
         }
-        .input-filtro:focus { border-color: #0d6efd; box-shadow: 0 0 8px rgba(13, 110, 253, 0.25); outline: none; }
+
+        .input-filtro:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 8px rgba(13, 110, 253, 0.25);
+            outline: none;
+        }
     </style>
 </head>
 <body class="bg-light p-2 p-md-4">
@@ -386,6 +402,7 @@ if ($resultado && $resultado->num_rows > 0) {
             📊 Resumen Acumulado <?php echo $esAdminStock ? "por Sede y Usuario" : "de tu Usuario"; ?> (Checks de Hoy)
         </div>
         <div class="card-body p-0">
+            <!-- Añadida la clase nativa table-responsive de Bootstrap -->
             <div class="table-responsive w-100">
                 <table class="table table-sm table-striped table-hover mb-0 align-middle" style="font-size: 0.85rem;">
                     <thead class="table-light text-secondary text-nowrap">
@@ -449,6 +466,7 @@ if ($resultado && $resultado->num_rows > 0) {
                    class="form-control input-filtro" 
                    placeholder="🔍 Filtrar por cajero...">
     </div>
+    <!-- Se cambió a la clase table-responsive estándar de Bootstrap para preservar tus celdas intactas en escritorio y móviles -->
     <div class="table-responsive w-100 border rounded bg-white">
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
@@ -471,8 +489,10 @@ if ($resultado && $resultado->num_rows > 0) {
                         $disabled_attr = ($tiene_dueno && !$soy_el_dueno) ? 'disabled' : '';
                         if (empty($usuario_actual)) { $disabled_attr = 'disabled'; } 
 
+                        // Lógica para el check de gerencia
                         $gerencia_verificado = isset($row['gerencia_verificado']) && (int)$row['gerencia_verificado'] === 1;
                         $gerencia_checked_attr = $gerencia_verificado ? 'checked' : '';
+                        // Solo el usuario con autorización 9999 ($esAdminStock) puede activar/desactivar este check
                         $gerencia_disabled_attr = !$esAdminStock ? 'disabled' : '';
                     ?>
                         <tr>
@@ -565,7 +585,7 @@ if ($resultado && $resultado->num_rows > 0) {
     }
 
     function actualizarSucursalUnica() {
-        if (!confirm('¿Estás seguro de actualizar la sucursal a 1 para todos los registros de control_checks_nequi de esta empresa?')) {
+        if (!confirm('¿Estás seguro de actualizar la sucursal a 1 para todos los registros de control_checks_nequi?')) {
             return;
         }
 
