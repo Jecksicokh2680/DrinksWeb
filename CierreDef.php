@@ -234,13 +234,18 @@ foreach ($rawVentas as $v) {
     $ventasPorFacturador[$facturador]['skus'][$sku] += $cantidad;
 }
 
+/* ============================================================
+   VALIDACIÓN ESTRICTA DE OBJETIVOS: Mes, Año, NitEmpresa y CedulaNit
+============================================================ */
 $sqlObjetivos = "
     SELECT t.CedulaNit, t.Nombre, t.NombreCom, cab.id_cabecera, cab.NitEmpresa, cab.mm, cab.aa, cab.meta_valor_total, det.Sku, det.meta_cajas
     FROM terceros t
     INNER JOIN objetivos_cajeros_cab cab ON t.CedulaNit = cab.CedulaNit
     LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
-    WHERE cab.mm = ? AND cab.aa = ?
+    WHERE cab.mm = ? AND cab.aa = ? AND cab.NitEmpresa = ?
 ";
+
+// Si hay un usuario definido (por sesión o por selección de supervisor), filtramos estrictamente por su cédula/NIT
 if (!empty($UsuarioFact)) {
     $sqlObjetivos .= " AND t.CedulaNit = ?";
 }
@@ -248,9 +253,9 @@ $sqlObjetivos .= " ORDER BY t.Nombre ASC, det.Sku ASC";
 
 $stmtObj = $mysqli->prepare($sqlObjetivos);
 if (!empty($UsuarioFact)) {
-    $stmtObj->bind_param("iis", $mes_sel, $anio_sel, $UsuarioFact);
+    $stmtObj->bind_param("iiss", $mes_sel, $anio_sel, $nit_empresa_filtro, $UsuarioFact);
 } else {
-    $stmtObj->bind_param("ii", $mes_sel, $anio_sel);
+    $stmtObj->bind_param("iis", $mes_sel, $anio_sel, $nit_empresa_filtro);
 }
 $stmtObj->execute();
 $resObj = $stmtObj->get_result();
