@@ -10,6 +10,7 @@ session_start();
 
 // Forzar zona horaria de Bogotá en PHP
 date_default_timezone_set('America/Bogota');
+$UsuarioSesion   = $_SESSION['CedulaNit']    ?? '';
 
 // Forzar zona horaria de Bogotá (-05:00) en las conexiones MySQL
 if (isset($mysqli) && $mysqli instanceof mysqli) {
@@ -66,7 +67,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $nit = $_POST['nit'];
     $dbSede = ($nit == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
     
-    $esAdminStock = (Autorizacion($_SESSION['Usuario'] ?? '', '9999') === 'SI');
+    $esAdminStock = (Autorizacion($_SESSION['CedulaNit'] ?? '', '9999') === 'SI');
     
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $cat);
@@ -138,7 +139,7 @@ if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida. Por favor inicie sesión.");
 }
 
-$usuario    = $_SESSION['Usuario'] ?? 'SISTEMA';
+$usuario    = $_SESSION['CedulaNit'] ?? 'SISTEMA';
 $nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL; 
 $sucursal   = $_SESSION['NroSucursal'] ?? '001';
 $idalmacen  = 1; 
