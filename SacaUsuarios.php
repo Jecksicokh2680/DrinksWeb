@@ -11,9 +11,8 @@ date_default_timezone_set('America/Bogota');
 ===================================================== */
 $mensajeAlerta = '';
 if (isset($_POST['accion']) && $_POST['accion'] === 'cerrar_sesion') {
-    $idSesionCerrar = limpiar($_POST['id_sesion'] ?? '');    
+    $idSesionCerrar = $_POST['id_sesion'] ?? '';    
     if (!empty($idSesionCerrar)) {
-        // Asumiendo que manejas una tabla de sesiones activas con un ID o identificador único
         $stmtDel = $mysqli->prepare("DELETE FROM sesiones_activas WHERE id_sesion = ?");
         if ($stmtDel) {
             $stmtDel->bind_param("s", $idSesionCerrar);
@@ -30,18 +29,19 @@ if (isset($_POST['accion']) && $_POST['accion'] === 'cerrar_sesion') {
 /* =====================================================
     2. OBTENER USUARIOS CON SESIÓN ACTIVA
 ===================================================== */
-// Consulta ajustada a una tabla de control de sesiones activas en la BD
+// Corrección de la consulta SQL agregando el "FROM sesiones_activas sa" faltante
 $sqlSesiones = "
-    SA.id_sesion,
-    sa.CedulaNit,
-    t.Nombre,
-    t.NombreCom,
-    sa.NitEmpresa,
-    sa.NroSucursal,
-    sa.fecha_ingreso
-FROM sesiones_activas sa
-INNER JOIN terceros t ON sa.CedulaNit = t.CedulaNit
-ORDER BY sa.fecha_ingreso DESC
+    SELECT 
+        sa.id_sesion,
+        sa.CedulaNit,
+        t.Nombre,
+        t.NombreCom,
+        sa.NitEmpresa,
+        sa.NroSucursal,
+        sa.fecha_ingreso
+    FROM sesiones_activas sa
+    INNER JOIN terceros t ON sa.CedulaNit = t.CedulaNit
+    ORDER BY sa.fecha_ingreso DESC
 ";
 
 $resultSesiones = $mysqli->query($sqlSesiones);

@@ -80,6 +80,18 @@ if ($row = $result->fetch_assoc()) {
             $_SESSION['SedeActual'] = 'central';
         }
 
+        // Registrar la sesión activa en la base de datos
+        $id_sesion = session_id();
+        $stmtSesion = $mysqli->prepare("
+            REPLACE INTO sesiones_activas (id_sesion, CedulaNit, NitEmpresa, NroSucursal, fecha_ingreso) 
+            VALUES (?, ?, ?, ?, NOW())
+        ");
+        if ($stmtSesion) {
+            $stmtSesion->bind_param("ssss", $id_sesion, $cedula, $nit, $sucursal);
+            $stmtSesion->execute();
+            $stmtSesion->close();
+        }
+
         actualizarUltimoIngreso($cedula, $nit, $sucursal);
 
         header("Location: Panel.php");
