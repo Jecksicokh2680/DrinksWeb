@@ -100,61 +100,75 @@ if ($db_conexion) {
 }
 
 /* ============================================================
-    CONSULTA Y CONSOLIDACIÓN (TODO UNIFICADO A FLUJO_EFECTIVO)
+    SINCRONIZACIÓN AUTOMÁTICA (SALIDASCAJA -> flujo_efectivo)
 ============================================================ */
 $sedes = [
     'CENTRAL' => $mysqliCentral,
     'DRINKS'  => $mysqliDrinks
 ];
 
-// Sincronizar automáticos a flujo_efectivo temporalmente o leerlos e integrarlos con ID virtual editable
-$reporte = [];
-$resumen_sedes = ['CENTRAL' => 0, 'DRINKS' => 0];
-$total_ingresos = 0;
-$total_egresos = 0;
-$gran_total = $arranque_operacion; 
+if ($db_conexion) {
+    foreach ($sedes as $nombre_sede => $conexion_sede) {
+        if (!$conexion_sede) continue;
 
-// 1. Cargar Automáticos de Salidas de Caja y asegurar que tengan espejo o gestión editable
-foreach ($sedes as $nombre_sede => $conexion_sede) {
-    if (!$conexion_sede) continue;
+        $query = "SELECT 
+                    S1.NOMBREPC, S1.FECHA, T1.NIT, V1.IDTERCERO,
+                    CONCAT(T1.nombres, ' ', T1.apellidos) AS USUA, 
+                    S1.MOTIVO, S1.VALOR, S1.IDSALIDA
+                  FROM SALIDASCAJA S1   
+                  INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = S1.IDUSUARIO
+                  INNER JOIN TERCEROS AS T1 ON T1.IDTERCERO = V1.IDTERCERO
+                  WHERE (S1.FECHA BETWEEN '$f_ini_db' AND '$f_fin_db')
+                  AND (UPPER(S1.MOTIVO) LIKE '%ENTREGA%' OR UPPER(S1.MOTIVO) LIKE '%EFECTIVO%' OR UPPER(S1.MOTIVO) LIKE '%MONEDA%')";
 
-    $query = "SELECT 
-                S1.NOMBREPC, S1.FECHA, T1.NIT, V1.IDTERCERO,
-                CONCAT(T1.nombres, ' ', T1.apellidos) AS USUA, 
-                S1.MOTIVO, S1.VALOR, S1.IDSALIDA
-              FROM SALIDASCAJA S1   
-              INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = S1.IDUSUARIO
-              INNER JOIN TERCEROS AS T1 ON T1.IDTERCERO = V1.IDTERCERO
-              WHERE (S1.FECHA BETWEEN '$f_ini_db' AND '$f_fin_db')
-              ORDER BY S1.VALOR DESC";
+        $res = $conexion_sede->query($query);
 
-    $res = $conexion_sede->query($query);
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $idsalida_orig = $row['IDSALIDA'];
-            
-            // Verificar si ya existe en flujo_efectivo como espejo, si no, crearlo automáticamente para que sea editable/borrable
-            if ($db_conexion) {
-                $check_espejo = $db_conexion->query("SELECT id_transaccion FROM flujo_efectivo WHERE id_origen = '$idsalida_orig' AND sede = '$nombre_sede' LIMIT 1");
-                if ($check_espejo && $check_espejo->num_rows == 0) {
-                    $f_formato = substr($row['FECHA'],0,4).'-'.substr($row['FECHA'],4,2).'-'.substr($row['FECHA'],6,2);
-                    $cajero_sql = $db_conexion->real_escape_string(trim($row['USUA']) ?: 'CAJERO GENERAL');
-                    $motivo_sql = $db_conexion->real_escape_string($row['MOTIVO']);
-                    $pc_sql = $db_conexion->real_escape_string($row['NOMBREPC']);
-                    $valor_sql = (float)$row['VALOR'];
-                    
-                    $db_conexion->query("INSERT INTO flujo_efectivo (sede, tipo, fecha, nombre_tercero, motivo, valor, nombre_pc, id_origen) 
-                                         VALUES ('$nombre_sede', 'PAGO', '$f_formato', '$cajero_sql', '$motivo_sql', $valor_sql, '$pc_sql', '$idsalida_orig')");
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $sede_db = $nombre_sede;
+                $tipo_transaccion = 'INGRESO';
+                $f_original = $row['FECHA'];
+                $fecha_mysql = substr($f_original,0,4)."-".substr($f_original,4,2)."-".substr($f_original,6,2);
+                
+                $id_tercero = (int)$row['IDTERCERO'];
+                $nit_tercero = $conexion_sede->real_escape_string($row['NIT']);
+                $cajero = trim($row['USUA']);
+                $nombre_tercero = $conexion_sede->real_escape_string($cajero);
+                $motivo = $conexion_sede->real_escape_string($row['MOTIVO']);
+                $valor = (float)$row['VALOR'];
+                $nombre_pc = $conexion_sede->real_escape_string($row['NOMBREPC']);
+                $id_origen = (int)$row['IDSALIDA'];
+
+                // Evitar duplicados físicos evaluando sede e id_origen
+                $check_sql = "SELECT id_transaccion FROM flujo_efectivo WHERE sede = '$sede_db' AND id_origen = $id_origen LIMIT 1";
+                $check_res = $db_conexion->query($check_sql);
+
+                if ($check_res && $check_res->num_rows == 0) {
+                    $insert_sql = "INSERT INTO flujo_efectivo 
+                                    (sede, tipo, fecha, id_tercero, nit_tercero, nombre_tercero, motivo, valor, nombre_pc, id_origen) 
+                                   VALUES 
+                                    ('$sede_db', '$tipo_transaccion', '$fecha_mysql', $id_tercero, '$nit_tercero', '$nombre_tercero', '$motivo', $valor, '$nombre_pc', $id_origen)";
+                    $db_conexion->query($insert_sql);
                 }
             }
         }
     }
 }
 
-// 2. Cargar Todo Directamente desde flujo_efectivo (Garantiza que TODO sea editable y borrable)
+/* ============================================================
+    LECTURA ÚNICA DESDE flujo_efectivo (EVITA DUPLICAR MONTOS)
+============================================================ */
+$reporte = [];
+$resumen_cajeros = [];
+$resumen_sedes = ['CENTRAL' => 0, 'DRINKS' => 0];
+$total_ingresos = 0;
+$total_egresos = 0;
+$gran_total = $arranque_operacion; 
+
 if ($db_conexion) {
-    $query_manuales = "SELECT * FROM flujo_efectivo WHERE fecha BETWEEN '$fecha_ini_input' AND '$fecha_fin_input' ORDER BY valor DESC";
+    $query_manuales = "SELECT * FROM flujo_efectivo WHERE fecha BETWEEN '$fecha_ini_input' AND '$fecha_fin_input' ORDER BY fecha ASC, valor DESC";
     $res_m = $db_conexion->query($query_manuales);
+    
     if ($res_m) {
         while ($row_m = $res_m->fetch_assoc()) {
             if ($row_m['motivo'] === '[ARRANQUE DE CAJA]') continue; 
@@ -163,14 +177,15 @@ if ($db_conexion) {
             if(empty($cajero)) $cajero = 'GENERAL';
             
             $valor_m = (float)$row_m['valor'];
-            $tipo_real = $row_m['tipo']; 
+            $tipo_real = strtoupper($row_m['tipo']); 
             
-            if ($tipo_real === 'PAGO') {
+            // Si es Pago/Gasto resta, si es Ingreso (o Recaudo) suma
+            if ($tipo_real === 'PAGO' || $tipo_real === 'GASTO') {
                 $total_egresos += $valor_m;
                 $valor_neto = -$valor_m; 
             } else {
                 $total_ingresos += $valor_m;
-                $valor_neto = $valor_m;
+                $valor_neto = $valor_m; 
             }
 
             $row_format = [
@@ -185,10 +200,11 @@ if ($db_conexion) {
                 'VALOR' => $valor_neto,
                 'VALOR_REAL' => (float)$row_m['valor'],
                 'NIT' => $row_m['nit_tercero'] ?? 'N/A',
-                'ES_MANUAL' => true // ¡Ahora TODOS tienen permisos de edición y borrado!
+                'ES_MANUAL' => empty($row_m['id_origen']) 
             ];
 
             $reporte[$cajero][] = $row_format;
+            $resumen_cajeros[$cajero] = ($resumen_cajeros[$cajero] ?? 0) + $valor_neto;
             $resumen_sedes[$row_m['sede']] += $valor_neto;
             $gran_total += $valor_neto;
         }
@@ -290,7 +306,7 @@ function formatFecha($f){ return strlen($f)==8 ? substr($f,0,4)."-".substr($f,4,
         <div class="form-box">
             <h3 style="margin-top:0; color:#2c3e50;">➕ Registrar Movimiento</h3>
             <form method="POST"><input type="hidden" name="accion_manual" value="1">
-                <div style="margin-bottom: 12px;"><label>Tipo:</label><select name="tipo_manual" style="width:100%; padding:8px; margin-top:5px;"><option value="INGRESO">Ingreso</option><option value="GASTO">Gasto (Pago)</option></select></div>
+                <div style="margin-bottom: 12px;"><label>Tipo:</label><select name="tipo_manual" style="width:100%; padding:8px; margin-top:5px;"><option value="INGRESO">Ingreso / Recaudo</option><option value="GASTO">Gasto (Pago)</option></select></div>
                 <div style="margin-bottom: 12px;"><label>Sede:</label><select name="sede_manual" style="width:100%; padding:8px; margin-top:5px;"><option value="CENTRAL">CENTRAL</option><option value="DRINKS">DRINKS</option></select></div>
                 <div style="margin-bottom: 12px;"><label>Fecha:</label><input type="date" name="fecha_manual" value="<?= $fecha_ini_input ?>" style="width:100%; padding:8px; margin-top:5px;"></div>
                 <div style="margin-bottom: 12px;"><label>Tercero:</label><input type="text" name="tercero_manual" required style="width:100%; padding:8px; margin-top:5px;"></div>
@@ -308,7 +324,7 @@ function formatFecha($f){ return strlen($f)==8 ? substr($f,0,4)."-".substr($f,4,
             <form method="POST">
                 <input type="hidden" name="accion_editar" value="1">
                 <input type="hidden" name="id_transaccion" id="edit_id">
-                <div style="margin-bottom: 12px;"><label>Tipo:</label><select name="tipo_manual" id="edit_tipo" style="width:100%; padding:8px; margin-top:5px;"><option value="INGRESO">Ingreso</option><option value="GASTO">Gasto (Pago)</option></select></div>
+                <div style="margin-bottom: 12px;"><label>Tipo:</label><select name="tipo_manual" id="edit_tipo" style="width:100%; padding:8px; margin-top:5px;"><option value="INGRESO">Ingreso / Recaudo</option><option value="GASTO">Gasto (Pago)</option></select></div>
                 <div style="margin-bottom: 12px;"><label>Sede:</label><select name="sede_manual" id="edit_sede" style="width:100%; padding:8px; margin-top:5px;"><option value="CENTRAL">CENTRAL</option><option value="DRINKS">DRINKS</option></select></div>
                 <div style="margin-bottom: 12px;"><label>Fecha:</label><input type="date" name="fecha_manual" id="edit_fecha" style="width:100%; padding:8px; margin-top:5px;"></div>
                 <div style="margin-bottom: 12px;"><label>Tercero:</label><input type="text" name="tercero_manual" id="edit_tercero" required style="width:100%; padding:8px; margin-top:5px;"></div>
@@ -395,7 +411,7 @@ function formatFecha($f){ return strlen($f)==8 ? substr($f,0,4)."-".substr($f,4,
                                     <button class="btn-accion btn-editar" onclick="abrirEditar(
                                         '<?= $m['ID_TRANSACCION_REAL'] ?>',
                                         '<?= $m['SEDE_ORIGEN'] ?>',
-                                        '<?= $m['TIPO_PURO'] === 'PAGO' ? 'GASTO' : $m['TIPO_PURO'] ?>',
+                                        '<?= ($m['TIPO_PURO'] === 'PAGO' || $m['TIPO_PURO'] === 'GASTO') ? 'GASTO' : 'INGRESO' ?>',
                                         '<?= formatFecha($m['FECHA']) ?>',
                                         '<?= addslashes($cajero) ?>',
                                         '<?= addslashes($m['MOTIVO_PURO']) ?>',
