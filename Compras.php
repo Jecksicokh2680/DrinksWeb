@@ -90,8 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     $mysqliWeb->begin_transaction();
 
     try {
-        // AQUÍ PUEDES APUNTAR A TU TABLA DE GASTOS DIRECTOS O MODIFICAR LA CONSULTA SEGÚN TU ESTRUCTURA
-        // Ejemplo genérico adaptado a flujo de caja/gastos:
         $stmt = $mysqliWeb->prepare("INSERT INTO flujo_efectivo (sede, tipo, fecha, nit_tercero, nombre_tercero, motivo, valor, nombre_pc, id_origen) VALUES (?, 'PAGO', ?, ?, ?, ?, ?, ?, ?)");
         
         $fechaActual = date('Y-m-d');
@@ -100,15 +98,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $nit         = substr(trim($input['nit']), 0, 20);
         $nombre      = trim($input['nombre']);
         $idCompra    = trim($input['idcompra']);
-        $motivo      = substr("Gasto Factura ID: " . $idCompra, 0, 255);
+        $motivo      = substr("Factura ID: " . trim($input['nombre']) . " ID Compra: " . $idCompra, 0, 255);
         
-        // Guardamos el valor en negativo para representar la salida/gasto de dinero
-        $valor       = -abs((double)$input['monto']);
+        // Guardamos el valor en positivo (corregido)
+        $valor = abs((double)$input['monto']);
         $nombrePc    = gethostname();
         $idOrigen    = (int)$idCompra;
 
-        if ($valor < 0 && !empty($nit)) {
-            $stmt->bind_param("ssssdsds", $sede, $fechaActual, $nit, $nombre, $motivo, $valor, $nombrePc, $idOrigen);
+        $valor = abs((double)$input['monto']);
+        $nombrePc    = gethostname();
+        $idOrigen    = (int)$idCompra;
+
+        if ($valor > 0 && !empty($nit)) {
+            // Corrección de tipos en bind_param: s (string), d (double), i (integer)
+            // Orden: sede(s), fecha(s), nit(s), nombre(s), motivo(s), valor(d), nombre_pc(s), id_origen(i)
+            $stmt->bind_param("sssssdsi", $sede, $fechaActual, $nit, $nombre, $motivo, $valor, $nombrePc, $idOrigen);
             $stmt->execute();
             $mysqliWeb->commit();
             echo json_encode(['status' => 'success', 'message' => '¡Gasto registrado correctamente a las ' . $horaActual . ' (Hora Bogotá)!']);
@@ -694,8 +698,8 @@ function grabarFactura(nitProv, nombreProv, idCompra, montoFactura) {
 
 // Nueva función para Grabar como Gasto Directo en Efectivo/Flujo
 function grabarGasto(nitProv, nombreProv, idCompra, montoFactura, sucursal) {
-    var montoNegativoStr = '-' + montoFactura.toLocaleString('es-CO');
-    if (!confirm('¿Deseas registrar esto como un GASTO directo de caja (ID Factura: ' + idCompra + ') por valor de $' + montoNegativoStr + ' para ' + nombreProv + '?')) {
+    var montoPositivoStr = montoFactura.toLocaleString('es-CO');
+    if (!confirm('¿Deseas registrar esto como un GASTO directo de caja (ID Factura: ' + idCompra + ') por valor de $' + montoPositivoStr + ' para ' + nombreProv + '?')) {
         return;
     }
 
