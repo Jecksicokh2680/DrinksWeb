@@ -239,8 +239,9 @@ $sqlObjetivos = "
     FROM terceros t
     INNER JOIN objetivos_cajeros_cab cab ON t.CedulaNit = cab.CedulaNit
     LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
-    WHERE cab.mm = ? AND cab.aa = ?
+    WHERE cab.mm = ? AND cab.aa = ? AND cab.estado = '1'
 ";
+
 if (!empty($UsuarioFact)) {
     $sqlObjetivos .= " AND t.CedulaNit = ?";
 }
