@@ -25,7 +25,7 @@ $mensaje_exito = "";
 ============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instanceof mysqli) {
     
-    // 0. GUARDAR O ACTUALIZAR ARRANQUE FÍSICO DIARIO
+    // 0. GUARDAR, ACTUALIZAR O ELIMINAR ARRANQUE FÍSICO DIARIO
     if (isset($_POST['accion_guardar_arranque'])) {
         $fecha_arranque = $db_conexion->real_escape_string($_POST['fecha_arranque']);
         $valor_arranque = (float)$_POST['valor_arranque'];
@@ -46,6 +46,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
                         VALUES ('$sede_arranque', 'INGRESO', '$fecha_arranque', 'SISTEMA', '[ARRANQUE DE CAJA]', $valor_arranque, 'MANUAL_WEB', NULL)";
             $db_conexion->query($ins_arr);
             $mensaje_exito = "¡Arranque del día $fecha_arranque registrado con éxito como base física!";
+        }
+    }
+
+    // NUEVO: ELIMINAR ARRANQUE DE CAJA
+    if (isset($_POST['accion_eliminar_arranque'])) {
+        $fecha_arranque = $db_conexion->real_escape_string($_POST['fecha_arranque']);
+        $sede_arranque = $db_conexion->real_escape_string($_POST['sede_arranque']);
+
+        $del_arr = "DELETE FROM flujo_efectivo WHERE fecha = '$fecha_arranque' AND sede = '$sede_arranque' AND motivo = '[ARRANQUE DE CAJA]'";
+        if ($db_conexion->query($del_arr)) {
+            $mensaje_exito = "¡Arranque del día $fecha_arranque eliminado con éxito!";
+        } else {
+            $mensaje_exito = "❌ Error al eliminar el arranque: " . $db_conexion->error;
         }
     }
 
@@ -244,7 +257,6 @@ if ($db_conexion) {
     $res_m = $db_conexion->query($query_manuales);
     if ($res_m) {
         while ($row_m = $res_m->fetch_assoc()) {
-            // Omitir los registros de arranque de la lista de cajeros común para que no aparezcan como empleados o terceros normales
             if ($row_m['motivo'] === '[ARRANQUE DE CAJA]') {
                 continue; 
             }
@@ -368,13 +380,12 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
         </div>
     </div>
 
-    <!-- Modal Fijar Arranque Físico -->
+    <!-- Modal Fijar / Eliminar Arranque Físico -->
     <div id="modalFormArranque" class="form-overlay">
         <div class="form-box">
-            <h3 style="margin-top:0; color:#2980b9;">⚙️ Guardar Arranque Físico Diario</h3>
-            <p style="font-size: 0.85em; color: #555;">Esto creará o actualizará un registro fijo de arranque para la fecha seleccionada en la base de datos.</p>
+            <h3 style="margin-top:0; color:#2980b9;">⚙️ Gestionar Arranque Físico Diario</h3>
+            <p style="font-size: 0.85em; color: #555;">Guarda, actualiza o elimina el registro de arranque físico para la fecha indicada.</p>
             <form method="POST">
-                <input type="hidden" name="accion_guardar_arranque" value="1">
                 <div style="margin-bottom: 12px;">
                     <label>Fecha a la que corresponde el Arranque:</label>
                     <input type="date" name="fecha_arranque" value="<?= $fecha_ini_input ?>" required style="width:100%; padding:8px; margin-top:5px;">
@@ -388,11 +399,14 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                 </div>
                 <div style="margin-bottom: 20px;">
                     <label>Valor del Arranque ($):</label>
-                    <input type="number" step="any" name="valor_arranque" placeholder="0" required style="width:100%; padding:8px; margin-top:5px;">
+                    <input type="number" step="any" name="valor_arranque" placeholder="0" style="width:100%; padding:8px; margin-top:5px;">
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
                     <button type="button" onclick="cerrarFormArranque()" style="background:#95a5a6; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Cancelar</button>
-                    <button type="submit" style="background:#2980b9; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Guardar Arranque</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="submit" name="accion_eliminar_arranque" value="1" onclick="return confirm('¿Estás seguro de eliminar el arranque de esta fecha y sede?');" style="background:#c0392b; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Eliminar Arranque</button>
+                        <button type="submit" name="accion_guardar_arranque" value="1" style="background:#2980b9; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Guardar / Actualizar</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -573,7 +587,7 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
             <h3>🏢 Resumen Financiero</h3>
             <table class="resumen-table">
                 <tr>
-                    <td>Arranque de Operación (<?= date('d/m/Y', strtotime($fecha_ini_input . ' - 1 day')) ?>):</td>
+                    <td>Arranque de Operación (<?= date('d/m/Y', strtotime($fecha_ini_input . ' - 0 day')) ?>):</td>
                     <td align="right" style="color: <?= $arranque_operacion >= 0 ? '#27ae60' : '#c0392b' ?>; font-weight:bold;">$ <?= money($arranque_operacion) ?></td>
                 </tr>
                 <tr>
