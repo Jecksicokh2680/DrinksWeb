@@ -301,7 +301,7 @@ function abrirPopup(event, url) {
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
                                     <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>                                
-                                    <!-- <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a> -->
+                                    <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>

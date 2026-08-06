@@ -21,11 +21,35 @@ $f_fin_db = str_replace('-', '', $fecha_fin_input);
 $mensaje_exito = "";
 
 /* ============================================================
-    PROCESAR ACCIONES MANUALES (INSERTAR, EDITAR, ELIMINAR, PURGAR)
+    PROCESAR ACCIONES MANUALES Y DE ARRANQUE
 ============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instanceof mysqli) {
     
-    // 0. PURGAR / BORRAR REGISTROS ANTERIORES A UNA FECHA
+    // 0. GUARDAR O ACTUALIZAR ARRANQUE FÍSICO DIARIO
+    if (isset($_POST['accion_guardar_arranque'])) {
+        $fecha_arranque = $db_conexion->real_escape_string($_POST['fecha_arranque']);
+        $valor_arranque = (float)$_POST['valor_arranque'];
+        $sede_arranque = $db_conexion->real_escape_string($_POST['sede_arranque']);
+
+        // Verificar si ya existe un arranque para esa fecha y sede
+        $check_arr = "SELECT id_transaccion FROM flujo_efectivo WHERE fecha = '$fecha_arranque' AND sede = '$sede_arranque' AND motivo = '[ARRANQUE DE CAJA]' LIMIT 1";
+        $res_check = $db_conexion->query($check_arr);
+
+        if ($res_check && $res_check->num_rows > 0) {
+            $row_ex = $res_check->fetch_assoc();
+            $id_t = $row_ex['id_transaccion'];
+            $up_arr = "UPDATE flujo_efectivo SET valor = $valor_arranque WHERE id_transaccion = $id_t";
+            $db_conexion->query($up_arr);
+            $mensaje_exito = "¡Arranque del día $fecha_arranque actualizado con éxito!";
+        } else {
+            $ins_arr = "INSERT INTO flujo_efectivo (sede, tipo, fecha, nombre_tercero, motivo, valor, nombre_pc, id_origen) 
+                        VALUES ('$sede_arranque', 'INGRESO', '$fecha_arranque', 'SISTEMA', '[ARRANQUE DE CAJA]', $valor_arranque, 'MANUAL_WEB', NULL)";
+            $db_conexion->query($ins_arr);
+            $mensaje_exito = "¡Arranque del día $fecha_arranque registrado con éxito como base física!";
+        }
+    }
+
+    // 1. PURGAR / BORRAR REGISTROS ANTERIORES A UNA FECHA
     if (isset($_POST['accion_purgar'])) {
         $fecha_limite = $db_conexion->real_escape_string($_POST['fecha_limite']);
         if (!empty($fecha_limite)) {
@@ -41,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
         }
     }
 
-    // 1. ELIMINAR MOVIMIENTO MANUAL
+    // 2. ELIMINAR MOVIMIENTO MANUAL
     if (isset($_POST['accion_eliminar'])) {
         $id_transaccion = (int)$_POST['id_transaccion'];
         $del_sql = "DELETE FROM flujo_efectivo WHERE id_transaccion = $id_transaccion AND id_origen IS NULL";
@@ -52,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
         }
     }
 
-    // 2. EDITAR MOVIMIENTO MANUAL
+    // 3. EDITAR MOVIMIENTO MANUAL
     if (isset($_POST['accion_editar'])) {
         $id_transaccion = (int)$_POST['id_transaccion'];
         $sede_manual = $db_conexion->real_escape_string($_POST['sede_manual']);
@@ -85,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
         }
     }
 
-    // 3. NUEVO MOVIMIENTO MANUAL
+    // 4. NUEVO MOVIMIENTO MANUAL
     if (isset($_POST['accion_manual'])) {
         $sede_manual = $db_conexion->real_escape_string($_POST['sede_manual']);
         
@@ -116,21 +140,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
 }
 
 /* ============================================================
-    CÁLCULO DEL ARRANQUE DE LA OPERACIÓN (Saldo Día Anterior)
+    LEER EL ARRANQUE DESDE EL REGISTRO FÍSICO DE LA BASE DE DATOS
 ============================================================ */
 $arranque_operacion = 0;
 if ($db_conexion) {
     $fecha_ayer = date('Y-m-d', strtotime($fecha_ini_input . ' - 1 day'));
 
-    $sql_arranque = "SELECT 
-        SUM(CASE WHEN tipo = 'INGRESO' THEN valor ELSE 0 END) - 
-        SUM(CASE WHEN tipo = 'PAGO' THEN valor ELSE 0 END) AS saldo_dia_anterior 
-        FROM flujo_efectivo 
-        WHERE fecha = '$fecha_ayer'";
-        
+    // Buscamos si existe un registro físico con el motivo [ARRANQUE DE CAJA] para el día anterior
+    $sql_arranque = "SELECT SUM(CASE WHEN tipo = 'INGRESO' THEN valor ELSE -valor END) AS total_arranque 
+                     FROM flujo_efectivo 
+                     WHERE fecha = '$fecha_ayer' AND motivo = '[ARRANQUE DE CAJA]'";
+                     
     $res_arranque = $db_conexion->query($sql_arranque);
     if ($res_arranque && $row_arr = $res_arranque->fetch_assoc()) {
-        $arranque_operacion = (float)($row_arr['saldo_dia_anterior'] ?? 0);
+        $arranque_operacion = (float)($row_arr['total_arranque'] ?? 0);
     }
 }
 
@@ -172,7 +195,6 @@ foreach ($sedes as $nombre_sede => $conexion_sede) {
             $row['ES_MANUAL'] = false;
             $cajero = trim($row['USUA']);
             
-            // Omitir si el cajero viene vacío o es un nombre técnico erróneo de equipo/factura
             if(empty($cajero) || stripos($cajero, 'FACT') !== false || stripos($cajero, 'INICIO') !== false) {
                 continue;
             }
@@ -222,11 +244,15 @@ if ($db_conexion) {
     $res_m = $db_conexion->query($query_manuales);
     if ($res_m) {
         while ($row_m = $res_m->fetch_assoc()) {
+            // Omitir los registros de arranque de la lista de cajeros común para que no aparezcan como empleados o terceros normales
+            if ($row_m['motivo'] === '[ARRANQUE DE CAJA]') {
+                continue; 
+            }
+
             $cajero = trim($row_m['nombre_tercero'] ?? 'MANUAL');
             if(empty($cajero)) $cajero = 'MANUAL';
             
             $valor_m = (float)$row_m['valor'];
-            
             $tipo_real = $row_m['tipo']; // 'INGRESO' o 'PAGO'
             
             if ($tipo_real === 'PAGO') {
@@ -334,18 +360,50 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
             <button type="submit" style="background:#2c3e50; color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer;">Actualizar</button>
         </form>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" onclick="fijarTotalComoArranque('<?= $gran_total ?>', '<?= $fecha_ini_input ?>')" style="background:#e67e22; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer; font-weight:bold;">⚡ Guardar Total General como Arranque</button>
+            <button type="button" onclick="abrirFormArranque()" style="background:#2980b9; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">⚙️ Fijar Arranque Diario</button>
             <button type="button" onclick="abrirFormManual()" style="background:#27ae60; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">➕ Nuevo Movimiento</button>
-            <button type="button" onclick="abrirFormPurgar()" style="background:#c0392b; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">🗑️ Limpiar Historial Antiguo</button>
+            <button type="button" onclick="abrirFormPurgar()" style="background:#c0392b; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">🗑️ Limpiar Historial</button>
             <button type="button" onclick="window.print()" style="padding:10px 15px; cursor:pointer; border: 1px solid #ccc; border-radius:5px; background:#fff;">🖨️ Imprimir</button>
         </div>
     </div>
 
-    <!-- Modal Formulario Purgar / Borrar Historial Antiguo -->
+    <!-- Modal Fijar Arranque Físico -->
+    <div id="modalFormArranque" class="form-overlay">
+        <div class="form-box">
+            <h3 style="margin-top:0; color:#2980b9;">⚙️ Guardar Arranque Físico Diario</h3>
+            <p style="font-size: 0.85em; color: #555;">Esto creará o actualizará un registro fijo de arranque para la fecha seleccionada en la base de datos.</p>
+            <form method="POST">
+                <input type="hidden" name="accion_guardar_arranque" value="1">
+                <div style="margin-bottom: 12px;">
+                    <label>Fecha a la que corresponde el Arranque:</label>
+                    <input type="date" name="fecha_arranque" value="<?= $fecha_ini_input ?>" required style="width:100%; padding:8px; margin-top:5px;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label>Sede:</label>
+                    <select name="sede_arranque" style="width:100%; padding:8px; margin-top:5px;">
+                        <option value="CENTRAL">CENTRAL</option>
+                        <option value="DRINKS">DRINKS</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label>Valor del Arranque ($):</label>
+                    <input type="number" step="any" name="valor_arranque" placeholder="0" required style="width:100%; padding:8px; margin-top:5px;">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" onclick="cerrarFormArranque()" style="background:#95a5a6; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Cancelar</button>
+                    <button type="submit" style="background:#2980b9; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer;">Guardar Arranque</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Formulario Purgar -->
     <div id="modalFormPurgar" class="form-overlay">
         <div class="form-box">
             <h3 style="margin-top:0; color:#c0392b;">🗑️ Purgar Registros Antiguos</h3>
             <p style="font-size: 0.9em; color: #555;">Esto eliminará permanentemente todos los registros de la tabla <code>flujo_efectivo</code> con fecha anterior a la seleccionada.</p>
-            <form method="POST" onsubmit="return confirm('¿Estás COMPLETAMENTE SEGURO de eliminar los registros anteriores a esta fecha? Esta acción no se puede deshacer.');">
+            <form method="POST" onsubmit="return confirm('¿Estás COMPLETAMENTE SEGURO de eliminar los registros anteriores a esta fecha?');">
                 <input type="hidden" name="accion_purgar" value="1">
                 <div style="margin-bottom: 15px;">
                     <label>Borrar todo lo anterior a:</label>
@@ -381,7 +439,7 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
                 </div>
                 <div style="margin-bottom: 12px;">
                     <label>Fecha:</label>
-                    <input type="date" name="fecha_manual" value="<?= date('Y-m-d') ?>" style="width:100%; padding:8px; margin-top:5px;">
+                    <input type="date" name="fecha_manual" value="<?= $fecha_ini_input ?>" style="width:100%; padding:8px; margin-top:5px;">
                 </div>
                 <div style="margin-bottom: 12px;">
                     <label>Responsable / Tercero:</label>
@@ -686,7 +744,7 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
     <?php endif; ?>
 
     <div class="gran-total-banner">
-        <small style="font-size: 0.4em; display: block; opacity: 0.8;">BALANCE TOTAL (INCLUYE ARRANQUE DÍA ANTERIOR Y RANGO)</small>
+        <small style="font-size: 0.4em; display: block; opacity: 0.8;">BALANCE TOTAL (INCLUYE ARRANQUE FÍSICO DÍA ANTERIOR Y RANGO)</small>
         $ <?= money($gran_total) ?>
     </div>
 </div>
@@ -703,6 +761,12 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
     }
     function cerrarFormManual() {
         document.getElementById('modalFormManual').style.display = 'none';
+    }
+    function abrirFormArranque() {
+        document.getElementById('modalFormArranque').style.display = 'flex';
+    }
+    function cerrarFormArranque() {
+        document.getElementById('modalFormArranque').style.display = 'none';
     }
     function abrirFormPurgar() {
         document.getElementById('modalFormPurgar').style.display = 'flex';
@@ -722,6 +786,13 @@ function formatFecha($f){ return substr($f,0,4)."-".substr($f,4,2)."-".substr($f
     }
     function cerrarFormEditar() {
         document.getElementById('modalFormEditar').style.display = 'none';
+    }
+
+    // Inyecta dinámicamente el Gran Total y la fecha del campo "Desde" al abrir el modal de arranque
+    function fijarTotalComoArranque(montoTotal, fechaDesde) {
+        abrirFormArranque();
+        document.querySelector('#modalFormArranque input[name="valor_arranque"]').value = montoTotal;
+        document.querySelector('#modalFormArranque input[name="fecha_arranque"]').value = fechaDesde;
     }
 
     window.onclick = function(event) {

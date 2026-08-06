@@ -5,7 +5,7 @@ require("ConnCentral.php"); // Para sede central
 require("ConnDrinks.php");  // Para sede drinks (AWS)
 
 // 1. Validar Sesión
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 if ($UsuarioSesion === '') { die("❌ Sesión expirada"); }
 
 // 2. Validar Permiso 1700 (Reutilizando tu función de sesión si existe o consulta directa)

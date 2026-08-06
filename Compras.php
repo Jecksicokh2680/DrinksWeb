@@ -31,7 +31,7 @@ require('ConnCentral.php');
 require('ConnDrinks.php');
 
 // ---------------------------------------------------------
-// PROCESAMIENTO AJAX: GUARDAR FACTURA EN NEGATIVO CON HORA DE BOGOTÁ
+// PROCESAMIENTO AJAX: GUARDAR FACTURA COMO EGRESO (CRÉDITO/PROVEEDOR)
 // ---------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'guardar_factura') {
     header('Content-Type: application/json');
@@ -74,21 +74,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     exit;
 }
 
+// ---------------------------------------------------------
+// PROCESAMIENTO AJAX: GUARDAR COMO GASTO (DIRECTO, FUERA DE CRÉDITO)
+// ---------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'guardar_gasto') {
+    header('Content-Type: application/json');
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if (empty($input['nit']) || empty($input['idcompra']) || !isset($input['monto'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Datos insuficientes para procesar el gasto']);
+        exit;
+    }
+
+    global $mysqliWeb; 
+    $mysqliWeb->begin_transaction();
+
+    try {
+        // AQUÍ PUEDES APUNTAR A TU TABLA DE GASTOS DIRECTOS O MODIFICAR LA CONSULTA SEGÚN TU ESTRUCTURA
+        // Ejemplo genérico adaptado a flujo de caja/gastos:
+        $stmt = $mysqliWeb->prepare("INSERT INTO flujo_efectivo (sede, tipo, fecha, nit_tercero, nombre_tercero, motivo, valor, nombre_pc, id_origen) VALUES (?, 'PAGO', ?, ?, ?, ?, ?, ?, ?)");
+        
+        $fechaActual = date('Y-m-d');
+        $horaActual  = date('H:i:s');
+        $sede        = $input['sucursal'] ?? 'CENTRAL';
+        $nit         = substr(trim($input['nit']), 0, 20);
+        $nombre      = trim($input['nombre']);
+        $idCompra    = trim($input['idcompra']);
+        $motivo      = substr("Gasto Factura ID: " . $idCompra, 0, 255);
+        
+        // Guardamos el valor en negativo para representar la salida/gasto de dinero
+        $valor       = -abs((double)$input['monto']);
+        $nombrePc    = gethostname();
+        $idOrigen    = (int)$idCompra;
+
+        if ($valor < 0 && !empty($nit)) {
+            $stmt->bind_param("ssssdsds", $sede, $fechaActual, $nit, $nombre, $motivo, $valor, $nombrePc, $idOrigen);
+            $stmt->execute();
+            $mysqliWeb->commit();
+            echo json_encode(['status' => 'success', 'message' => '¡Gasto registrado correctamente a las ' . $horaActual . ' (Hora Bogotá)!']);
+        } else {
+            throw new Exception("El monto del gasto no es válido.");
+        }
+    } catch (Exception $e) {
+        $mysqliWeb->rollback();
+        echo json_encode(['status' => 'error', 'message' => 'Error al guardar el gasto: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 function Autorizacion($User, $Solicitud) {
     global $mysqliWeb;
-    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=? LIMIT 1");
+    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? Nro_Auto=? LIMIT 1");
     $stmt->bind_param("ss", $User, $Solicitud);
     $stmt->execute();
     $r = $stmt->get_result();
     return ($r && $r->num_rows) ? $r->fetch_assoc()['Swich'] : "NO";
 }
 
-// Función de formato estándar (Positivos)
 function fmoneda($v) { 
     return number_format($v, 0, ',', '.'); 
 }
 
-// Función de formato para Egresos (Negativos)
 function fmonedaNegativa($v) {
     if ($v < 0) {
         return '-' . number_format(abs($v), 0, ',', '.');
@@ -108,6 +154,7 @@ function fmonedaNegativa($v) {
             --primary: #0d6efd;
             --success: #198754;
             --danger: #dc3545;
+            --warning: #ffc107;
             --dark: #212529;
             --gray-bg: #f4f6f8;
             --border-color: #ddd;
@@ -223,8 +270,23 @@ function fmonedaNegativa($v) {
             cursor: pointer; 
             width: auto; 
             display: inline-block;
+            margin-bottom: 4px;
         }
         .btn-grabar-row:hover { background: #bb2d3b; }
+
+        .btn-gasto-row { 
+            background: #fd7e14; 
+            border: none; 
+            color: white; 
+            padding: 6px 12px; 
+            border-radius: 6px; 
+            font-size: 13px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            width: auto; 
+            display: inline-block;
+        }
+        .btn-gasto-row:hover { background: #e8590c; }
 
         .hidden-row { display: none !important; }
 
@@ -342,7 +404,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     $pvC = ($SucursalGet != 'DRINKS') ? precioProm($mysqliCentral) : [];
     $pvD = ($SucursalGet != 'CENTRAL') ? precioProm($mysqliDrinks) : [];
 
-    /* --- CONSULTA DE COMPRAS EN RANGO (Incluyendo Totales y Descuentos globales de la Factura si aplican, o agrupamos por idcompra) --- */
+    /* --- CONSULTA DE COMPRAS EN RANGO --- */
     function consultarCompras($mysqli, $suc, $fDesde, $fHasta, $p, $id){
         $cond = " WHERE C.ESTADO='0' ";
         if(!empty($id)){
@@ -368,7 +430,6 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     if($SucursalGet != 'DRINKS') $resultados[] = consultarCompras($mysqliCentral, 'Central', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
     if($SucursalGet != 'CENTRAL') $resultados[] = consultarCompras($mysqliDrinks, 'Drinks', $FechaDesdeSQL, $FechaHastaSQL, $ProvGet, $IDCompraGet);
 
-    // PASO 1: Recolectar datos y calcular la suma de los ítems por cada factura para saber si hay diferencia con la cabecera (totalFacturaCabecera) y prorratearla o asignarla
     $filasCrudas = [];
     foreach($resultados as $res){
         while($res && $x = $res->fetch_assoc()){
@@ -376,7 +437,6 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         }
     }
 
-    // Calcular el valor acumulado de ítems por cada idcompra para hacer el ajuste proporcional si la cabecera de la factura trae un total diferente (descuentos globales, fletes, etc.)
     $sumaItemsPorCompra = [];
     foreach($filasCrudas as $x){
         $idC = $x['sucursal'] . '_' . $x['idcompra'];
@@ -419,11 +479,9 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         $costoBruto = $net + ($net * $x['porciva'] / 100) + $x['ValICUIUni'];
         $totalItemBruto = $costoBruto * $cant;
 
-        // Factor de ajuste si la cabecera de la factura difere del acumulado de los detalles (ej. descuentos globales de factura)
         $idC = $x['sucursal'] . '_' . $x['idcompra'];
         $factorAjuste = 1;
         if(isset($sumaItemsPorCompra[$idC]) && $sumaItemsPorCompra[$idC]['suma'] > 0 && $sumaItemsPorCompra[$idC]['totalCabecera'] > 0){
-            // Si la cabecera tiene un total diferente al acumulado de detalles, ajustamos proporcionalmente el costo real del ítem basado en el total de la factura
             $factorAjuste = $sumaItemsPorCompra[$idC]['totalCabecera'] / $sumaItemsPorCompra[$idC]['suma'];
         }
 
@@ -506,19 +564,19 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         echo "</tbody></table></div>";
 
         /* =========================================================
-           TABLA RESUMEN CON VALORES NEGATIVOS (EGRESOS)
+           TABLA RESUMEN CON BOTONES DE CRÉDITO Y GASTO DIRECTO
            ========================================================= */
         usort($resumenFacturas, function($a, $b) {
             return strcmp($a['prov'], $b['prov']);
         });
 
-        echo "<h3 class='resumen-title'>📋 Resumen de Egresos por Proveedor (Valores de Facturas en Negativo)</h3>";
+        echo "<h3 class='resumen-title'>📋 Resumen de Egresos y Gastos por Proveedor</h3>";
 
         echo "<div class='table-container' style='max-height: 45vh;'><table><thead><tr>";
         echo "<th class='text-left'>Sede / Sucursal</th>";
         echo "<th class='text-center'>ID Compra / Factura</th>";
-        echo "<th>Total Comprado</th>";
-        echo "<th class='text-center' style='width:140px;'>Acción</th>";
+        echo "<th>Total Valor</th>";
+        echo "<th class='text-center' style='width:220px;'>Acciones</th>";
         echo "</tr></thead><tbody>";
 
         $provAntResumen = '';
@@ -527,7 +585,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         foreach($resumenFacturas as $rf){
             if ($provAntResumen && $provAntResumen != $rf['prov']) {
                 echo "<tr class='subtotal' style='background:#f1f3f5;'>";
-                echo "<td colspan='2' class='text-left'>Acumulado Total Egreso: $provAntResumen</td>";
+                echo "<td colspan='2' class='text-left'>Acumulado Total: $provAntResumen</td>";
                 echo "<td class='negativo'>".fmonedaNegativa($subTotalProvResumen)."</td>";
                 echo "<td></td>";
                 echo "</tr>";
@@ -547,20 +605,21 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             echo "<td class='text-center'><strong>{$rf['idcompra']}</strong></td>";
             echo "<td class='negativo'>".fmonedaNegativa($rf['total'])."</td>";
             echo "<td class='text-center'>
-                    <button type='button' class='btn-grabar-row' onclick='grabarFactura(\"{$rf['nit']}\", \"{$rf['prov']}\", \"{$rf['idcompra']}\", {$rf['total']})'>💾 Grabar Egreso</button>
+                    <button type='button' class='btn-grabar-row' onclick='grabarFactura(\"{$rf['nit']}\", \"{$rf['prov']}\", \"{$rf['idcompra']}\", {$rf['total']})'>💾 Grabar Crédito</button>
+                    <button type='button' class='btn-gasto-row' onclick='grabarGasto(\"{$rf['nit']}\", \"{$rf['prov']}\", \"{$rf['idcompra']}\", {$rf['total']}, \"{$rf['sucursal']}\")'>💵 Grabar Gasto</button>
                   </td>";
             echo "</tr>";
         }
         
         if($provAntResumen != '') {
             echo "<tr class='subtotal' style='background:#f1f3f5;'>";
-            echo "<td colspan='2' class='text-left'>Acumulado Total Egreso: $provAntResumen</td>";
+            echo "<td colspan='2' class='text-left'>Acumulado Total: $provAntResumen</td>";
             echo "<td class='negativo'>".fmonedaNegativa($subTotalProvResumen)."</td>";
             echo "<td></td>";
             echo "</tr>";
         }
         
-        echo "<tr class='total'><td colspan='2' class='text-left'>TOTAL GENERAL DEL RESUMEN (EGRESOS)</td><td class='negativo'>".fmonedaNegativa($gran)."</td><td></td></tr>";
+        echo "<tr class='total'><td colspan='2' class='text-left'>TOTAL GENERAL DEL RESUMEN</td><td class='negativo'>".fmonedaNegativa($gran)."</td><td></td></tr>";
         echo "</tbody></table></div>";
 
     } else {
@@ -604,9 +663,10 @@ function filtrarPorProductoHtml() {
     totalGeneral.forEach(g => g.classList.add('hidden-row'));
 }
 
+// Función para Grabar Credito / Proveedor (Pago a proveedor existente)
 function grabarFactura(nitProv, nombreProv, idCompra, montoFactura) {
     var montoNegativoStr = '-' + montoFactura.toLocaleString('es-CO');
-    if (!confirm('¿Deseas grabar el egreso de la factura ID: ' + idCompra + ' por valor de $' + montoNegativoStr + ' para ' + nombreProv + '?')) {
+    if (!confirm('¿Deseas grabar como CRÉDITO la factura ID: ' + idCompra + ' por valor de $' + montoNegativoStr + ' para ' + nombreProv + '?')) {
         return;
     }
 
@@ -629,6 +689,36 @@ function grabarFactura(nitProv, nombreProv, idCompra, montoFactura) {
     .catch(error => {
         console.error('Error:', error);
         alert('Hubo un error al procesar el guardado de la factura.');
+    });
+}
+
+// Nueva función para Grabar como Gasto Directo en Efectivo/Flujo
+function grabarGasto(nitProv, nombreProv, idCompra, montoFactura, sucursal) {
+    var montoNegativoStr = '-' + montoFactura.toLocaleString('es-CO');
+    if (!confirm('¿Deseas registrar esto como un GASTO directo de caja (ID Factura: ' + idCompra + ') por valor de $' + montoNegativoStr + ' para ' + nombreProv + '?')) {
+        return;
+    }
+
+    fetch('?action=guardar_gasto', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+            nit: nitProv,
+            nombre: nombreProv,
+            idcompra: idCompra,
+            monto: montoFactura,
+            sucursal: sucursal
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Hubo un error al registrar el gasto.');
     });
 }
 </script>

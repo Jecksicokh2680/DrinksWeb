@@ -27,7 +27,22 @@ if (isset($_POST['accion']) && $_POST['accion'] === 'cerrar_sesion') {
 }
 
 /* =====================================================
-    2. OBTENER USUARIOS CON SESIÓN ACTIVA (Ordenados por Sede y Hora)
+    2. OBTENER LISTA DE DÍAS DISPONIBLES
+===================================================== */
+$sqlDias = "SELECT DISTINCT DATE(fecha_ingreso) as dia FROM sesiones_activas ORDER BY dia DESC";
+$resultDias = $mysqli->query($sqlDias);
+$diasDisponibles = [];
+if ($resultDias) {
+    while ($rowDia = $resultDias->fetch_assoc()) {
+        $diasDisponibles[] = $rowDia['dia'];
+    }
+}
+
+// Definir el día seleccionado (por defecto el más reciente o el que envíe el usuario)
+$diaSeleccionado = $_GET['dia'] ?? ($diasDisponibles[0] ?? date('Y-m-d'));
+
+/* =====================================================
+    3. OBTENER USUARIOS DEL DÍA SELECCIONADO
 ===================================================== */
 $sqlSesiones = "
     SELECT 
@@ -40,13 +55,18 @@ $sqlSesiones = "
         sa.fecha_ingreso
     FROM sesiones_activas sa
     INNER JOIN terceros t ON sa.CedulaNit = t.CedulaNit
+    WHERE DATE(sa.fecha_ingreso) = ?
     ORDER BY sa.NitEmpresa ASC, sa.fecha_ingreso DESC
 ";
 
-$resultSesiones = $mysqli->query($sqlSesiones);
+$stmtSesiones = $mysqli->prepare($sqlSesiones);
 $usuariosActivos = [];
 
-if ($resultSesiones) {
+if ($stmtSesiones) {
+    $stmtSesiones->bind_param("s", $diaSeleccionado);
+    $stmtSesiones->execute();
+    $resultSesiones = $stmtSesiones->get_result();
+
     while ($row = $resultSesiones->fetch_assoc()) {
         $nitEmpresa = $row['NitEmpresa'];
         
@@ -66,19 +86,26 @@ if ($resultSesiones) {
             'fecha_ingreso' => $row['fecha_ingreso']
         ];
     }
+    $stmtSesiones->close();
 }
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Control de Sesiones Activas</title>
+    <title>Control de Sesiones Activas por Día</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
         .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); max-width: 1000px; margin: auto; }
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         h2 { margin: 0; color: #263238; }
         .alert { background: #d4edda; color: #155724; padding: 10px 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #c3e6cb; }
+        .pagination-days { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+        .pagination-days span { font-weight: bold; color: #455a64; font-size: 13px; margin-right: 5px; }
+        .btn-day { background: #eceff1; color: #455a64; padding: 6px 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: bold; border: 1px solid #cfd8dc; }
+        .btn-day.active { background: #0288d1; color: white; border-color: #0277bd; }
+        .btn-day:hover { background: #cfd8dc; }
+        .btn-day.active:hover { background: #0277bd; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 12px 15px; border-bottom: 1px solid #eee; text-align: left; font-size: 14px; }
         th { background: #eceff1; text-transform: uppercase; font-size: 11px; color: #455a64; font-weight: bold; }
@@ -96,15 +123,27 @@ if ($resultSesiones) {
 <div class="card">
     <div class="header-container">
         <h2>Control de Sesiones Activas</h2>
-        <a href="" class="btn-refresh">🔄 Refrescar</a>
+        <a href="?dia=<?= htmlspecialchars($diaSeleccionado) ?>" class="btn-refresh">🔄 Refrescar</a>
     </div>
     
     <?php if (!empty($mensajeAlerta)): ?>
         <div class="alert"><?= htmlspecialchars($mensajeAlerta) ?></div>
     <?php endif; ?>
 
+    <!-- Paginación / Selector por Días -->
+    <?php if (!empty($diasDisponibles)): ?>
+        <div class="pagination-days">
+            <span>Días:</span>
+            <?php foreach ($diasDisponibles as $dia): ?>
+                <a href="?dia=<?= $dia ?>" class="btn-day <?= ($dia === $diaSeleccionado) ? 'active' : '' ?>">
+                    <?= $dia ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+
     <?php if (empty($usuariosActivos)): ?>
-        <p class="text-center text-muted" style="padding: 30px 0;">No hay usuarios con sesiones activas registradas en este momento.</p>
+        <p class="text-center text-muted" style="padding: 30px 0;">No hay usuarios con sesiones activas registradas para el día <?= htmlspecialchars($diaSeleccionado) ?>.</p>
     <?php else: ?>
         <table>
             <thead>
