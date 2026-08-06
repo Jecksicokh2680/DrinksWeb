@@ -9,7 +9,7 @@ require("ConnCentral.php");
 require("Conexion.php");    
 require("ConnDrinks.php");  
 
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 if ($UsuarioSesion === '') { die("Debe iniciar sesión."); }
 
 function Autorizacion($User, $Solicitud) {

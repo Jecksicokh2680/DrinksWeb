@@ -602,7 +602,7 @@ if (!empty($reporte)) {
 
         let egresosHtml = "";
         <?php foreach($listaEgresos as $e): ?>
-            egresosHtml += `<tr><td style="padding:1px; max-width:140px; overflow:hidden;">- <?= strtoupper(substr($e['MOTIVO'],0,20)) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
+            egresosHtml += `<tr><td style="padding:1px; max-width:240px; overflow:hidden;">- <?= htmlspecialchars($e['MOTIVO']) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
         <?php endforeach; ?>
 
         const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
@@ -639,8 +639,10 @@ if (!empty($reporte)) {
                     <td style="text-align:right;"><b>${pctEjecucionGlobal}</b></td>
                 </tr>
             </table>
-            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle Egresos</div>
-            <table class="ticket-table" style="font-size:11px; width:100%;"><?= $egresosHtml ?></table>
+            <div style="margin-top:10px; font-size:12px; font-weight:900; border-bottom:2px solid #000; text-transform: uppercase;">Detalle de Egresos</div>
+            <table class="ticket-table" style="font-size:11px; width:100%; margin-top:4px;">
+                ${egresosHtml !== "" ? egresosHtml : '<tr><td colspan="2">Sin egresos registrados</td></tr>'}
+            </table>
             <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
                 <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
