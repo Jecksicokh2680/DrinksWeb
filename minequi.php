@@ -316,6 +316,110 @@ if ($resultado && $resultado->num_rows > 0) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transferencias Bre-B</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <title>Transferencias Bre-B</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        /* ESTILOS PARA LA IMAGEN DE FONDO */
+        #pagina-fondo {
+            /* Reemplaza 'ment_promo_breb.png' por la ruta correcta si no está en la misma carpeta */
+            background-image: url('ment_promo_breb.png');
+            background-size: cover;          /* Cubre toda el área */
+            background-position: center center; /* Centra la imagen */
+            background-repeat: no-repeat;      /* No repetir la imagen */
+            background-attachment: fixed;     /* La imagen se queda fija al hacer scroll */
+            min-height: 100vh;              /* Altura mínima del 100% de la vista */
+        }
+
+        /* Hacemos el contenedor principal semitransparente para mejorar la legibilidad */
+        .container-main-wrapper {
+            /* Un fondo blanco con 90% de opacidad */
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 0.5rem;
+            padding-bottom: 2rem;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        /* Estilos existentes y otros ajustes... */
+        .text-break-custom { word-break: break-all; white-space: normal; }
+        .pagador-texto { max-width: 100%; white-space: normal; word-wrap: break-word; display: inline-block; }
+        .form-check-input { width: 1.5em; height: 1.5em; cursor: pointer; }
+        .form-check-input:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        @media (max-width: 768px) {
+            body { padding: 4px !important; }
+            .container-main-wrapper { padding: 8px !important; margin-top: 10px; }
+            .table th, .table td { padding: 6px 4px !important; font-size: 0.78rem !important; }
+            .fs-mobile-amount { font-size: 1.05rem !important; }
+            .badge-mobile { font-size: 0.65rem !important; padding: 3px 5px !important; }
+            .badge-green-flexible {
+                white-space: normal !important;
+                word-break: break-word;
+                text-align: left;
+            }
+        }
+
+        /* Contenedor del buscador centrado */
+        .busqueda-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .input-filtro {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px 20px;
+            border-radius: 50px !important;
+            border: 2px solid #ced4da;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .input-filtro:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 8px rgba(13, 110, 253, 0.25);
+            outline: none;
+        }
+    </style>
+</head>
+<!-- Aplicamos el ID para el fondo y quitamos las clases de padding antiguas -->
+<body id="pagina-fondo">
+
+<!-- Contenedor superior de sesión (mantenido fuera del contenedor principal) -->
+<div class="container-fluid container-xl pt-3 mb-3">
+    <div class="bg-dark text-white p-2 px-3 rounded shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2" style="font-size: 0.85rem;">
+        <!-- ... (Contenido de la cabecera de sesión sin cambios) ... -->
+         <div class="text-truncate">
+            👤 <strong>Usuario:</strong> <?php echo htmlspecialchars($nombre_usuario_sesion); ?> 
+            <span class="text-secondary mx-1">|</span> 
+            🆔 <strong>CC/NIT:</strong> <?php echo htmlspecialchars($usuario_actual ?: 'No asignado'); ?>
+        </div>
+        <div class="text-truncate">
+            🏢 <strong>Empresa (NIT):</strong> <?php echo htmlspecialchars($nit_empresa); ?> 
+            <span class="text-secondary mx-1">|</span> 
+            📍 <strong>Sucursal:</strong> <?php echo htmlspecialchars($nro_sucursal); ?>
+        </div>
+    </div>
+</div>
+
+<!-- ENVUELTO el contenido principal en una clase nueva para aplicar la transparencia -->
+<div class="container-fluid container-xl rounded container-main-wrapper">    
+    
+    <!-- Botón de sincronización y temporizador (con margen superior ajustado) -->
+    <div class="row align-items-center justify-content-between g-2 pt-3 mb-3">        
+        <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
+            <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
+            <?php if ($esAdminStock): ?>
+                <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
+            <?php endif; ?>
+            <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
+                ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+            </small>
+        </div>
+    </div>
+
+    <!-- ... (El resto de tu código HTML sigue exactamente igual aquí) ... -->
     <style>
         .text-break-custom { word-break: break-all; white-space: normal; }
         .pagador-texto { max-width: 100%; white-space: normal; word-wrap: break-word; display: inline-block; }

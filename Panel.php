@@ -12,6 +12,10 @@ if (empty($_SESSION['CedulaNit'])) {
 }
 
 $UsuarioSesion = $_SESSION['CedulaNit'];
+$NombreUsuario = isset($_SESSION['Usuario']) ? $_SESSION['Usuario'] : $UsuarioSesion;
+
+// Determinamos la sede actual desde la variable de sesión establecida en el login
+$SedeActual = isset($_SESSION['SedeActual']) ? strtolower($_SESSION['SedeActual']) : 'central';
 
 /* ============================================
     FUNCIÓN AUTORIZACIÓN
@@ -216,48 +220,32 @@ body {
                         <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
                         <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">❌ Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">📋 Listado Facturas del Día</a>
-                       <a class="nav-link" href="Calculadora.php" onclick="abrirPopup(event, this.href);">🧮 Calculadora</a>
+                        <a class="nav-link" href="Calculadora.php" onclick="abrirPopup(event, this.href);">🧮 Calculadora</a>
 
 <script>
-// Variable global para guardar la referencia de la ventana
 var ventanaPopup = null;
-
 function abrirPopup(event, url) {
-    // Evita que el enlace se abra de forma normal
     event.preventDefault();
-    
-    // Si la ventana ya existe y no está cerrada, simplemente la traemos al frente
     if (ventanaPopup && !ventanaPopup.closed) {
         ventanaPopup.focus();
         return;
     }
-    
-    // Dimensiones de la ventana
     var ancho = 400;
     var alto = 590;
-    
-    // Calcular la posición para centrarla en la pantalla
     var left = (window.screen.width - ancho) / 2;
     var top = (window.screen.height - alto) / 2;
-    
-    // Construir las opciones incluyendo la posición (left y top)
     var opciones = "width=" + ancho + ",height=" + alto + ",top=" + top + ",left=" + left + ",resizable=no,scrollbars=yes,status=no";
-    
-    // Abrir la ventana emergente y guardarla en la variable
     ventanaPopup = window.open(url, "CalculadoraPopup", opciones);
 }
 </script>
-                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                    
+                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                        
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🏦 Ver Transferencias Bre-B</a>
-                        <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                      
+                        <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                     
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
                         <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
-                      
-                         <!-- <a class="nav-link" href="Pruebas.php" target="contentFrame">Pruebas</a> -->             
-                        
                     </div>
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
@@ -292,7 +280,6 @@ function abrirPopup(event, url) {
             <div id="admin" class="accordion-collapse collapse" data-bs-parent="#menuPrincipal">
                 <div class="accordion-body">
                     <div class="accordion sub-accordion" id="adminSubAccordion">
-                        
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminOp">
                                 📊 Operación
@@ -300,7 +287,7 @@ function abrirPopup(event, url) {
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>                                
+                                    <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>                        
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
@@ -308,7 +295,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
                                     <a class="nav-link" href="BnmaTotal.php" target="contentFrame">Control Bnma Ventas</a>
-                                    <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Resumen de Cierres Bnma</a>
+                                    <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Cierres Cajeros Bnma</a>
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
@@ -316,7 +303,6 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
                                     <a class="nav-link" href="ComprasXProveedorXmeses.php" target="contentFrame">Compras Graficas</a>    
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
-                                    
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
                                 </div>
@@ -395,9 +381,9 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Crear Autorizaciones</a>
                                     <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Crear Auto por Usuario</a>
                                     <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Crear Empresas Productoras</a>                                    
-                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                   
+                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                 
                                     <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
-                                     <a class="nav-link" href="Productos.php" target="contentFrame">Listar y Modificar Productos</a>
+                                    <a class="nav-link" href="Productos.php" target="contentFrame">Listar y Modificar Productos</a>
                                     <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Relacionar Producto/Categoria</a>                                    
                                     <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Sincronizar Productos en Categorias</a>
                                     <a class="nav-link" href="Precios.php" target="contentFrame">Modificar Precios en Productos</a>
@@ -417,8 +403,44 @@ function abrirPopup(event, url) {
 
     <div class="mt-auto p-3 text-center" style="border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.1);">
         <div class="text-white-50" style="font-size: 13px;">Bienvenido</div>
-        <div class="text-white font-weight-bold"><strong><?=htmlspecialchars($UsuarioSesion)?></strong></div>
+        <div class="text-white font-weight-bold"><strong><?=htmlspecialchars($NombreUsuario)?></strong></div>
+        <div class="text-white-50 small">NIT: <?=htmlspecialchars($UsuarioSesion)?></div>
         <a href="Logout.php" target="_top" class="btn btn-outline-light btn-sm mt-2 w-100" style="border-color: rgba(255,255,255,0.4);">Cerrar sesión</a>
+    </div>
+</div>
+
+<!-- Modal de Confirmación de Ingreso con Logos de Sede enlazado a $_SESSION['SedeActual'] -->
+<div class="modal fade" id="modalBienvenida" tabindex="-1" aria-labelledby="modalBienvenidaLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalBienvenidaLabel">🔐 Verificación de Sesión y Sede</h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <!-- Logo dinámico -->
+                <div class="mb-3">
+                    <img id="imgLogoSede" src="" alt="Logo Sede" style="max-height: 85px; max-width: 220px; object-fit: contain; display: none;" class="mb-2 shadow-sm rounded p-1 bg-white border">
+                </div>
+                
+                <h4 class="text-dark mb-2">¡Bienvenido, <?=htmlspecialchars($NombreUsuario)?>!</h4>
+                <p class="text-muted mb-3">Has ingresado exitosamente al sistema con los datos:</p>
+                
+                <div class="p-3 bg-light rounded border d-inline-block w-100 mb-3">
+                    <div class="mb-2">
+                        <span class="text-muted d-block small">Cédula / NIT:</span>
+                        <strong class="text-primary"><?=htmlspecialchars($UsuarioSesion)?></strong>
+                    </div>
+                    <hr class="my-2">
+                    <div>
+                        <span class="text-muted d-block small">Sede Asignada:</span>
+                        <strong id="txtSedeNombre" class="fs-5 text-dark">Cargando...</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center bg-light">
+                <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">Continuar al Sistema</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -473,6 +495,28 @@ function abrirPopup(event, url) {
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
+// Sede inyectada directamente desde la variable de sesión PHP
+var sedeActual = "<?= $SedeActual ?>"; 
+
+document.addEventListener("DOMContentLoaded", function() {
+    var txtSede = document.getElementById("txtSedeNombre");
+    var imgLogo = document.getElementById("imgLogoSede");
+
+    // Validamos la sede asignada por el NIT en la sesión
+    if (sedeActual === "drinks") {
+        txtSede.textContent = "Drinks Depot";
+        imgLogo.src = "logoDrinks.jpg";
+    } else {
+        txtSede.textContent = "Distribuidora de Bebidas Central";
+        imgLogo.src = "LogoDBC.jpg";
+    }
+    imgLogo.style.display = "inline-block";
+
+    // Mostrar modal automáticamente
+    var modalBienvenida = new bootstrap.Modal(document.getElementById('modalBienvenida'));
+    modalBienvenida.show();
+});
+
 // Toggle para abrir y cerrar el sidebar en móviles
 document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
@@ -497,8 +541,6 @@ if (searchInput) {
 
         links.forEach(link => {
             const text = link.textContent.toLowerCase();
-            const parentSection = link.closest('.accordion-item');
-            
             if (text.includes(query) || query === '') {
                 link.style.display = 'flex';
             } else {
