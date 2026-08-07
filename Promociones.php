@@ -12,7 +12,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 /* =====================================================
     CONFIGURACIÓN Y AUTORIZACIÓN
 ===================================================== */
-$UsuarioSesion = $_SESSION['Usuario'] ?? '';
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
 if (!$UsuarioSesion) {
     header("Location: Login.php");
     exit;
