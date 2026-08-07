@@ -10,11 +10,11 @@ require_once("Conexion.php");    // ADM ($mysqli)
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 session_start();
-if (!isset($_SESSION['Usuario'])) {
+if (!isset($_SESSION['CedulaNit'])) {
     die("Sesión no válida. Por favor, vuelva a iniciar sesión.");
 }
 
-$usuarioActual = $_SESSION['Usuario'];
+$usuarioActual = $_SESSION['CedulaNit'];
 $hoy = date("Y-m-d");
 $mensaje = "";
 

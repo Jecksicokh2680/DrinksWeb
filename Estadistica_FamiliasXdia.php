@@ -215,7 +215,7 @@ function nombreDiaCorto($fechaStr) {
     return $diasMap[$ingles] ?? $ingles;
 }
 
-// AJAX: Matriz principal con días de mayor a menor y empaquetado de datos para el modal gráfico
+// AJAX: Respuesta optimizada con JSON seguro para evitar errores en blanco
 if(isset($_GET['ajax_familia_diario'])) {
     $idFamAjax = $_GET['ajax_familia_diario'];
     $nombreFamAjax = $_GET['nombre_fam'] ?? '';
@@ -281,7 +281,6 @@ if(isset($_GET['ajax_familia_diario'])) {
         if($totalCatMes > 0 || $diaLimiteMax == 0) {
             $nombreCatUpper = strtoupper($nomCat);
             
-            // Construimos la serie de días ordenados de mayor a menor para esta categoría
             $serieDescendente = [];
             for($i = $diaLimiteMax; $i >= 1; $i--) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
@@ -304,7 +303,6 @@ if(isset($_GET['ajax_familia_diario'])) {
         return $b['total'] <=> $a['total'];
     });
 
-    // Etiquetas de días de mayor a menor para el eje X del gráfico
     $labelsDiasGraficoDesc = [];
     $serieTotalDesc = [];
     for($i = $diaLimiteMax; $i >= 1; $i--) {
@@ -318,7 +316,6 @@ if(isset($_GET['ajax_familia_diario'])) {
     $htmlOutput .= '<small style="color:#555; margin-bottom: 8px; display:block;">💡 <i>Haz clic en cualquier categoría para abrir su gráfico diario en un modal.</i></small>';
     $htmlOutput .= '<div class="table-responsive-wrapper"><table class="modal-table">';
     
-    // Encabezado horizontal con los días ordenados de mayor a menor
     $htmlOutput .= '<thead><tr>';
     $htmlOutput .= '<th class="sticky-col-header" style="vertical-align: middle;">Categoría</th>';
     for($i = $diaLimiteMax; $i >= 1; $i--) {
@@ -336,9 +333,11 @@ if(isset($_GET['ajax_familia_diario'])) {
     } else {
         $granTotalMes = 0;
         foreach($matrizCategorias as $cat) {
-            $catJsonName = addslashes($cat['nombre']);
-            $htmlOutput .= '<tr onclick="abrirModalGrafico(\''.$catJsonName.'\')" style="cursor: pointer;" title="Haz clic para ver la gráfica de esta categoría">';
-            $htmlOutput .= '<td class="sticky-col-cell"><div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><span>📊 ' . $cat['nombre'] . '</span><span style="font-size:10px; color:#00838f; font-weight:normal; margin-left:8px; white-space:nowrap;">(Prom: ' . number_format($cat['promedio'], 0) . ')</span></div></td>';
+            // Codificación segura para evitar errores de sintaxis en comillas simples/dobles
+            $catSafeAttr = htmlspecialchars($cat['nombre'], ENT_QUOTES, 'UTF-8');
+            
+            $htmlOutput .= '<tr onclick="abrirModalGrafico(\''.$catSafeAttr.'\')" style="cursor: pointer;" title="Haz clic para ver la gráfica de esta categoría">';
+            $htmlOutput .= '<td class="sticky-col-cell"><div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><span>📊 ' . htmlspecialchars($cat['nombre']) . '</span><span style="font-size:10px; color:#00838f; font-weight:normal; margin-left:8px; white-space:nowrap;">(Prom: ' . number_format($cat['promedio'], 0) . ')</span></div></td>';
             
             for($i = $diaLimiteMax; $i >= 1; $i--) {
                 $d = str_pad($i, 2, "0", STR_PAD_LEFT);
@@ -353,7 +352,6 @@ if(isset($_GET['ajax_familia_diario'])) {
             $granTotalMes += $cat['total'];
         }
 
-        // Fila de Totales Generales con días de mayor a menor
         $htmlOutput .= '<tr class="total-row" onclick="abrirModalGrafico(\'TOTAL GENERAL (FAMILIA)\')" style="cursor: pointer;" title="Haz clic para ver la gráfica del total general">';
         $htmlOutput .= '<td class="sticky-col-cell" style="background:#f8f9fa; font-weight:bold;">📊 TOTALES DÍA</td>';
         for($i = $diaLimiteMax; $i >= 1; $i--) {
@@ -368,11 +366,11 @@ if(isset($_GET['ajax_familia_diario'])) {
 
     $htmlOutput .= '</tbody></table></div>';
 
-    // Guardamos los datos en variables JavaScript globales para usarlas en el modal gráfico
+    // Inyección limpia y segura mediante json_encode nativo de PHP
     $htmlOutput .= '<script>
-        window.labelsDiasDesc = '.json_encode($labelsDiasGraficoDesc).';
-        window.dataCategoriasDesc = '.json_encode($datosGraficoCategorias).';
-        window.dataTotalGeneralDesc = '.json_encode($serieTotalDesc).';
+        window.labelsDiasDesc = ' . json_encode($labelsDiasGraficoDesc) . ';
+        window.dataCategoriasDesc = ' . json_encode($datosGraficoCategorias) . ';
+        window.dataTotalGeneralDesc = ' . json_encode($serieTotalDesc) . ';
     </script>';
 
     echo $htmlOutput;
@@ -407,14 +405,16 @@ $familiasGlobal = obtenerFamilias($mysqli);
         .familia-link{color:#006064; cursor:pointer; text-decoration: underline;}
         .familia-link:hover{color:#00838f;}
 
-        /* Estilos Modales */
-        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 999; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; }
+        /* Estilos Modales con jerarquía de capas (z-index) correcta */
+        .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 1050; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; }
         .modal-content { background: #fff; border-radius: 12px; width: 98vw; height: 94vh; max-width: 98vw; max-height: 94vh; display: flex; flex-direction: column; padding: 15px 20px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); position: relative; box-sizing: border-box; }
+        
+        /* Modal Específico para la Gráfica con mayor z-index para superponerse al modal de la matriz */
+        .modal-overlay-grafico { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; padding: 10px; box-sizing: border-box; }
+        .modal-grafico-content { background: #fff; border-radius: 12px; width: 85vw; height: 75vh; max-width: 900px; max-height: 600px; display: flex; flex-direction: column; padding: 20px; box-shadow: 0 5px 25px rgba(0,0,0,0.4); position: relative; box-sizing: border-box; }
+
         .modal-close { position: absolute; top: 12px; right: 18px; font-size: 22px; font-weight: bold; color: #888; cursor: pointer; z-index: 10; }
         .modal-close:hover { color: #333; }
-        
-        /* Modal Específico para la Gráfica */
-        .modal-grafico-content { background: #fff; border-radius: 12px; width: 85vw; height: 75vh; max-width: 900px; max-height: 600px; display: flex; flex-direction: column; padding: 20px; box-shadow: 0 5px 25px rgba(0,0,0,0.4); position: relative; box-sizing: border-box; }
 
         .table-responsive-wrapper { width: 100%; flex: 1; overflow: auto; margin-top: 6px; border: 1px solid #e1e4e8; border-radius: 8px; -webkit-overflow-scrolling: touch; }
         .modal-table { width: 100%; border-collapse: collapse; min-width: 600px; }
@@ -446,7 +446,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
             <input type="date" name="fecha" value="<?= htmlspecialchars($fechaFiltro) ?>" onchange="this.form.submit()">
             
             <select name="idsede" onchange="this.form.submit()">
-                <option value="todos" <?= $sedeFiltro == 'todos' ? 'selected' : '' ?>>🌎 Toutes les Sedes</option>
+                <option value="todos" <?= $sedeFiltro == 'todos' ? 'selected' : '' ?>>🌎 Todas las Sedes</option>
                 <option value="central" <?= $sedeFiltro == 'central' ? 'selected' : '' ?>>🏢 Sede Central</option>
                 <option value="drinks" <?= $sedeFiltro == 'drinks' ? 'selected' : '' ?>>🍹 Drinks Depot</option>
             </select>
@@ -583,8 +583,8 @@ $familiasGlobal = obtenerFamilias($mysqli);
         </div>
     </div>
 
-    <!-- MODAL SECUNDARIO: GRÁFICA INDIVIDUAL DE DÍAS (MAYOR A MENOR) -->
-    <div id="modalGrafico" class="modal-overlay" onclick="if(event.target === this) cerrarModalGrafico();">
+    <!-- MODAL SECUNDARIO: GRÁFICA INDIVIDUAL (Z-INDEX SUPERIOR) -->
+    <div id="modalGrafico" class="modal-overlay-grafico" onclick="if(event.target === this) cerrarModalGrafico();">
         <div class="modal-grafico-content">
             <span class="modal-close" onclick="cerrarModalGrafico()">&times;</span>
             <h3 id="tituloGraficoModal" style="color:#006064; margin-top:0; font-size: 16px;">📈 Evolución Diaria</h3>
@@ -627,7 +627,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
 
         var valoresSerie = [];
         if(nombreItem === "TOTAL GENERAL (FAMILIA)") {
-            valoresSerie = window.dataTotalGeneralDesc;
+            valoresSerie = window.dataTotalGeneralDesc || [];
         } else {
             valoresSerie = window.dataCategoriasDesc[nombreItem] || [];
         }
@@ -640,7 +640,7 @@ $familiasGlobal = obtenerFamilias($mysqli);
         chartInstanciaModal = new Chart(ctx, {
             type: "line",
             data: {
-                labels: window.labelsDiasDesc, // Días ordenados de mayor a menor
+                labels: window.labelsDiasDesc || [],
                 datasets: [{
                     label: nombreItem,
                     data: valoresSerie,
