@@ -120,7 +120,7 @@ if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
 }
 
 /* =====================================================
-    5. OBTENER OBJETIVOS DE LA BASE DE DATOS (TODAS LAS EMPRESAS/SEDES)
+    5. OBTENER OBJETIVOS DE LA BASE DE DATOS (AGRUPADOS POR NIT/SEDE)
 ===================================================== */
 $sqlObjetivos = "
     SELECT 
@@ -141,7 +141,7 @@ $sqlObjetivos = "
     LEFT JOIN empresa e ON cab.NitEmpresa = e.Nit
     LEFT JOIN objetivos_cajeros_det det ON cab.id_cabecera = det.id_cabecera
     WHERE cab.mm = ? AND cab.aa = ? AND cab.estado = 1
-    ORDER BY t.Nombre ASC, det.Sku ASC
+    ORDER BY e.RazonSocial ASC, t.Nombre ASC, det.Sku ASC
 ";
 
 $stmtObj = $mysqliWeb->prepare($sqlObjetivos);
@@ -153,20 +153,27 @@ $reporte = [];
 
 while ($row = $resObj->fetch_assoc()) {
     $cedula  = $row['CedulaNit'];
-    $empresa = $row['NitEmpresa'];
-    // Clave única por cajero y empresa para evitar sobreescrituras si un cajero tiene objetivos en múltiples empresas
-    $claveUnica = $cedula . '_' . $empresa;
+    $empresaNit = $row['NitEmpresa'] ?: 'SIN_NIT';
+    $nombreEmpresaDisplay = $row['NombreEmpresa'] ?: ($row['NitEmpresa'] ? 'NIT: ' . $row['NitEmpresa'] : 'Sin Sede Asignada');
     
     $nombre  = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
-    $nombreEmpresaDisplay = $row['NombreEmpresa'] ?: $empresa;
 
-    if (!isset($reporte[$claveUnica])) {
+    // Agrupar primero por Sede/Empresa NIT, luego por cajero
+    if (!isset($reporte[$empresaNit])) {
+        $reporte[$empresaNit] = [
+            'nombre_sede' => $nombreEmpresaDisplay,
+            'nit_sede'    => $row['NitEmpresa'],
+            'cajeros'     => []
+        ];
+    }
+
+    $claveCajero = $cedula;
+    if (!isset($reporte[$empresaNit]['cajeros'][$claveCajero])) {
         $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
 
-        $reporte[$claveUnica] = [
+        $reporte[$empresaNit]['cajeros'][$claveCajero] = [
             'nombre'           => $nombre,
             'cedula'           => $cedula,
-            'nombre_empresa'   => $nombreEmpresaDisplay,
             'meta_valor_total' => (float)$row['meta_valor_total'],
             'ejecutado_valor'  => $ejecutadoValor,
             'detalles'         => []
@@ -179,7 +186,7 @@ while ($row = $resObj->fetch_assoc()) {
         $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
         $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
-        $reporte[$claveUnica]['detalles'][] = [
+        $reporte[$empresaNit]['cajeros'][$claveCajero]['detalles'][] = [
             'sku'             => $sku,
             'nombre_producto' => $nombreProducto,
             'meta_cajas'      => $metaCajas,
@@ -193,7 +200,7 @@ while ($row = $resObj->fetch_assoc()) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Seguimiento de Cumplimiento de Objetivos</title>
+    <title>Seguimiento de Cumplimiento de Objetivos por Sede</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
         .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
@@ -201,6 +208,11 @@ while ($row = $resObj->fetch_assoc()) {
         select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
         button { background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; }
         
+        /* Estilos para las secciones de Sede / NIT */
+        .sede-section { margin-bottom: 35px; }
+        .sede-title { font-size: 20px; color: #1e293b; border-bottom: 2px solid #0288d1; padding-bottom: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .sede-title span { font-size: 14px; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 20px; font-weight: normal; }
+
         .grid-paneles { 
             display: grid; 
             grid-template-columns: repeat(2, 1fr); 
@@ -260,82 +272,91 @@ while ($row = $resObj->fetch_assoc()) {
     <?php if (empty($reporte)): ?>
         <p style="text-align:center; color:#777;">No se registraron objetivos activos para el período seleccionado (<?=$mes_sel?>/<?=$anio_sel?>).</p>
     <?php else: ?>
-        <div class="grid-paneles">
-            <?php foreach ($reporte as $tercero): 
-                $metaVal  = $tercero['meta_valor_total'];
-                $ejecVal  = $tercero['ejecutado_valor'];
-                $pctValor = ($metaVal > 0) ? min(100, round(($ejecVal / $metaVal) * 100, 1)) : 0;
-                $badgeValClass = ($pctValor >= 100) ? 'bg-success' : (($pctValor >= 70) ? 'bg-warning' : 'bg-danger');
-            ?>
-                <div class="tercero-card">
-                    <div class="tercero-header">
-                        <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
-                        <div class="tercero-meta-info">
-                            <span><strong>Cédula/NIT:</strong> <?= htmlspecialchars($tercero['cedula']) ?></span>
-                            <span>|</span>
-                            <span><strong>Empresa:</strong> <?= htmlspecialchars($tercero['nombre_empresa']) ?></span>
-                        </div>
-                    </div>
-
-                    <div class="resumen-meta">
-                        <div class="metric-box">
-                            <div class="title">Meta Total</div>
-                            <div class="value" style="color:#0288d1; font-size:14px;">$ <?= number_format($metaVal, 0, ',', '.') ?></div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="title">Ejecutado Hoy</div>
-                            <div class="value" style="color:#2e7d32; font-size:14px;">$ <?= number_format($ejecVal, 0, ',', '.') ?></div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="title">% Cumplimiento</div>
-                            <div class="value">
-                                <span class="badge <?= $badgeValClass ?>"><?= $pctValor ?>%</span>
-                            </div>
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar-fill <?= $badgeValClass ?>" style="width: <?= $pctValor ?>%;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <?php if (!empty($tercero['detalles'])): ?>
-                        <div style="overflow-x: auto;">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>SKU / Producto</th>
-                                        <th>Meta</th>
-                                        <th>Hoy</th>
-                                        <th>% SKU</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($tercero['detalles'] as $det): 
-                                        $metaValSku = $det['meta_cajas'];
-                                        $cantValSku = $det['cajas_vendidas'];
-                                        $pctSku     = ($metaValSku > 0) ? min(100, round(($cantValSku / $metaValSku) * 100, 1)) : 0;
-                                        $badgeSkuClass = ($pctSku >= 100) ? 'bg-success' : (($pctSku >= 70) ? 'bg-warning' : 'bg-danger');
-                                    ?>
-                                        <tr>
-                                            <td>
-                                                <code><?= htmlspecialchars($det['sku']) ?></code><br>
-                                                <span style="font-size:11px; color:#666;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
-                                            </td>
-                                            <td><?= number_format($metaValSku, 1, ',', '.') ?></td>
-                                            <td><strong><?= number_format($cantValSku, 0, ',', '.') ?></strong></td>
-                                            <td>
-                                                <span class="badge <?= $badgeSkuClass ?>"><?= $pctSku ?>%</span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p style="padding:15px; margin:0; color:#888; font-size:13px;"><em>Sin metas específicas por SKU.</em></p>
+        <?php foreach ($reporte as $nitSede => $datosSede): ?>
+            <div class="sede-section">
+                <h2 class="sede-title">
+                    🏢 <?= htmlspecialchars($datosSede['nombre_sede']) ?>
+                    <?php if (!empty($datosSede['nit_sede'])): ?>
+                        <span>NIT: <?= htmlspecialchars($datosSede['nit_sede']) ?></span>
                     <?php endif; ?>
+                </h2>
+
+                <div class="grid-paneles">
+                    <?php foreach ($datosSede['cajeros'] as $tercero): 
+                        $metaVal  = $tercero['meta_valor_total'];
+                        $ejecVal  = $tercero['ejecutado_valor'];
+                        $pctValor = ($metaVal > 0) ? min(100, round(($ejecVal / $metaVal) * 100, 1)) : 0;
+                        $badgeValClass = ($pctValor >= 100) ? 'bg-success' : (($pctValor >= 70) ? 'bg-warning' : 'bg-danger');
+                    ?>
+                        <div class="tercero-card">
+                            <div class="tercero-header">
+                                <h3><?= htmlspecialchars($tercero['nombre']) ?></h3>
+                                <div class="tercero-meta-info">
+                                    <span><strong>Cédula:</strong> <?= htmlspecialchars($tercero['cedula']) ?></span>
+                                </div>
+                            </div>
+
+                            <div class="resumen-meta">
+                                <div class="metric-box">
+                                    <div class="title">Meta Total</div>
+                                    <div class="value" style="color:#0288d1; font-size:14px;">$ <?= number_format($metaVal, 0, ',', '.') ?></div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="title">Ejecutado Hoy</div>
+                                    <div class="value" style="color:#2e7d32; font-size:14px;">$ <?= number_format($ejecVal, 0, ',', '.') ?></div>
+                                </div>
+                                <div class="metric-box">
+                                    <div class="title">% Cumplimiento</div>
+                                    <div class="value">
+                                        <span class="badge <?= $badgeValClass ?>"><?= $pctValor ?>%</span>
+                                    </div>
+                                    <div class="progress-bar-bg">
+                                        <div class="progress-bar-fill <?= $badgeValClass ?>" style="width: <?= $pctValor ?>%;"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <?php if (!empty($tercero['detalles'])): ?>
+                                <div style="overflow-x: auto;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>SKU / Producto</th>
+                                                <th>Meta</th>
+                                                <th>Hoy</th>
+                                                <th>% SKU</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($tercero['detalles'] as $det): 
+                                                $metaValSku = $det['meta_cajas'];
+                                                $cantValSku = $det['cajas_vendidas'];
+                                                $pctSku     = ($metaValSku > 0) ? min(100, round(($cantValSku / $metaValSku) * 100, 1)) : 0;
+                                                $badgeSkuClass = ($pctSku >= 100) ? 'bg-success' : (($pctSku >= 70) ? 'bg-warning' : 'bg-danger');
+                                            ?>
+                                                <tr>
+                                                    <td>
+                                                        <code><?= htmlspecialchars($det['sku']) ?></code><br>
+                                                        <span style="font-size:11px; color:#666;"><?= htmlspecialchars($det['nombre_producto']) ?></span>
+                                                    </td>
+                                                    <td><?= number_format($metaValSku, 1, ',', '.') ?></td>
+                                                    <td><strong><?= number_format($cantValSku, 0, ',', '.') ?></strong></td>
+                                                    <td>
+                                                        <span class="badge <?= $badgeSkuClass ?>"><?= $pctSku ?>%</span>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php else: ?>
+                                <p style="padding:15px; margin:0; color:#888; font-size:13px;"><em>Sin metas específicas por SKU.</em></p>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
-            <?php endforeach; ?>
-        </div>
+            </div>
+        <?php endforeach; ?>
     <?php endif; ?>
 </div>
 
