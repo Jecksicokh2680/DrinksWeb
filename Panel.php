@@ -305,6 +305,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
+                                    
                                 </div>
                             </div>
                         </div>
@@ -353,6 +354,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">Lo más Vendido por Empresa</a>
                                     <a class="nav-link" href="Estadistica_Familias.php" target="contentFrame">Lo más Vendido por Familia</a>
                                     <a class="nav-link" href="Estadistica_FamiliasXdia.php" target="contentFrame">Ventas por Familia/dia</a>
+                                    <a class="nav-link" href="GraficaDiaDiaXProducto.php" target="contentFrame">Grafica Dia Dia X Producto</a>
                                 </div>
                             </div>
                         </div>
