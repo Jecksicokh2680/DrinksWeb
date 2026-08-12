@@ -231,8 +231,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
+                // 22 tipos exactos para 22 variables
                 $stmtUpdAuto->bind_param(
-                    "dsissssssssissssssssssi",
+                    "dsissssssssisssssssssi",
                     $salario, $tipo_con, $arl_num, $cargo, 
                     $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil, 
                     $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
@@ -248,6 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
+                // 21 tipos exactos para 21 variables
                 $stmtUpdAuto->bind_param(
                     "dsissssssssissssssssi",
                     $salario, $tipo_con, $arl_num, $cargo, 
@@ -720,7 +722,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
                                     <?php if ($esActivo): ?>
                                         <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
-                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L13.293 7l-1.147-1.146a.5.5 0 0 1 0-.708"/>
+                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L14 7.707l-1.146 1.146a.5.5 0 0 1 0-.708"/>
                                             </svg>
                                         </a>
                                     <?php endif; ?>
