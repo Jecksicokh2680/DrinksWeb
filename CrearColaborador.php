@@ -46,7 +46,7 @@ if (isset($_POST['importar_terceros'])) {
     $importados = 0;
 
     if (isset($mysqliPos) && $mysqliPos) {
-        $resCen = $mysqliPos->query("SELECT nit, nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
         if ($resCen) {
             while ($tc = $resCen->fetch_assoc()) {
                 $nit  = $mysqli->real_escape_string($tc['nit']);
@@ -54,17 +54,24 @@ if (isset($_POST['importar_terceros'])) {
                 $com  = $mysqli->real_escape_string($tc['nomcomercial'] ?? '');
                 $mail = $mysqli->real_escape_string($tc['email'] ?? '');
                 
-                $sqlSync = "INSERT IGNORE INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
-                            VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)";
+                $sqlSync = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                            VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
+                            ON DUPLICATE KEY UPDATE 
+                            Nombre = VALUES(Nombre), 
+                            NombreCom = VALUES(NombreCom), 
+                            Email = VALUES(Email), 
+                            Estado = 1";
+                            
                 if ($mysqli->query($sqlSync) && $mysqli->affected_rows > 0) {
                     $importados++;
                 }
             }
+            $resCen->free();
         }
     }
 
     if (isset($mysqliDrinks) && $mysqliDrinks) {
-        $resDrk = $mysqliDrinks->query("SELECT nit, nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
         if ($resDrk) {
             while ($td = $resDrk->fetch_assoc()) {
                 $nit  = $mysqli->real_escape_string($td['nit']);
@@ -72,18 +79,23 @@ if (isset($_POST['importar_terceros'])) {
                 $com  = $mysqli->real_escape_string($td['nomcomercial'] ?? '');
                 $mail = $mysqli->real_escape_string($td['email'] ?? '');
                 
-                $sqlSyncD = "INSERT IGNORE INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) 
-                             VALUES ('$nit', '$nit', '$nom', '$mail', 1)";
+                $sqlSyncD = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) 
+                             VALUES ('$nit', '$nit', '$nom', '$mail', 1)
+                             ON DUPLICATE KEY UPDATE 
+                             Nombre = VALUES(Nombre), 
+                             Email = VALUES(Email), 
+                             Estado = 1";
+                             
                 if ($mysqli->query($sqlSyncD) && $mysqli->affected_rows > 0) {
                     $importados++;
                 }
             }
+            $resDrk->free();
         }
     }
 
     $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se importaron/actualizaron $importados terceros desde las bases Central y Drinks.</div>";
 }
-
 /* ============================================================
     LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
    ============================================================ */

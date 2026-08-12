@@ -44,8 +44,12 @@ if (isset($_GET['cedula']) && !empty($_GET['cedula'])) {
 // 5. Obtener la cédula de forma segura
 $cedula_sesion = $mysqli->real_escape_string($cedula_a_consultar);
 
-// 6. Consulta utilizando la cédula correspondiente en la tabla 'colaborador'
-$query = "SELECT * FROM colaborador WHERE CedulaNit = '$cedula_sesion' LIMIT 1";
+// 6. Consulta con JOIN a la tabla 'terceros' para obtener el Nombre y Apellidos
+$query = "SELECT c.*, t.Nombre AS NombreColaborador 
+          FROM colaborador c 
+          INNER JOIN terceros t ON c.CedulaNit = t.CedulaNit 
+          WHERE c.CedulaNit = '$cedula_sesion' LIMIT 1";
+          
 $resultado = $mysqli->query($query);
 
 if (!$resultado) {
@@ -70,7 +74,7 @@ $colaborador_id_real = intval($c['id']);
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>FICHA DE EMPLEADO - <?= toUpper($c['CedulaNit'] ?? 'USUARIO') ?></title>
+    <title>FICHA DE EMPLEADO - <?= toUpper($c['NombreColaborador'] ?? 'USUARIO') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         @media print {
@@ -117,7 +121,7 @@ $colaborador_id_real = intval($c['id']);
                 <tr>
                     <td class="fw-bold bg-light" style="width: 20%;">CÉDULA DE CIUDADANÍA:</td>
                     <td style="width: 35%;"><?= toUpper($c['CedulaNit'] ?? '') ?></td>
-                    <td colspan="2" rowspan="4" class="text-center align-middle bg-light" style="width: 45%;">
+                    <td colspan="2" rowspan="5" class="text-center align-middle bg-light" style="width: 45%;">
                         <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
                             <img src="<?= htmlspecialchars($c['url_foto']) ?>" alt="Foto" style="width: 110px; height: 130px; object-fit: cover;" class="border shadow-sm">
                         <?php else: ?>
@@ -126,6 +130,10 @@ $colaborador_id_real = intval($c['id']);
                             </div>
                         <?php endif; ?>
                     </td>
+                </tr>
+                <tr>
+                    <td class="fw-bold bg-light">NOMBRES Y APELLIDOS:</td>
+                    <td><?= toUpper($c['NombreColaborador'] ?? '') ?></td>
                 </tr>
                 <tr>
                     <td class="fw-bold bg-light">CARGO:</td>
