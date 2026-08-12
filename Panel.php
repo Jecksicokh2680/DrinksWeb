@@ -37,6 +37,9 @@ function Autorizacion($User, $Solicitud) {
 $EsAdmin = (Autorizacion($UsuarioSesion, '0001') === "SI");
 $EsAgenteAdmin = (Autorizacion($UsuarioSesion, '9999') === 'SI');
 $EsJefeBodega = (Autorizacion($UsuarioSesion, '0004') === 'SI');
+
+// Verificamos permisos específicos para Nómina (autorización 9999 O 6666)
+$TieneAccesoNomina = (Autorizacion($UsuarioSesion, '9999') === 'SI' || Autorizacion($UsuarioSesion, '6666') === 'SI');
 ?>
 <!doctype html>
 <html lang="es">
@@ -247,6 +250,7 @@ function abrirPopup(event, url) {
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
                         <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
                     </div>
+                    
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
                         📦 Jefes de Bodega (JB)
@@ -270,6 +274,26 @@ function abrirPopup(event, url) {
                 </div>
             </div>
         </div>
+
+        <!-- Acordeón independiente para Nómina (Autorización 9999 O 6666) -->
+        <?php if ($TieneAccesoNomina): ?>
+        <div class="accordion-item">
+            <h2 class="accordion-header">
+                <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#acordeonNominaBasica">
+                    💼 Nómina
+                </button>
+            </h2>
+            <div id="acordeonNominaBasica" class="accordion-collapse collapse" data-bs-parent="#menuPrincipal">
+                <div class="accordion-body">
+                    <div class="menu-seccion ps-2 py-1">
+                        <a class="nav-link" href="CrearColaborador.php" target="contentFrame">Crear Colaborador</a>
+                        <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
+                        <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <?php if ($EsAdmin): ?>
         <div class="accordion-item">
@@ -384,7 +408,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="CrearAutorizaciones.php" target="contentFrame">Crear Autorizaciones</a>
                                     <a class="nav-link" href="CrearAutoTerceros.php" target="contentFrame">Crear Auto por Usuario</a>
                                     <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Crear Empresas Productoras</a>                                    
-                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                 
+                                    <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                
                                     <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
                                     <a class="nav-link" href="Productos.php" target="contentFrame">Listar y Modificar Productos</a>
                                     <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Relacionar Producto/Categoria</a>                                    
@@ -498,14 +522,12 @@ function abrirPopup(event, url) {
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
-// Sede inyectada directamente desde la variable de sesión PHP
 var sedeActual = "<?= $SedeActual ?>"; 
 
 document.addEventListener("DOMContentLoaded", function() {
     var txtSede = document.getElementById("txtSedeNombre");
     var imgLogo = document.getElementById("imgLogoSede");
 
-    // Validamos la sede asignada por el NIT en la sesión
     if (sedeActual === "drinks") {
         txtSede.textContent = "Drinks Depot";
         imgLogo.src = "logoDrinks.jpg";
@@ -515,17 +537,14 @@ document.addEventListener("DOMContentLoaded", function() {
     }
     imgLogo.style.display = "inline-block";
 
-    // Mostrar modal automáticamente
     var modalBienvenida = new bootstrap.Modal(document.getElementById('modalBienvenida'));
     modalBienvenida.show();
 });
 
-// Toggle para abrir y cerrar el sidebar en móviles
 document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
 };
 
-// Cierra automáticamente el menú lateral en móviles al hacer clic en un enlace
 document.querySelectorAll('.sidebar .nav-link').forEach(link => {
     link.addEventListener('click', () => {
         const sidebar = document.getElementById('sidebar');
@@ -535,7 +554,6 @@ document.querySelectorAll('.sidebar .nav-link').forEach(link => {
     });
 });
 
-// Script del Buscador en tiempo real de opciones
 const searchInput = document.getElementById('menuSearchInput');
 if (searchInput) {
     searchInput.addEventListener('input', function() {
