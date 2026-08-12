@@ -46,7 +46,7 @@ if (isset($_POST['importar_terceros'])) {
     $importados = 0;
 
     if (isset($mysqliPos) && $mysqliPos) {
-        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resCen = $mysqliPos->query("SELECT nit, nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
         if ($resCen) {
             while ($tc = $resCen->fetch_assoc()) {
                 $nit  = $mysqli->real_escape_string($tc['nit']);
@@ -54,24 +54,17 @@ if (isset($_POST['importar_terceros'])) {
                 $com  = $mysqli->real_escape_string($tc['nomcomercial'] ?? '');
                 $mail = $mysqli->real_escape_string($tc['email'] ?? '');
                 
-                $sqlSync = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
-                            VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                            ON DUPLICATE KEY UPDATE 
-                            Nombre = VALUES(Nombre), 
-                            NombreCom = VALUES(NombreCom), 
-                            Email = VALUES(Email), 
-                            Estado = 1";
-                            
+                $sqlSync = "INSERT IGNORE INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                            VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)";
                 if ($mysqli->query($sqlSync) && $mysqli->affected_rows > 0) {
                     $importados++;
                 }
             }
-            $resCen->free();
         }
     }
 
     if (isset($mysqliDrinks) && $mysqliDrinks) {
-        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resDrk = $mysqliDrinks->query("SELECT nit, nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
         if ($resDrk) {
             while ($td = $resDrk->fetch_assoc()) {
                 $nit  = $mysqli->real_escape_string($td['nit']);
@@ -79,23 +72,18 @@ if (isset($_POST['importar_terceros'])) {
                 $com  = $mysqli->real_escape_string($td['nomcomercial'] ?? '');
                 $mail = $mysqli->real_escape_string($td['email'] ?? '');
                 
-                $sqlSyncD = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) 
-                             VALUES ('$nit', '$nit', '$nom', '$mail', 1)
-                             ON DUPLICATE KEY UPDATE 
-                             Nombre = VALUES(Nombre), 
-                             Email = VALUES(Email), 
-                             Estado = 1";
-                             
+                $sqlSyncD = "INSERT IGNORE INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) 
+                             VALUES ('$nit', '$nit', '$nom', '$mail', 1)";
                 if ($mysqli->query($sqlSyncD) && $mysqli->affected_rows > 0) {
                     $importados++;
                 }
             }
-            $resDrk->free();
         }
     }
 
-    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se importaron/actualizaron $importados terceros desde las bases Central y Drinks.</div>";
+    $mensaje = "<div class='alert alert-info fw-bold shadow-sm'>🔄 Se importaron/actualizaron $importados terceros desde las bases Central y Drinks.</div>";
 }
+
 /* ============================================================
     LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
    ============================================================ */
@@ -165,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
     $arl_txt          = $_POST['arl'] ?? null;
 
     if (empty($NitEmpresa)) {
-        $mensaje = "<div class='alert alert-danger fw-bold shadow-sm mb-3'>⚠️ Error: Debe seleccionar una empresa obligatoriamente.</div>";
+        $mensaje = "<div class='alert alert-danger fw-bold shadow-sm'>⚠️ Error: Debe seleccionar una empresa obligatoriamente.</div>";
     } else {
         $ruta_foto = null;
         $actualizarFotoSql = "";
@@ -275,6 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                 llave_payment, eps, fondo_pensiones, fondo_cesantias, arl, url_foto, email
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
+            // CORRECCIÓN: Se ajustó exactamente a 24 caracteres (ss idzi ssssssss is sssss s s) para las 24 variables
             $stmtIns->bind_param(
                 "ssidsissssssssisssssssss",
                 $cedula, $NitEmpresa, $IdSucursal, $salario, $tipo_con, $arl_num, $cargo, 
@@ -415,12 +404,12 @@ if (isset($_GET['eliminar_emergencia_id'])) {
 
 // Mensajes del sistema
 if (isset($_GET['msg'])) {
-    if ($_GET['msg'] == 'deleted') $mensaje = "<div class='alert alert-warning fw-bold mb-3'>🗑️ Registro eliminado correctamente.</div>";
-    if ($_GET['msg'] == 'success') $mensaje = "<div class='alert alert-success fw-bold mb-3'>✅ Colaborador guardado correctamente.</div>";
-    if ($_GET['msg'] == 'retired') $mensaje = "<div class='alert alert-info fw-bold mb-3'>🚪 Colaborador marcado como INACTIVO (Retirado) exitosamente.</div>";
-    if ($_GET['msg'] == 'updated') $mensaje = "<div class='alert alert-success fw-bold mb-3'>✏️ Datos del colaborador actualizados correctamente.</div>";
-    if ($_GET['msg'] == 'emergencia_saved') $mensaje = "<div class='alert alert-success fw-bold mb-3'>🚨 Contacto de emergencia guardado correctamente.</div>";
-    if ($_GET['msg'] == 'emergencia_deleted') $mensaje = "<div class='alert alert-warning fw-bold mb-3'>🗑️ Contacto de emergencia eliminado.</div>";
+    if ($_GET['msg'] == 'deleted') $mensaje = "<div class='alert alert-warning fw-bold'>🗑️ Registro eliminado correctamente.</div>";
+    if ($_GET['msg'] == 'success') $mensaje = "<div class='alert alert-success fw-bold'>✅ Colaborador guardado correctamente.</div>";
+    if ($_GET['msg'] == 'retired') $mensaje = "<div class='alert alert-info fw-bold'>🚪 Colaborador marcado como INACTIVO (Retirado) exitosamente.</div>";
+    if ($_GET['msg'] == 'updated') $mensaje = "<div class='alert alert-success fw-bold'>✏️ Datos del colaborador actualizados correctamente.</div>";
+    if ($_GET['msg'] == 'emergencia_saved') $mensaje = "<div class='alert alert-success fw-bold'>🚨 Contacto de emergencia guardado correctamente.</div>";
+    if ($_GET['msg'] == 'emergencia_deleted') $mensaje = "<div class='alert alert-warning fw-bold'>🗑️ Contacto de emergencia eliminado.</div>";
 }
 
 $resEmpresas = $mysqli->query("SELECT Nit, RazonSocial FROM empresa WHERE Estado = 1");
@@ -439,230 +428,221 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
     <title>Gestión de Colaboradores</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body, html { height: 100%; background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
-        .full-screen-container { min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
-        .card-custom { border: none; border-radius: 15px; border-top: 6px solid #0d6efd; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05); }
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        .card-custom { border: none; border-radius: 15px; border-top: 6px solid #0d6efd; }
     </style>
 </head>
-<body class="py-3 px-2 px-md-4">
+<body class="p-4">
 
-<div class="container-fluid full-screen-container max-w-100" style="max-width: 1400px; margin: 0 auto;">
+<div class="container" style="max-width: 1000px;">
     
-    <div>
-        <?= $mensaje ?? '' ?>
+    <?= $mensaje ?? '' ?>
 
-        <!-- BARRA SUPERIOR DE SINCRONIZACIÓN -->
-        <div class="card mb-3 shadow-sm border-0 rounded-4">
-            <div class="card-body py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-center bg-white rounded-4 gap-2">
-                <div>
-                    <h6 class="mb-0 fw-bold text-primary">Sincronización de Datos</h6>
-                    <small class="text-muted">Actualiza terceros desde las bases Central y Drinks</small>
-                </div>
-                <form method="POST" class="w-100 w-sm-auto text-end">
-                    <button type="submit" name="importar_terceros" class="btn btn-outline-primary btn-sm fw-bold w-100 w-sm-auto">
-                        📥 IMPORTAR DESDE CENTRAL Y DRINKS
-                    </button>
-                </form>
+    <div class="card mb-4 shadow-sm border-0">
+        <div class="card-body d-flex justify-content-between align-items-center bg-white" style="border-radius: 15px;">
+            <div>
+                <h6 class="mb-0 fw-bold text-primary">Sincronización de Datos</h6>
+                <small class="text-muted">Actualiza terceros desde las bases Central y Drinks</small>
             </div>
-        </div>
-
-        <!-- CONTENEDOR PRINCIPAL / FORMULARIO COMPACTO -->
-        <div class="card shadow card-custom mb-3">
-            <div class="card-body p-3 p-md-4">
-                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center mb-3 gap-2">
-                    <h4 class="fw-bold text-dark mb-0 fs-5 fs-md-4">💼 Registro / Actualización de Colaborador</h4>
-                    <button type="button" class="btn btn-dark btn-sm fw-bold w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#modalListado">
-                        📋 VER REGISTRADOS
-                    </button>
-                </div>
-                
-                <form method="POST" enctype="multipart/form-data" id="formColaborador">
-                    <!-- Selector de Empresa y Tercero en Fila -->
-                    <div class="row g-2 mb-3">
-                        <div class="col-12 col-md-6">
-                            <label class="form-label fw-bold small mb-1">Empresa / Sede a la que se vincula:</label>
-                            <select name="nit_empresa_seleccionada" id="nit_empresa_seleccionada" class="form-select form-select-sm" required>
-                                <option value="">-- Seleccione la Empresa --</option>
-                                <?php 
-                                if ($resEmpresas) {
-                                    $resEmpresas->data_seek(0);
-                                    while ($emp = $resEmpresas->fetch_assoc()): 
-                                ?>
-                                    <option value="<?= $emp['Nit'] ?>" <?= ($NitEmpresaSession == $emp['Nit']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($emp['RazonSocial']) ?> (NIT: <?= $emp['Nit'] ?>)
-                                    </option>
-                                <?php 
-                                    endwhile; 
-                                }
-                                ?>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="form-label fw-bold small mb-1">Seleccionar Empleado (Terceros Sincronizados):</label>
-                            <select name="nit_seleccionado" id="nit_seleccionado" class="form-select form-select-sm" required>
-                                <option value="">-- Seleccione un Tercero --</option>
-                                <?php 
-                                if ($resTerceros) {
-                                    while ($t = $resTerceros->fetch_assoc()): 
-                                ?>
-                                    <option value="<?= $t['nit'] ?>">
-                                        <?= htmlspecialchars(trim(preg_replace('/\s+/', ' ', $t['nombres']))) ?> (<?= $t['nit'] ?>)
-                                    </option>
-                                <?php 
-                                    endwhile; 
-                                }
-                                ?>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div id="alertaExistente" class="alert alert-warning d-none py-2 small fw-bold mb-3">
-                        ⚠️ Este colaborador ya cuenta con un registro activo en esta empresa. Los datos y su fotografía actual han sido cargados para su edición automática.
-                    </div>
-
-                    <div class="row g-2 mb-3">
-                        <div class="col-12 text-center">
-                            <div id="contenedorFotoActual" class="d-none mb-1">
-                                <img id="imgFotoActual" src="" alt="Foto actual" width="70" height="70" class="rounded-circle object-fit-cover shadow-sm border border-2 border-primary"><br>
-                                <small class="text-muted fw-bold">Fotografía registrada actualmente</small>
-                            </div>
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label small fw-bold mb-1">Fotografía del Colaborador (Subir nueva para reemplazar)</label>
-                            <input type="file" name="foto" class="form-control form-control-sm" accept=".jpg, .jpeg, .png, .webp">
-                        </div>
-
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Cargo</label>
-                            <input type="text" name="cargo" id="cargo" class="form-control form-control-sm" placeholder="Ej: Administrador" required>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Salario Mensual</label>
-                            <input type="number" step="0.01" name="salario" id="salario" class="form-control form-control-sm" required placeholder="1750905">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Correo Electrónico</label>
-                            <input type="email" name="email" id="email" class="form-control form-control-sm" placeholder="ejemplo@correo.com">
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Tipo de Contrato</label>
-                            <select name="tipo_contrato" id="tipo_contrato" class="form-select form-select-sm">
-                                <option value="INDEFINIDO">Indefinido</option>
-                                <option value="FIJO">Fijo</option>
-                                <option value="OBRA">Obra o Labor</option>
-                                <option value="SERVICIOS">Servicios</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Jornada Laboral</label>
-                            <select name="jornada_laboral" id="jornada_laboral" class="form-select form-select-sm">
-                                <option value="DIURNA">Diurna</option>
-                                <option value="NOCTURNA">Nocturna</option>
-                                <option value="MIXTA">Mixta</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Nivel ARL (1 al 5)</label>
-                            <input type="number" name="nivel_arl" id="nivel_arl" class="form-control form-control-sm" value="1" min="1" max="5">
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Fecha de Ingreso</label>
-                            <input type="date" name="fecha_ingreso" id="fecha_ingreso" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
-                        </div>
-
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Fecha de Nacimiento</label>
-                            <input type="date" name="fecha_nacimiento" id="fecha_nacimiento" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Género</label>
-                            <select name="genero" id="genero" class="form-select form-select-sm">
-                                <option value="">-- Seleccione --</option>
-                                <option value="MASCULINO">Masculino</option>
-                                <option value="FEMENINO">Femenino</option>
-                                <option value="OTRO">Otro</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Estado Civil</label>
-                            <select name="estado_civil" id="estado_civil" class="form-select form-select-sm">
-                                <option value="SOLTERO">Soltero(a)</option>
-                                <option value="CASADO">Casado(a)</option>
-                                <option value="UNION LIBRE">Unión Libre</option>
-                                <option value="OTRO">Otro</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-3">
-                            <label class="form-label small fw-bold mb-1">Grupo Sanguíneo</label>
-                            <input type="text" name="grupo_sanguineo" id="grupo_sanguineo" class="form-control form-control-sm" placeholder="Ej: O+">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Nivel Educativo</label>
-                            <input type="text" name="nivel_educativo" id="nivel_educativo" class="form-control form-control-sm" placeholder="Ej: Profesional">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Estrato Socioeconómico</label>
-                            <input type="number" name="estrato_socioeconomico" id="estrato_socioeconomico" class="form-control form-control-sm" min="1" max="6">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Dirección de Vivienda</label>
-                            <input type="text" name="direccion" id="direccion" class="form-control form-control-sm" maxlength="150" placeholder="Ej: Calle 100 # 15-20">
-                        </div>
-
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Número de Cuenta</label>
-                            <input type="text" name="numero_cuenta" id="numero_cuenta" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Llave Payment</label>
-                            <input type="text" name="llave_payment" id="llave_payment" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">EPS</label>
-                            <input type="text" name="eps" id="eps" class="form-control form-control-sm" placeholder="Ej: Sura, Sanitas">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Fondo de Pensiones</label>
-                            <input type="text" name="fondo_pensiones" id="fondo_pensiones" class="form-control form-control-sm" placeholder="Ej: Porvenir">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">Fondo de Cesantías</label>
-                            <input type="text" name="fondo_cesantias" id="fondo_cesantias" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="form-label small fw-bold mb-1">ARL (Entidad)</label>
-                            <input type="text" name="arl" id="arl" class="form-control form-control-sm" placeholder="Ej: Sura, Positiva">
-                        </div>
-                    </div>
-
-                    <button type="submit" name="guardar_colaborador" class="btn btn-primary w-100 py-2 fw-bold shadow-sm">
-                        💾 GUARDAR / ACTUALIZAR EN NÓMINA LOCAL
-                    </button>
-                </form>
-            </div>
+            <form method="POST">
+                <button type="submit" name="importar_terceros" class="btn btn-outline-primary btn-sm fw-bold">
+                    📥 IMPORTAR DESDE CENTRAL Y DRINKS
+                </button>
+            </form>
         </div>
     </div>
 
-    <footer class="text-center py-2 text-muted small">
-        &copy; <?= date('Y') ?> Gestión de Nómina y Colaboradores. Todos los derechos reservados.
-    </footer>
+    <div class="card shadow card-custom mb-4">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold text-dark mb-0">💼 Registro / Actualización de Colaborador</h4>
+                <button type="button" class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalListado">
+                    📋 VER REGISTRADOS
+                </button>
+            </div>
+            
+            <form method="POST" enctype="multipart/form-data" id="formColaborador">
+                <!-- Selector de Empresa -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Empresa / Sede a la que se vincula:</label>
+                    <select name="nit_empresa_seleccionada" id="nit_empresa_seleccionada" class="form-select" required>
+                        <option value="">-- Seleccione la Empresa --</option>
+                        <?php 
+                        if ($resEmpresas) {
+                            $resEmpresas->data_seek(0);
+                            while ($emp = $resEmpresas->fetch_assoc()): 
+                        ?>
+                            <option value="<?= $emp['Nit'] ?>" <?= ($NitEmpresaSession == $emp['Nit']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($emp['RazonSocial']) ?> (NIT: <?= $emp['Nit'] ?>)
+                            </option>
+                        <?php 
+                            endwhile; 
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Seleccionar Empleado (Terceros Sincronizados):</label>
+                    <select name="nit_seleccionado" id="nit_seleccionado" class="form-select" required>
+                        <option value="">-- Seleccione un Tercero --</option>
+                        <?php 
+                        if ($resTerceros) {
+                            while ($t = $resTerceros->fetch_assoc()): 
+                        ?>
+                            <option value="<?= $t['nit'] ?>">
+                                <?= htmlspecialchars(trim(preg_replace('/\s+/', ' ', $t['nombres']))) ?> (<?= $t['nit'] ?>)
+                            </option>
+                        <?php 
+                            endwhile; 
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div id="alertaExistente" class="alert alert-warning d-none py-2 small fw-bold">
+                    ⚠️ Este colaborador ya cuenta con un registro activo en esta empresa. Los datos y su fotografía actual han sido cargados para su edición automática.
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-12 text-center">
+                        <div id="contenedorFotoActual" class="d-none mb-2">
+                            <img id="imgFotoActual" src="" alt="Foto actual" width="90" height="90" class="rounded-circle object-fit-cover shadow-sm border border-2 border-primary"><br>
+                            <small class="text-muted fw-bold">Fotografía registrada actualmente</small>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Fotografía del Colaborador (Subir nueva para reemplazar)</label>
+                        <input type="file" name="foto" class="form-control" accept=".jpg, .jpeg, .png, .webp">
+                        <div class="form-text">Formatos permitidos: JPG, JPEG, PNG, WEBP.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Cargo</label>
+                        <input type="text" name="cargo" id="cargo" class="form-control" placeholder="Ej: Administrador" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Salario Mensual</label>
+                        <input type="number" step="0.01" name="salario" id="salario" class="form-control" required placeholder="1750905">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Correo Electrónico</label>
+                        <input type="email" name="email" id="email" class="form-control" placeholder="ejemplo@correo.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Tipo de Contrato</label>
+                        <select name="tipo_contrato" id="tipo_contrato" class="form-select">
+                            <option value="INDEFINIDO">Indefinido</option>
+                            <option value="FIJO">Fijo</option>
+                            <option value="OBRA">Obra o Labor</option>
+                            <option value="SERVICIOS">Servicios</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Jornada Laboral</label>
+                        <select name="jornada_laboral" id="jornada_laboral" class="form-select">
+                            <option value="DIURNA">Diurna</option>
+                            <option value="NOCTURNA">Nocturna</option>
+                            <option value="MIXTA">Mixta</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Nivel ARL (1 al 5)</label>
+                        <input type="number" name="nivel_arl" id="nivel_arl" class="form-control" value="1" min="1" max="5">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Fecha de Ingreso</label>
+                        <input type="date" name="fecha_ingreso" id="fecha_ingreso" class="form-control" value="<?= date('Y-m-d') ?>">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Fecha de Nacimiento</label>
+                        <input type="date" name="fecha_nacimiento" id="fecha_nacimiento" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Género</label>
+                        <select name="genero" id="genero" class="form-select">
+                            <option value="">-- Seleccione --</option>
+                            <option value="MASCULINO">Masculino</option>
+                            <option value="FEMENINO">Femenino</option>
+                            <option value="OTRO">Otro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Estado Civil</label>
+                        <select name="estado_civil" id="estado_civil" class="form-select">
+                            <option value="SOLTERO">Soltero(a)</option>
+                            <option value="CASADO">Casado(a)</option>
+                            <option value="UNION LIBRE">Unión Libre</option>
+                            <option value="OTRO">Otro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Grupo Sanguíneo</label>
+                        <input type="text" name="grupo_sanguineo" id="grupo_sanguineo" class="form-control" placeholder="Ej: O+">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Nivel Educativo</label>
+                        <input type="text" name="nivel_educativo" id="nivel_educativo" class="form-control" placeholder="Ej: Profesional">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Estrato Socioeconómico</label>
+                        <input type="number" name="estrato_socioeconomico" id="estrato_socioeconomico" class="form-control" min="1" max="6">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Dirección de Vivienda (máx. 150 caracteres)</label>
+                        <input type="text" name="direccion" id="direccion" class="form-control" maxlength="150" placeholder="Ej: Calle 100 # 15-20">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Número de Cuenta</label>
+                        <input type="text" name="numero_cuenta" id="numero_cuenta" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Llave Payment</label>
+                        <input type="text" name="llave_payment" id="llave_payment" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">EPS</label>
+                        <input type="text" name="eps" id="eps" class="form-control" placeholder="Ej: Sura, Sanitas">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Fondo de Pensiones</label>
+                        <input type="text" name="fondo_pensiones" id="fondo_pensiones" class="form-control" placeholder="Ej: Porvenir">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Fondo de Cesantías</label>
+                        <input type="text" name="fondo_cesantias" id="fondo_cesantias" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">ARL (Entidad)</label>
+                        <input type="text" name="arl" id="arl" class="form-control" placeholder="Ej: Sura, Positiva">
+                    </div>
+                </div>
+
+                <button type="submit" name="guardar_colaborador" class="btn btn-primary w-100 py-2 fw-bold shadow-sm">
+                    💾 GUARDAR / ACTUALIZAR EN NÓMINA LOCAL
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- MODAL LISTADO Y GESTIÓN DE COLABORADORES -->
 <div class="modal fade" id="modalListado" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content border-0">
-            <div class="modal-header bg-dark text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">📋 Personal Registrado</h5>
+            <div class="modal-header bg-dark text-white p-4">
+                <h5 class="modal-title fw-bold">📋 Personal Registrado</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0 text-nowrap">
+                    <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th class="ps-3">Foto</th>
+                                <th class="ps-4">Foto</th>
                                 <th>Identificación</th>
                                 <th>Nombre Completo</th>
                                 <th>Empresa (NIT)</th>
@@ -683,9 +663,9 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
                                 $esActivo = (strtoupper($c['estado'] ?? 'ACTIVO') === 'ACTIVO');
                             ?>
                             <tr>
-                                <td class="ps-3">
+                                <td class="ps-4">
                                     <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                                        <img src="<?= $c['url_foto'] ?>" alt="Foto" width="35" height="35" class="rounded-circle object-fit-cover">
+                                        <img src="<?= $c['url_foto'] ?>" alt="Foto" width="40" height="40" class="rounded-circle object-fit-cover">
                                     <?php else: ?>
                                         <span class="badge bg-secondary">Sin foto</span>
                                     <?php endif; ?>
@@ -704,14 +684,14 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
                                 </td>
                                 <td class="text-center">
                                     <button type="button" class="btn btn-link text-primary p-0 me-2" data-bs-toggle="modal" data-bs-target="#modalEditar<?= $c['id'] ?>" title="Editar Datos Complementarios">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
                                             <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
                                             <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
                                         </svg>
                                     </button>
 
                                     <button type="button" class="btn btn-link text-danger p-0 me-2" data-bs-toggle="modal" data-bs-target="#modalEmergencia<?= $c['id'] ?>" title="Contactos de Emergencia">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-heart-pulse-fill" viewBox="0 0 16 16">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-heart-pulse-fill" viewBox="0 0 16 16">
                                             <path d="M1.475 9C2.702 10.84 4.779 12.871 8 15c3.221-2.129 5.298-4.16 6.525-6H12a.5.5 0 0 1-.464-.314l-1.457-3.642-1.598 5.593a.5.5 0 0 1-.945.049L7.021 3.205 5.365 7.487A.5.5 0 0 1 4.9 8H1.475z"/>
                                             <path d="M3.229 1.741C2.556 2.378 2 3.352 2 4.65v.001c0 .54.148 1.055.409 1.5H1.475C1.103 5.485 1 5.08 1 4.65 1 2.94 1.83 1.77 2.729.98c.5-.44 1.1-.81 1.771-1.09-.27.46-.77 1.25-1.27 1.85z"/>
                                         </svg>
@@ -719,14 +699,14 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
 
                                     <?php if ($esActivo): ?>
                                         <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
                                                 <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L13.293 7l-1.147-1.146a.5.5 0 0 1 0-.708"/>
                                             </svg>
                                         </a>
                                     <?php endif; ?>
 
                                     <a href="?eliminar_id=<?= $c['id'] ?>" class="btn btn-link text-danger p-0" onclick="return confirm('¿Eliminar por completo este registro?');" title="Eliminar Registro">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-trash-fill" viewBox="0 0 16 16">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trash-fill" viewBox="0 0 16 16">
                                             <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0"/>
                                         </svg>
                                     </a>
@@ -750,20 +730,20 @@ while ($c = $resL->fetch_assoc()):
 
 <!-- MODAL EDITAR COMPLEMENTARIOS -->
 <div class="modal fade" id="modalEditar<?= $c['id'] ?>" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content border-0">
-            <div class="modal-header bg-primary text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">✏️ Editar Complementos: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">✏️ Editar Complementos: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" enctype="multipart/form-data">
-                <div class="modal-body p-3">
+                <div class="modal-body p-4">
                     <input type="hidden" name="id_colaborador" value="<?= $c['id'] ?>">
                     
-                    <div class="row g-2">
+                    <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label small fw-bold">Empresa / Sede Asociada</label>
-                            <select name="edit_nit_empresa" class="form-select form-select-sm" required>
+                            <select name="edit_nit_empresa" class="form-select" required>
                                 <?php 
                                 if ($resEmpresas) {
                                     $resEmpresas->data_seek(0);
@@ -779,123 +759,117 @@ while ($c = $resL->fetch_assoc()):
                             </select>
                         </div>
 
-                        <div class="col-12 text-center my-1">
+                        <div class="col-12 text-center my-2">
                             <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                                <img src="<?= $c['url_foto'] ?>" alt="Foto actual" width="70" height="70" class="rounded-circle object-fit-cover shadow-sm mb-1"><br>
+                                <img src="<?= $c['url_foto'] ?>" alt="Foto actual" width="80" height="80" class="rounded-circle object-fit-cover shadow-sm mb-2"><br>
                                 <small class="text-muted">Foto actual almacenada</small>
                             <?php else: ?>
-                                <span class="badge bg-secondary mb-1">Sin fotografía registrada</span><br>
+                                <span class="badge bg-secondary mb-2">Sin fotografía registrada</span><br>
                             <?php endif; ?>
                         </div>
                         <div class="col-12">
                             <label class="form-label small fw-bold">Actualizar Fotografía (Opcional)</label>
-                            <input type="file" name="edit_foto" class="form-control form-control-sm" accept=".jpg, .jpeg, .png, .webp">
+                            <input type="file" name="edit_foto" class="form-control" accept=".jpg, .jpeg, .png, .webp">
                         </div>
 
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Cargo</label>
-                            <input type="text" name="edit_cargo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['cargo'] ?? '') ?>" required>
+                            <input type="text" name="edit_cargo" class="form-control" value="<?= htmlspecialchars($c['cargo'] ?? '') ?>" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Salario Mensual</label>
-                            <input type="number" step="0.01" name="edit_salario" class="form-control form-control-sm" value="<?= $c['salario'] ?>" required>
+                            <input type="number" step="0.01" name="edit_salario" class="form-control" value="<?= $c['salario'] ?>" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Correo Electrónico</label>
-                            <input type="email" name="edit_email" class="form-control form-control-sm" value="<?= htmlspecialchars($c['email'] ?? '') ?>">
+                            <input type="email" name="edit_email" class="form-control" value="<?= htmlspecialchars($c['email'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Tipo de Contrato</label>
-                            <select name="edit_tipo_contrato" class="form-select form-select-sm">
+                            <select name="edit_tipo_contrato" class="form-select">
                                 <option value="INDEFINIDO" <?= ($c['tipo_contrato'] == 'INDEFINIDO') ? 'selected' : '' ?>>Indefinido</option>
                                 <option value="FIJO" <?= ($c['tipo_contrato'] == 'FIJO') ? 'selected' : '' ?>>Fijo</option>
                                 <option value="OBRA" <?= ($c['tipo_contrato'] == 'OBRA') ? 'selected' : '' ?>>Obra o Labor</option>
                                 <option value="SERVICIOS" <?= ($c['tipo_contrato'] == 'SERVICIOS') ? 'selected' : '' ?>>Servicios</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Jornada Laboral</label>
-                            <select name="edit_jornada_laboral" class="form-select form-select-sm">
+                            <select name="edit_jornada_laboral" class="form-select">
                                 <option value="DIURNA" <?= ($c['jornada_laboral'] == 'DIURNA') ? 'selected' : '' ?>>Diurna</option>
                                 <option value="NOCTURNA" <?= ($c['jornada_laboral'] == 'NOCTURNA') ? 'selected' : '' ?>>Nocturna</option>
                                 <option value="MIXTA" <?= ($c['jornada_laboral'] == 'MIXTA') ? 'selected' : '' ?>>Mixta</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Nivel ARL</label>
-                            <input type="number" name="edit_nivel_arl" class="form-control form-control-sm" value="<?= $c['nivel_arl'] ?>" min="1" max="5">
+                            <input type="number" name="edit_nivel_arl" class="form-control" value="<?= $c['nivel_arl'] ?>" min="1" max="5">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Fecha de Nacimiento</label>
-                            <input type="date" name="edit_fecha_nacimiento" class="form-control form-control-sm" value="<?= $c['fecha_nacimiento'] ?>">
+                            <input type="date" name="edit_fecha_nacimiento" class="form-control" value="<?= $c['fecha_nacimiento'] ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Género</label>
-                            <select name="edit_genero" class="form-select form-select-sm">
+                            <select name="edit_genero" class="form-select">
                                 <option value="">-- Seleccione --</option>
                                 <option value="MASCULINO" <?= ($c['genero'] == 'MASCULINO') ? 'selected' : '' ?>>Masculino</option>
                                 <option value="FEMENINO" <?= ($c['genero'] == 'FEMENINO') ? 'selected' : '' ?>>Femenino</option>
                                 <option value="OTRO" <?= ($c['genero'] == 'OTRO') ? 'selected' : '' ?>>Otro</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Estado Civil</label>
-                            <select name="edit_estado_civil" class="form-select form-select-sm">
+                            <select name="edit_estado_civil" class="form-select">
                                 <option value="SOLTERO" <?= ($c['estado_civil'] == 'SOLTERO') ? 'selected' : '' ?>>Soltero(a)</option>
                                 <option value="CASADO" <?= ($c['estado_civil'] == 'CASADO') ? 'selected' : '' ?>>Casado(a)</option>
                                 <option value="UNION LIBRE" <?= ($c['estado_civil'] == 'UNION LIBRE') ? 'selected' : '' ?>>Unión Libre</option>
                                 <option value="OTRO" <?= ($c['estado_civil'] == 'OTRO') ? 'selected' : '' ?>>Otro</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Grupo Sanguíneo</label>
-                            <input type="text" name="edit_grupo_sanguineo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['grupo_sanguineo'] ?? '') ?>">
+                            <input type="text" name="edit_grupo_sanguineo" class="form-control" value="<?= htmlspecialchars($c['grupo_sanguineo'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Nivel Educativo</label>
-                            <input type="text" name="edit_nivel_educativo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['nivel_educativo'] ?? '') ?>">
+                            <input type="text" name="edit_nivel_educativo" class="form-control" value="<?= htmlspecialchars($c['nivel_educativo'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Estrato Socioeconómico</label>
-                            <input type="number" name="edit_estrato_socioeconomico" class="form-control form-control-sm" value="<?= $c['estrato_socioeconomico'] ?>" min="1" max="6">
+                            <input type="number" name="edit_estrato_socioeconomico" class="form-control" value="<?= $c['estrato_socioeconomico'] ?>" min="1" max="6">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Dirección de Vivienda</label>
-                            <input type="text" name="edit_direccion" class="form-control form-control-sm" value="<?= htmlspecialchars($c['direccion'] ?? '') ?>" maxlength="150">
+                            <input type="text" name="edit_direccion" class="form-control" value="<?= htmlspecialchars($c['direccion'] ?? '') ?>" maxlength="150">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Número de Cuenta</label>
-                            <input type="text" name="edit_numero_cuenta" class="form-control form-control-sm" value="<?= htmlspecialchars($c['numero_cuenta'] ?? '') ?>">
+                            <input type="text" name="edit_numero_cuenta" class="form-control" value="<?= htmlspecialchars($c['numero_cuenta'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Llave Payment</label>
-                            <input type="text" name="edit_llave_payment" class="form-control form-control-sm" value="<?= htmlspecialchars($c['llave_payment'] ?? '') ?>">
+                            <input type="text" name="edit_llave_payment" class="form-control" value="<?= htmlspecialchars($c['llave_payment'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">EPS</label>
-                            <input type="text" name="edit_eps" class="form-control form-control-sm" value="<?= htmlspecialchars($c['eps'] ?? '') ?>">
+                            <input type="text" name="edit_eps" class="form-control" value="<?= htmlspecialchars($c['eps'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Fondo de Pensiones</label>
-                            <input type="text" name="edit_fondo_pensiones" class="form-control form-control-sm" value="<?= htmlspecialchars($c['fondo_pensiones'] ?? '') ?>">
+                            <input type="text" name="edit_fondo_pensiones" class="form-control" value="<?= htmlspecialchars($c['fondo_pensiones'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Fondo de Cesantías</label>
-                            <input type="text" name="edit_fondo_cesantias" class="form-control form-control-sm" value="<?= htmlspecialchars($c['fondo_cesantias'] ?? '') ?>">
+                            <input type="text" name="edit_fondo_cesantias" class="form-control" value="<?= htmlspecialchars($c['fondo_cesantias'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-8">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">ARL (Entidad)</label>
-                            <input type="text" name="edit_arl" class="form-control form-control-sm" value="<?= htmlspecialchars($c['arl'] ?? '') ?>">
-                        </div>
-                        <div class="col-12 col-md-4 d-flex align-items-end">
-                            <!-- BOTÓN POPUP AL LADO DE ARL EN EL MODAL DE EDICIÓN -->
-                            <button type="button" class="btn btn-success btn-sm fw-bold text-white shadow-sm w-100 py-1" onclick="abrirPopupEmergencia(<?= $c['id'] ?>)" title="Crear Contacto de Emergencia vía Popup">
-                                ➕ Emergencia (Popup)
-                            </button>
+                            <input type="text" name="edit_arl" class="form-control" value="<?= htmlspecialchars($c['arl'] ?? '') ?>">
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer bg-light p-2">
+                <div class="modal-footer bg-light">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
                     <button type="submit" name="actualizar_complementarios" class="btn btn-primary btn-sm fw-bold">💾 Guardar Cambios</button>
                 </div>
@@ -906,17 +880,17 @@ while ($c = $resL->fetch_assoc()):
 
 <!-- MODAL CONTACTOS DE EMERGENCIA -->
 <div class="modal fade" id="modalEmergencia<?= $c['id'] ?>" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content border-0">
-            <div class="modal-header bg-danger text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">🚨 Contactos de Emergencia: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title fw-bold">🚨 Contactos de Emergencia: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-3">
+            <div class="modal-body p-4">
                 
-                <h6 class="fw-bold text-secondary mb-2">Contactos Registrados</h6>
-                <div class="table-responsive mb-3">
-                    <table class="table table-sm table-bordered align-middle text-nowrap">
+                <h6 class="fw-bold text-secondary mb-3">Contactos Registrados</h6>
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm table-bordered align-middle">
                         <thead class="table-light">
                             <tr>
                                 <th>Nombre</th>
@@ -945,36 +919,36 @@ while ($c = $resL->fetch_assoc()):
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-2">No hay contactos de emergencia registrados.</td>
+                                    <td colspan="6" class="text-center text-muted py-3">No hay contactos de emergencia registrados.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
 
-                <hr class="my-2">
-                <h6 class="fw-bold text-primary mb-2">Agregar Nuevo Contacto</h6>
+                <hr>
+                <h6 class="fw-bold text-primary mb-3">Agregar Nuevo Contacto</h6>
                 <form method="POST">
                     <input type="hidden" name="colaborador_id" value="<?= $c['id'] ?>">
-                    <div class="row g-2">
-                        <div class="col-12 col-md-6">
+                    <div class="row g-3">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Nombre del Contacto</label>
                             <input type="text" name="nombre_contacto" class="form-control form-control-sm" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-md-6">
                             <label class="form-label small fw-bold">Parentesco</label>
                             <input type="text" name="parentesco" class="form-control form-control-sm" placeholder="Ej: Esposo(a), Madre">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Celular Principal</label>
                             <input type="text" name="celular_1" class="form-control form-control-sm" required>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-md-4">
                             <label class="form-label small fw-bold">Celular Opcional</label>
                             <input type="text" name="celular_2" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-4 d-flex align-items-end">
-                            <div class="form-check mb-1">
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" name="es_principal" value="1" id="principal<?= $c['id'] ?>">
                                 <label class="form-check-label small fw-bold" for="principal<?= $c['id'] ?>">
                                     ¿Es contacto principal?
@@ -982,7 +956,7 @@ while ($c = $resL->fetch_assoc()):
                             </div>
                         </div>
                     </div>
-                    <div class="mt-2 text-end">
+                    <div class="mt-3 text-end">
                         <button type="submit" name="guardar_emergencia" class="btn btn-danger btn-sm fw-bold">➕ Añadir Contacto</button>
                     </div>
                 </form>
@@ -1014,6 +988,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (data.existe) {
                         const d = data.datos;
                         
+                        // Autocompletar campos de texto y selectores
                         document.getElementById("cargo").value = d.cargo || '';
                         document.getElementById("salario").value = d.salario || '';
                         document.getElementById("email").value = d.email || '';
@@ -1027,6 +1002,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         document.getElementById("grupo_sanguineo").value = d.grupo_sanguineo || '';
                         document.getElementById("nivel_educativo").value = d.nivel_educativo || '';
                         document.getElementById("estrato_socioeconomico").value = d.estrato_socioeconomico || '';
+                        // Se deja libre el campo de dirección para edición manual sin sobrescribir
                         document.getElementById("numero_cuenta").value = d.numero_cuenta || '';
                         document.getElementById("llave_payment").value = d.llave_payment || '';
                         document.getElementById("eps").value = d.eps || '';
@@ -1034,6 +1010,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         document.getElementById("fondo_cesantias").value = d.fondo_cesantias || '';
                         document.getElementById("arl").value = d.arl || '';
 
+                        // Mostrar la foto actual si existe en la base de datos
                         if (d.url_foto && d.url_foto.trim() !== "") {
                             imgFotoActual.src = d.url_foto;
                             contenedorFoto.classList.remove("d-none");
@@ -1043,6 +1020,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         alerta.classList.remove("d-none");
                     } else {
+                        // Limpiar visualización de foto y alerta si no existe el registro
                         alerta.classList.add("d-none");
                         contenedorFoto.classList.add("d-none");
                         imgFotoActual.src = "";
@@ -1060,20 +1038,6 @@ document.addEventListener("DOMContentLoaded", function() {
     selEmpresa.addEventListener("change", verificarColaboradorExistente);
     selTercero.addEventListener("change", verificarColaboradorExistente);
 });
-
-// Función para abrir la ventana emergente tipo Popup (CrearColaboradorEmergencia.php)
-function abrirPopupEmergencia(idColaborador) {
-    const ancho = 600;
-    const alto = 700;
-    const x = (screen.width - ancho) / 2;
-    const y = (screen.height - alto) / 2;
-    
-    window.open(
-        `CrearColaboradorEmergencia.php?id=${idColaborador}`,
-        'PopupEmergencia',
-        `width=${ancho},height=${alto},left=${x},top=${y},resizable=yes,scrollbars=yes,status=yes`
-    );
-}
 </script>
 </body>
 </html>

@@ -104,7 +104,7 @@ $colaborador_id_real = intval($c['id']);
                     <td><?= toUpper($c['CedulaNit'] ?? '') ?></td>
                     <td rowspan="6" colspan="2" class="text-center bg-white align-middle">
                         <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                            <img src="<?= htmlspecialchars($c['url_foto']) ?>" style="width: 180px; height: 220px; object-fit: cover;" class="border shadow-sm">
+                            <img src="<?= htmlspecialchars($c['url_foto']) ?>" style="width: 150px; height: 180px; object-fit: cover;" class="border shadow-sm">
                         <?php else: ?>
                             <div class="border p-4 text-muted">SIN FOTO</div>
                         <?php endif; ?>
