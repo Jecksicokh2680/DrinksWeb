@@ -55,6 +55,11 @@ if (!$c) die("No se encontró información del colaborador.");
 
 function toUpper($texto) { return mb_strtoupper($texto ?? '', 'UTF-8'); }
 $colaborador_id_real = intval($c['id']);
+
+// Manejo seguro de la ruta de la foto para validación física y visualización
+$ruta_foto_bd = $c['url_foto'] ?? '';
+$ruta_servidor = ltrim($ruta_foto_bd, './'); 
+$tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
 ?>
 
 <!DOCTYPE html>
@@ -103,8 +108,8 @@ $colaborador_id_real = intval($c['id']);
                     <td class="label-cell">CÉDULA:</td>
                     <td><?= toUpper($c['CedulaNit'] ?? '') ?></td>
                     <td rowspan="6" colspan="2" class="text-center bg-white align-middle">
-                        <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                            <img src="<?= htmlspecialchars($c['url_foto']) ?>" style="width: 150px; height: 180px; object-fit: cover;" class="border shadow-sm">
+                        <?php if ($tiene_foto): ?>
+                            <img src="<?= htmlspecialchars($ruta_servidor) ?>" style="width: 180px; height: 225px; object-fit: cover;" class="border shadow-sm">
                         <?php else: ?>
                             <div class="border p-4 text-muted">SIN FOTO</div>
                         <?php endif; ?>
@@ -156,7 +161,7 @@ $colaborador_id_real = intval($c['id']);
                                         <td><?= toUpper($em['celular_2'] ?? '-') ?></td>
                                         <td><?= (intval($em['es_principal'] ?? 0) === 1) ? 'SÍ' : 'NO' ?></td>
                                     </tr>
-                                <?php endwhile; else: ?>
+                                    <?php endwhile; else: ?>
                                     <tr><td colspan="5">SIN CONTACTOS REGISTRADOS.</td></tr>
                                 <?php endif; ?>
                             </tbody>

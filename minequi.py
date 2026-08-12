@@ -21,15 +21,10 @@ try:
     mail.select("INBOX")
 
     # Obtener la fecha de hoy en Bogotá en formato IMAP
-
-
-
-    
     fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
-    # Buscar correos del día con los asuntos clave
-   
-    criterio_busqueda = f'(UNSEEN ON {fecha_hoy} (OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta"))'
+    # Buscar correos del día incluyendo el asunto de venta exitosa
+    criterio_busqueda = f'(UNSEEN ON {fecha_hoy} (OR OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta" SUBJECT "Venta exitosa"))'
     
     status, messages = mail.uid('search', None, criterio_busqueda)
     mail_ids = messages[0].split()
@@ -81,11 +76,13 @@ try:
             #      EXTRACCIÓN DE TODOS LOS DATOS
             # ==========================================
             
-            # 1. MONTO
+            # 1. MONTO (Actualizado para soportar Venta exitosa, Tabla y Texto)
             monto = 0.00
-            match_monto = re.search(r'Monto\s*:\s*\$\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            match_monto = re.search(r'Monto\s*:\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
             if not match_monto:
-                match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Texto
+                match_monto = re.search(r'Venta\s+exitosa\s+por\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Asunto/Encabezado
+            if not match_monto:
+                match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Texto tradicional
             if not match_monto:
                 match_monto = re.search(r'\$[\s\d.,]+', texto_plano_limpio)
                 
@@ -151,7 +148,7 @@ try:
                     t_asunto_normalizado = t['asunto'].upper().replace("RV:", "").replace("RV :", "").strip()
                     t_pagador_normalizado = t['pagador'].upper().strip()
                     
-                    # 3. NUEVA REGLA: Si ambos tienen pagadores detectados válidos y los nombres NO coinciden, NO es un duplicado
+                    # 3. Si ambos tienen pagadores detectados válidos y los nombres NO coinciden, NO es un duplicado
                     if pagador_normalizado != "NO DETECTADO" and t_pagador_normalizado != "NO DETECTADO":
                         if pagador_normalizado != t_pagador_normalizado:
                             continue # Salta este registro en la lista, son personas diferentes.

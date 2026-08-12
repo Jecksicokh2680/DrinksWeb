@@ -263,7 +263,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                 llave_payment, eps, fondo_pensiones, fondo_cesantias, arl, url_foto, email
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-            // CORRECCIÓN: Se ajustó exactamente a 24 caracteres (ss idzi ssssssss is sssss s s) para las 24 variables
             $stmtIns->bind_param(
                 "ssidsissssssssisssssssss",
                 $cedula, $NitEmpresa, $IdSucursal, $salario, $tipo_con, $arl_num, $cargo, 
@@ -432,20 +431,20 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
         .card-custom { border: none; border-radius: 15px; border-top: 6px solid #0d6efd; }
     </style>
 </head>
-<body class="p-4">
+<body class="py-3 px-2 px-md-4">
 
-<div class="container" style="max-width: 1000px;">
+<div class="container-fluid" style="max-width: 1200px;">
     
     <?= $mensaje ?? '' ?>
 
     <div class="card mb-4 shadow-sm border-0">
-        <div class="card-body d-flex justify-content-between align-items-center bg-white" style="border-radius: 15px;">
+        <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-center bg-white gap-3" style="border-radius: 15px;">
             <div>
                 <h6 class="mb-0 fw-bold text-primary">Sincronización de Datos</h6>
                 <small class="text-muted">Actualiza terceros desde las bases Central y Drinks</small>
             </div>
             <form method="POST">
-                <button type="submit" name="importar_terceros" class="btn btn-outline-primary btn-sm fw-bold">
+                <button type="submit" name="importar_terceros" class="btn btn-outline-primary btn-sm fw-bold w-100">
                     📥 IMPORTAR DESDE CENTRAL Y DRINKS
                 </button>
             </form>
@@ -453,9 +452,9 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
     </div>
 
     <div class="card shadow card-custom mb-4">
-        <div class="card-body p-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h4 class="fw-bold text-dark mb-0">💼 Registro / Actualización de Colaborador</h4>
+        <div class="card-body p-3 p-md-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
+                <h4 class="fw-bold text-dark mb-0 fs-5 fs-md-4">💼 Registro / Actualización de Colaborador</h4>
                 <button type="button" class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalListado">
                     📋 VER REGISTRADOS
                 </button>
@@ -631,7 +630,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
 
 <!-- MODAL LISTADO Y GESTIÓN DE COLABORADORES -->
 <div class="modal fade" id="modalListado" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0">
             <div class="modal-header bg-dark text-white p-4">
                 <h5 class="modal-title fw-bold">📋 Personal Registrado</h5>
@@ -700,7 +699,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0) {
                                     <?php if ($esActivo): ?>
                                         <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
-                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L13.293 7l-1.147-1.146a.5.5 0 0 1 0-.708"/>
+                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L14 7.707l-1.147-1.146a.5.5 0 0 1 0-.708"/>
                                             </svg>
                                         </a>
                                     <?php endif; ?>
@@ -988,7 +987,6 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (data.existe) {
                         const d = data.datos;
                         
-                        // Autocompletar campos de texto y selectores
                         document.getElementById("cargo").value = d.cargo || '';
                         document.getElementById("salario").value = d.salario || '';
                         document.getElementById("email").value = d.email || '';
@@ -1002,7 +1000,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         document.getElementById("grupo_sanguineo").value = d.grupo_sanguineo || '';
                         document.getElementById("nivel_educativo").value = d.nivel_educativo || '';
                         document.getElementById("estrato_socioeconomico").value = d.estrato_socioeconomico || '';
-                        // Se deja libre el campo de dirección para edición manual sin sobrescribir
+                        document.getElementById("direccion").value = d.direccion || ''; // <-- Corregido para cargar la dirección
                         document.getElementById("numero_cuenta").value = d.numero_cuenta || '';
                         document.getElementById("llave_payment").value = d.llave_payment || '';
                         document.getElementById("eps").value = d.eps || '';
@@ -1010,7 +1008,6 @@ document.addEventListener("DOMContentLoaded", function() {
                         document.getElementById("fondo_cesantias").value = d.fondo_cesantias || '';
                         document.getElementById("arl").value = d.arl || '';
 
-                        // Mostrar la foto actual si existe en la base de datos
                         if (d.url_foto && d.url_foto.trim() !== "") {
                             imgFotoActual.src = d.url_foto;
                             contenedorFoto.classList.remove("d-none");
@@ -1020,7 +1017,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         alerta.classList.remove("d-none");
                     } else {
-                        // Limpiar visualización de foto y alerta si no existe el registro
                         alerta.classList.add("d-none");
                         contenedorFoto.classList.add("d-none");
                         imgFotoActual.src = "";
