@@ -27,15 +27,20 @@ function Autorizacion($User, $Solicitud) {
     return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
 
+// Consultamos ambos permisos
 $permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
+$permiso6666 = Autorizacion($UsuarioSesion, '6666'); 
+
+// Determinamos si es supervisor con cualquiera de los dos permisos
+$es_supervisor = ($permiso9999 === 'SI' || $permiso6666 === 'SI');
 
 // 4. Determinar qué cédula se va a consultar
 $cedula_a_consultar = $UsuarioSesion; 
 if (isset($_GET['cedula']) && !empty($_GET['cedula'])) {
-    if ($permiso9999 === 'SI') {
+    if ($es_supervisor) {
         $cedula_a_consultar = $_GET['cedula'];
     } else {
-        die("Acceso denegado: No cuentas con la autorización 9999.");
+        die("Acceso denegado: No cuentas con la autorización requerida (9999 o 6666).");
     }
 }
 
@@ -83,7 +88,7 @@ $tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
 
 <div class="container my-5 ficha-container" style="max-width: 900px;">
 
-    <?php if ($permiso9999 === 'SI'): ?>
+    <?php if ($es_supervisor): ?>
     <div class="card mb-3 border-secondary admin-controls">
         <div class="card-body py-2 bg-white d-flex justify-content-between align-items-center">
             <span class="text-muted small">⚙️ <strong>MODO SUPERVISOR</strong></span>
