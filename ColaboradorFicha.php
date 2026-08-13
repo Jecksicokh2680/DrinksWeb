@@ -27,7 +27,7 @@ function Autorizacion($User, $Solicitud) {
     return ($row = $result->fetch_assoc()) ? ($row['Swich'] ?? "NO") : "NO";
 }
 
-// Consultamos ambos permisos
+// Consultamos ambos permisos de supervisor
 $permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
 $permiso6666 = Autorizacion($UsuarioSesion, '6666'); 
 
@@ -55,11 +55,36 @@ $query = "SELECT c.*, t.Nombre AS NombreColaborador, e.RazonSocial, e.NombreCome
           
 $resultado = $mysqli->query($query);
 if (!$resultado) die("Error en la consulta SQL: " . $mysqli->error);
+
 $c = $resultado->fetch_assoc();
-if (!$c) die("No se encontró información del colaborador.");
+$colaborador_encontrado = !empty($c);
+
+if (!$colaborador_encontrado) {
+    // Si no se encuentra, inicializamos el array con campos vacíos para renderizar el formato en blanco
+    $c = [
+        'CedulaNit' => $cedula_sesion,
+        'NombreColaborador' => '',
+        'cargo' => '',
+        'direccion' => '',
+        'NitEmpresa' => '',
+        'RazonSocial' => '',
+        'NombreComercial' => '',
+        'fecha_ingreso' => '',
+        'fecha_nacimiento' => '',
+        'salario' => 0,
+        'numero_cuenta' => '',
+        'llave_payment' => '',
+        'eps' => '',
+        'arl' => '',
+        'nivel_arl' => '',
+        'grupo_sanguineo' => '',
+        'fondo_pensiones' => '',
+        'fondo_cesantias' => ''
+    ];
+}
 
 function toUpper($texto) { return mb_strtoupper($texto ?? '', 'UTF-8'); }
-$colaborador_id_real = intval($c['id']);
+$colaborador_id_real = $colaborador_encontrado ? intval($c['id']) : 0;
 
 // Manejo seguro de la ruta de la foto para validación física y visualización
 $ruta_foto_bd = $c['url_foto'] ?? '';
