@@ -40,29 +40,32 @@ if (isset($_GET['ajax_consultar'])) {
 }
 
 /* ============================================================
-    LÓGICA 1: IMPORTACIÓN MASIVA DE TERCEROS (CENTRAL Y DRINKS)
+    LÓGICA 1: IMPORTACIÓN MASIVA Y UNIFICADA DE TERCEROS
    ============================================================ */
 if (isset($_POST['importar_terceros'])) {
     $importados = 0;
 
+    // 1. Sincronizar desde ConnCentral
     if (isset($mysqliPos) && $mysqliPos) {
-        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
         if ($resCen) {
             while ($tc = $resCen->fetch_assoc()) {
-                $nit  = $mysqli->real_escape_string($tc['nit']);
-                $nom  = $mysqli->real_escape_string($tc['nombres']);
-                $com  = $mysqli->real_escape_string($tc['nomcomercial'] ?? '');
-                $mail = $mysqli->real_escape_string($tc['email'] ?? '');
+                $nit   = $mysqli->real_escape_string(trim($tc['nit']));
+                if (empty($nit)) continue;
                 
-                $sqlSync = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
-                            VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                            ON DUPLICATE KEY UPDATE 
-                            Nombre = VALUES(Nombre), 
-                            NombreCom = VALUES(NombreCom), 
-                            Email = VALUES(Email), 
-                            Estado = 1";
-                            
-                if ($mysqli->query($sqlSync) && $mysqli->affected_rows > 0) {
+                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $tc['nombres'])));
+                $com   = $mysqli->real_escape_string(trim($tc['nomcomercial'] ?? ''));
+                $mail  = $mysqli->real_escape_string(trim($tc['email'] ?? ''));
+
+                $sqlInsCen = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                              VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
+                              ON DUPLICATE KEY UPDATE 
+                              Nombre = VALUES(Nombre), 
+                              NombreCom = VALUES(NombreCom), 
+                              Email = VALUES(Email), 
+                              Estado = 1";
+                              
+                if ($mysqli->query($sqlInsCen)) {
                     $importados++;
                 }
             }
@@ -70,23 +73,27 @@ if (isset($_POST['importar_terceros'])) {
         }
     }
 
+    // 2. Sincronizar desde ConnDrinks
     if (isset($mysqliDrinks) && $mysqliDrinks) {
-        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE inactivo = 0");
+        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
         if ($resDrk) {
             while ($td = $resDrk->fetch_assoc()) {
-                $nit  = $mysqli->real_escape_string($td['nit']);
-                $nom  = $mysqli->real_escape_string($td['nombres']);
-                $com  = $mysqli->real_escape_string($td['nomcomercial'] ?? '');
-                $mail = $mysqli->real_escape_string($td['email'] ?? '');
+                $nit   = $mysqli->real_escape_string(trim($td['nit']));
+                if (empty($nit)) continue;
                 
-                $sqlSyncD = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) 
-                             VALUES ('$nit', '$nit', '$nom', '$mail', 1)
-                             ON DUPLICATE KEY UPDATE 
-                             Nombre = VALUES(Nombre), 
-                             Email = VALUES(Email), 
-                             Estado = 1";
-                             
-                if ($mysqli->query($sqlSyncD) && $mysqli->affected_rows > 0) {
+                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $td['nombres'])));
+                $com   = $mysqli->real_escape_string(trim($td['nomcomercial'] ?? ''));
+                $mail  = $mysqli->real_escape_string(trim($td['email'] ?? ''));
+
+                $sqlInsDrk = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                              VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
+                              ON DUPLICATE KEY UPDATE 
+                              Nombre = VALUES(Nombre), 
+                              NombreCom = VALUES(NombreCom), 
+                              Email = VALUES(Email), 
+                              Estado = 1";
+                              
+                if ($mysqli->query($sqlInsDrk)) {
                     $importados++;
                 }
             }
@@ -94,7 +101,7 @@ if (isset($_POST['importar_terceros'])) {
         }
     }
 
-    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se importaron/actualizaron $importados terceros desde las bases Central y Drinks.</div>";
+    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se procesaron e importaron/actualizaron $importados terceros desde las bases Central y Drinks sin duplicados.</div>";
 }
 /* ============================================================
     LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
@@ -186,21 +193,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             $encontradoTercero = false;
             
             if (isset($mysqliPos) && $mysqliPos) {
-                $resC = $mysqliPos->query("SELECT nit, nombres, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resC = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resC && $rowC = $resC->fetch_assoc()) {
                     $nomC = $mysqli->real_escape_string($rowC['nombres']);
+                    $comC = $mysqli->real_escape_string($rowC['nomcomercial'] ?? '');
                     $emC  = $mysqli->real_escape_string($rowC['email'] ?? '');
-                    $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) VALUES ('$cedula', '$cedula', '$nomC', '$emC', 1)");
+                    $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomC', '$comC', '$emC', 1)");
                     $encontradoTercero = true;
                 }
             }
 
             if (!$encontradoTercero && isset($mysqliDrinks) && $mysqliDrinks) {
-                $resD = $mysqliDrinks->query("SELECT nit, nombres, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resD = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resD && $rowD = $resD->fetch_assoc()) {
                     $nomD = $mysqli->real_escape_string($rowD['nombres']);
+                    $comD = $mysqli->real_escape_string($rowD['nomcomercial'] ?? '');
                     $emD  = $mysqli->real_escape_string($rowD['email'] ?? '');
-                    $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, Email, Estado) VALUES ('$cedula', '$cedula', '$nomD', '$emD', 1)");
+                    $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomD', '$comD', '$emD', 1)");
                 }
             }
         }
@@ -231,7 +240,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
-                // 22 tipos exactos para 22 variables
                 $stmtUpdAuto->bind_param(
                     "dsissssssssisssssssssi",
                     $salario, $tipo_con, $arl_num, $cargo, 
@@ -249,7 +257,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
-                // 21 tipos exactos para 21 variables
                 $stmtUpdAuto->bind_param(
                     "dsissssssssissssssssi",
                     $salario, $tipo_con, $arl_num, $cargo, 
@@ -428,8 +435,8 @@ if (isset($_GET['msg'])) {
 $resEmpresas = $mysqli->query("SELECT Nit, RazonSocial FROM empresa WHERE Estado = 1");
 
 $resTerceros = $mysqli->query("SELECT CedulaNit as nit, Nombre as nombres FROM terceros WHERE Estado = 1 ORDER BY Nombre ASC");
-if (!$resTerceros || $resTerceros->num_rows == 0) {
-    $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros WHERE inactivo = 0 ORDER BY nombres ASC");
+if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
+    $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros ORDER BY nombres ASC");
 }
 ?>
 
@@ -890,7 +897,6 @@ while ($c = $resL->fetch_assoc()):
                             <input type="text" name="edit_arl" class="form-control form-control-sm" value="<?= htmlspecialchars($c['arl'] ?? '') ?>">
                         </div>
                         <div class="col-12 col-md-4 d-flex align-items-end">
-                            <!-- BOTÓN POPUP AL LADO DE ARL EN EL MODAL DE EDICIÓN -->
                             <button type="button" class="btn btn-success btn-sm fw-bold text-white shadow-sm w-100 py-1" onclick="abrirPopupEmergencia(<?= $c['id'] ?>)" title="Crear Contacto de Emergencia vía Popup">
                                 ➕ Emergencia (Popup)
                             </button>
@@ -1064,7 +1070,6 @@ document.addEventListener("DOMContentLoaded", function() {
     selTercero.addEventListener("change", verificarColaboradorExistente);
 });
 
-// Función para abrir la ventana emergente tipo Popup (CrearColaboradorEmergencia.php)
 function abrirPopupEmergencia(idColaborador) {
     const ancho = 600;
     const alto = 700;

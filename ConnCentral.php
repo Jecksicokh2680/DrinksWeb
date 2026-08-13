@@ -18,6 +18,7 @@ try {
     $mysqliPos->set_charset("utf8");
     
     $mysqliCentral = $mysqliPos;
+    
 
 } catch (mysqli_sql_exception $e) {
     die("❌ Error de conexión a la base de datos (empresa001): " . $e->getMessage());
