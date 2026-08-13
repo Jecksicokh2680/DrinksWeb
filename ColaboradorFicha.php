@@ -60,7 +60,6 @@ $c = $resultado->fetch_assoc();
 $colaborador_encontrado = !empty($c);
 
 if (!$colaborador_encontrado) {
-    // Si no se encuentra, inicializamos el array con campos vacíos para renderizar el formato en blanco
     $c = [
         'CedulaNit' => $cedula_sesion,
         'NombreColaborador' => '',
@@ -79,17 +78,20 @@ if (!$colaborador_encontrado) {
         'nivel_arl' => '',
         'grupo_sanguineo' => '',
         'fondo_pensiones' => '',
-        'fondo_cesantias' => ''
+        'fondo_cesantias' => '',
+        'url_foto' => ''
     ];
 }
 
 function toUpper($texto) { return mb_strtoupper($texto ?? '', 'UTF-8'); }
 $colaborador_id_real = $colaborador_encontrado ? intval($c['id']) : 0;
 
-// Manejo seguro de la ruta de la foto para validación física y visualización
-$ruta_foto_bd = $c['url_foto'] ?? '';
-$ruta_servidor = ltrim($ruta_foto_bd, './'); 
-$tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
+// --- AJUSTE MANEJO SEGURO DE LA FOTO ---
+$ruta_foto_bd = trim($c['url_foto'] ?? '');
+$ruta_limpia = ltrim($ruta_foto_bd, './\\'); // Quita ./ o .\ del inicio
+$ruta_fisica = __DIR__ . '/' . $ruta_limpia; // Ruta absoluta para el servidor
+$tiene_foto = (!empty($ruta_limpia) && file_exists($ruta_fisica));
+$url_publica = '/' . $ruta_limpia; // URL para el navegador
 ?>
 
 <!DOCTYPE html>
@@ -132,14 +134,13 @@ $tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
         <div class="card-body p-0">
             <table class="table table-bordered mb-0 align-middle" style="font-size: 0.85rem; border-color: #000;">
                 
-                <!-- SECCIÓN 1 -->
                 <tr class="table-primary"><td colspan="4" class="fw-bold text-dark py-1">1. DATOS GENERALES Y LABORALES</td></tr>
                 <tr>
                     <td class="label-cell">CÉDULA:</td>
                     <td><?= toUpper($c['CedulaNit'] ?? '') ?></td>
                     <td rowspan="6" colspan="2" class="text-center bg-white align-middle">
                         <?php if ($tiene_foto): ?>
-                            <img src="<?= htmlspecialchars($ruta_servidor) ?>" style="width: 180px; height: 225px; object-fit: cover;" class="border shadow-sm">
+                            <img src="<?= htmlspecialchars($url_publica) ?>" style="width: 180px; height: 225px; object-fit: cover;" class="border shadow-sm">
                         <?php else: ?>
                             <div class="border p-4 text-muted">SIN FOTO</div>
                         <?php endif; ?>
@@ -166,14 +167,12 @@ $tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
                     <td class="label-cell">SALARIO:</td><td>$<?= number_format($c['salario'] ?? 0, 0, ',', '.') ?></td>
                 </tr>
 
-                <!-- SECCIÓN 2 -->
                 <tr class="table-primary"><td colspan="4" class="fw-bold text-dark py-1">2. PAGO Y DATOS BANCARIOS</td></tr>
                 <tr>
                     <td class="label-cell">CUENTA:</td><td><?= toUpper($c['numero_cuenta'] ?? 'N/A') ?></td>
                     <td class="label-cell">LLAVE PAYMENT:</td><td><?= toUpper($c['llave_payment'] ?? 'N/A') ?></td>
                 </tr>
 
-                <!-- SECCIÓN 3 -->
                 <tr class="table-primary"><td colspan="4" class="fw-bold text-dark py-1">3. CONTACTOS EMERGENCIA</td></tr>
                 <tr>
                     <td colspan="4" class="p-0">
@@ -199,7 +198,6 @@ $tiene_foto = (!empty($ruta_servidor) && file_exists($ruta_servidor));
                     </td>
                 </tr>
 
-                <!-- SECCIÓN 4 -->
                 <tr class="table-primary"><td colspan="4" class="fw-bold text-dark py-1">4. SEGURIDAD SOCIAL Y SST</td></tr>
                 <tr>
                     <td class="label-cell">EPS:</td><td><?= toUpper($c['eps'] ?? 'N/A') ?></td>
