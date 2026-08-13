@@ -287,10 +287,11 @@ function abrirPopup(event, url) {
                 <div class="accordion-body">
                     <div class="menu-seccion ps-2 py-1">
                         <a class="nav-link" href="CrearColaborador.php" target="contentFrame">Crear Colaborador</a>
-                        <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
-                        <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+                        <a class="nav-link" href="ColaboradorFicha.php" target="contentFrame">👤 Ficha Demografica Colaborador</a>
                         <a class="nav-link" href="ColaboradorRequisitos.php" target="contentFrame">Requisitos Hv </a>
                         <a class="nav-link" href="ColaboradorChecklistControl.php" target="contentFrame">Checklist Control </a>
+                        <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
+                        <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
                     </div>
                 </div>
             </div>

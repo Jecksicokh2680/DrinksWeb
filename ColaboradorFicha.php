@@ -86,12 +86,12 @@ if (!$colaborador_encontrado) {
 function toUpper($texto) { return mb_strtoupper($texto ?? '', 'UTF-8'); }
 $colaborador_id_real = $colaborador_encontrado ? intval($c['id']) : 0;
 
-// --- AJUSTE MANEJO SEGURO DE LA FOTO ---
+// Manejo seguro de la foto
 $ruta_foto_bd = trim($c['url_foto'] ?? '');
-$ruta_limpia = ltrim($ruta_foto_bd, './\\'); // Quita ./ o .\ del inicio
-$ruta_fisica = __DIR__ . '/' . $ruta_limpia; // Ruta absoluta para el servidor
+$ruta_limpia = ltrim($ruta_foto_bd, './\\'); 
+$ruta_fisica = __DIR__ . '/' . $ruta_limpia; 
 $tiene_foto = (!empty($ruta_limpia) && file_exists($ruta_fisica));
-$url_publica = '/' . $ruta_limpia; // URL para el navegador
+$url_publica = '/' . $ruta_limpia; 
 ?>
 
 <!DOCTYPE html>
@@ -119,8 +119,26 @@ $url_publica = '/' . $ruta_limpia; // URL para el navegador
     <div class="card mb-3 border-secondary admin-controls">
         <div class="card-body py-2 bg-white d-flex justify-content-between align-items-center">
             <span class="text-muted small">⚙️ <strong>MODO SUPERVISOR</strong></span>
-            <form method="GET" action="" class="d-flex gap-2 mb-0">
-                <input type="text" name="cedula" class="form-control form-control-sm" placeholder="CÉDULA" value="<?= htmlspecialchars($cedula_a_consultar) ?>" required>
+            <form method="GET" action="" class="d-flex gap-2 mb-0 align-items-center w-75 justify-content-end">
+                <select name="cedula" class="form-select form-select-sm w-75" required>
+                    <option value="">-- SELECCIONE UN COLABORADOR --</option>
+                    <?php
+                    // Consulta para llenar el select uniendo colaborador y terceros
+                    $sql_lista = "SELECT c.CedulaNit, t.Nombre 
+                                  FROM colaborador c 
+                                  INNER JOIN terceros t ON c.CedulaNit = t.CedulaNit 
+                                  ORDER BY t.Nombre ASC";
+                    $res_lista = $mysqli->query($sql_lista);
+                    if ($res_lista && $res_lista->num_rows > 0) {
+                        while ($collab = $res_lista->fetch_assoc()) {
+                            $selected = ($collab['CedulaNit'] === $cedula_a_consultar) ? 'selected' : '';
+                            echo '<option value="' . htmlspecialchars($collab['CedulaNit']) . '" ' . $selected . '>' 
+                                 . htmlspecialchars(mb_strtoupper($collab['Nombre'], 'UTF-8')) . ' (' . htmlspecialchars($collab['CedulaNit']) . ')' 
+                                 . '</option>';
+                        }
+                    }
+                    ?>
+                </select>
                 <button type="submit" class="btn btn-sm btn-primary">VER</button>
             </form>
         </div>
