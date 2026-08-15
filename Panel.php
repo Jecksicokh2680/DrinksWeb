@@ -315,7 +315,7 @@ function abrirPopup(event, url) {
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                    <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a>                        
+                                                        
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
@@ -344,10 +344,11 @@ function abrirPopup(event, url) {
                             </button>
                             <div id="adminInv" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
+                                    <a class="nav-link" href="Trazabilidad_Stock.php" target="contentFrame">Trazabilidad Completa</a> 
+                                    <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            
                                     <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Generar Ajustes Conteos</a>
                                     <a class="nav-link" href="StockCentral.php" target="contentFrame">Ver Stock por Categorias</a> 
-                                    <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>
-                                    <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            
+                                    <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>                                                             
                                     <a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
                                 </div>
                             </div>

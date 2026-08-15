@@ -165,7 +165,7 @@ if ($yaExisteTransferEnEgresos) {
 $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$cierreRealizado);
 
 /* ============================================================
-    MÓDULO DE OBJETIVOS
+    MÓDULO DE OBJETIVOS (INTEGRADO CON NIT/CÉDULA)
 ============================================================ */
 $mes_sel  = (int)($_GET['mm'] ?? date('m'));
 $anio_sel = (int)($_GET['aa'] ?? date('Y'));
@@ -184,17 +184,27 @@ if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
     }
 }
 
-function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
+function obtenerVentasEjecutadasObjetivos($cnx, $f_ini, $f_fin) {
     if (!$cnx || $cnx->connect_error) return [];
     $sql = "
-        SELECT T1.NOMBRES AS FACTURADOR, PRODUCTOS.Barcode AS SKU, DETFACTURAS.CANTIDAD, (DETFACTURAS.CANTIDAD * DETFACTURAS.VALORPROD) AS TOTAL_VENTA
+        SELECT 
+            T1.NIT AS VENDEDOR_NIT,
+            PRODUCTOS.Barcode AS SKU, 
+            DETFACTURAS.CANTIDAD, 
+            (DETFACTURAS.CANTIDAD * DETFACTURAS.VALORPROD) AS TOTAL_VENTA
         FROM FACTURAS
         INNER JOIN DETFACTURAS ON DETFACTURAS.IDFACTURA = FACTURAS.IDFACTURA
         INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETFACTURAS.IDPRODUCTO
         INNER JOIN TERCEROS T1 ON T1.IDTERCERO = FACTURAS.IDVENDEDOR
         WHERE FACTURAS.ESTADO = '0' AND FACTURAS.FECHA BETWEEN ? AND ?
+        
         UNION ALL
-        SELECT T2.NOMBRES AS FACTURADOR, PRODUCTOS.Barcode AS SKU, DETPEDIDOS.CANTIDAD, (DETPEDIDOS.CANTIDAD * DETPEDIDOS.VALORPROD) AS TOTAL_VENTA
+        
+        SELECT 
+            T2.NIT AS VENDEDOR_NIT,
+            PRODUCTOS.Barcode AS SKU, 
+            DETPEDIDOS.CANTIDAD, 
+            (DETPEDIDOS.CANTIDAD * DETPEDIDOS.VALORPROD) AS TOTAL_VENTA
         FROM PEDIDOS
         INNER JOIN DETPEDIDOS ON PEDIDOS.IDPEDIDO = DETPEDIDOS.IDPEDIDO
         INNER JOIN PRODUCTOS ON PRODUCTOS.IDPRODUCTO = DETPEDIDOS.IDPRODUCTO
@@ -209,29 +219,30 @@ function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }
 
-$rawVentas = [];
+$rawVentasObj = [];
 if (isset($mysqliCentral) && !$mysqliCentral->connect_error) {
-    $rawVentas = array_merge($rawVentas, obtenerVentasEjecutadas($mysqliCentral, $f_ini, $f_fin));
+    $rawVentasObj = array_merge($rawVentasObj, obtenerVentasEjecutadasObjetivos($mysqliCentral, $f_ini, $f_fin));
 }
 if (isset($mysqliDrinks) && !$mysqliDrinks->connect_error) {
-    $rawVentas = array_merge($rawVentas, obtenerVentasEjecutadas($mysqliDrinks, $f_ini, $f_fin));
+    $rawVentasObj = array_merge($rawVentasObj, obtenerVentasEjecutadasObjetivos($mysqliDrinks, $f_ini, $f_fin));
 }
 
-$ventasPorFacturador = [];
-foreach ($rawVentas as $v) {
-    $facturador = trim($v['FACTURADOR']);
-    $sku        = trim($v['SKU']);
-    $cantidad   = (float)$v['CANTIDAD'];
-    $valor      = (float)$v['TOTAL_VENTA'];
+// Consolidar ventas por NIT del vendedor
+$ventasPorCedulaObj = [];
+foreach ($rawVentasObj as $v) {
+    $nitVendedor = trim($v['VENDEDOR_NIT']);
+    $sku         = trim($v['SKU']);
+    $cantidad    = (float)$v['CANTIDAD'];
+    $valor       = (float)$v['TOTAL_VENTA'];
 
-    if (!isset($ventasPorFacturador[$facturador])) {
-        $ventasPorFacturador[$facturador] = ['total_valor' => 0.0, 'skus' => []];
+    if (!isset($ventasPorCedulaObj[$nitVendedor])) {
+        $ventasPorCedulaObj[$nitVendedor] = ['total_valor' => 0.0, 'skus' => []];
     }
-    $ventasPorFacturador[$facturador]['total_valor'] += $valor;
-    if (!isset($ventasPorFacturador[$facturador]['skus'][$sku])) {
-        $ventasPorFacturador[$facturador]['skus'][$sku] = 0.0;
+    $ventasPorCedulaObj[$nitVendedor]['total_valor'] += $valor;
+    if (!isset($ventasPorCedulaObj[$nitVendedor]['skus'][$sku])) {
+        $ventasPorCedulaObj[$nitVendedor]['skus'][$sku] = 0.0;
     }
-    $ventasPorFacturador[$facturador]['skus'][$sku] += $cantidad;
+    $ventasPorCedulaObj[$nitVendedor]['skus'][$sku] += $cantidad;
 }
 
 $sqlObjetivos = "
@@ -258,11 +269,11 @@ $resObj = $stmtObj->get_result();
 
 $reporte = [];
 while ($row = $resObj->fetch_assoc()) {
-    $cedula = $row['CedulaNit'];
+    $cedula = trim($row['CedulaNit']);
     $nombre = $row['NombreCom'] ?: $row['Nombre'] ?: 'Sin Nombre';
 
     if (!isset($reporte[$cedula])) {
-        $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
+        $ejecutadoValor = $ventasPorCedulaObj[$cedula]['total_valor'] ?? 0.0;
         $reporte[$cedula] = [
             'nombre' => $nombre,
             'cedula' => $cedula,
@@ -275,7 +286,7 @@ while ($row = $resObj->fetch_assoc()) {
     if (!empty($row['Sku'])) {
         $sku = trim($row['Sku']);
         $metaCajas = (float)$row['meta_cajas'];
-        $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
+        $cantVendida = $ventasPorCedulaObj[$cedula]['skus'][$sku] ?? 0.0;
         $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
         $reporte[$cedula]['detalles'][] = [

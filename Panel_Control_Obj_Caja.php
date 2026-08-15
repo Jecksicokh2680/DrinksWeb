@@ -9,7 +9,7 @@ mysqli_report(MYSQLI_REPORT_OFF);
 date_default_timezone_set('America/Bogota');
 
 /* =====================================================
-    1. PARÁMETROS DE FILTRO (SOLO MES Y AÑO)
+    1. PARÁMETROS DE FILTRO (MES Y AÑO)
 ===================================================== */
 $mes_sel  = (int)($_GET['mm'] ?? date('m'));
 $anio_sel = (int)($_GET['aa'] ?? date('Y'));
@@ -43,6 +43,7 @@ function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
 
     $sql = "
         SELECT 
+            T1.NIT AS VENDEDOR_NIT,
             T1.NOMBRES AS FACTURADOR,
             PRODUCTOS.Barcode AS SKU,
             DETFACTURAS.CANTIDAD,
@@ -56,6 +57,7 @@ function obtenerVentasEjecutadas($cnx, $f_ini, $f_fin) {
         UNION ALL
 
         SELECT 
+            T2.NIT AS VENDEDOR_NIT,
             T2.NOMBRES AS FACTURADOR,
             PRODUCTOS.Barcode AS SKU,
             DETPEDIDOS.CANTIDAD,
@@ -83,27 +85,27 @@ if (isset($mysqliDrinks) && !$mysqliDrinks->connect_error) {
     $rawVentas = array_merge($rawVentas, obtenerVentasEjecutadas($mysqliDrinks, $f_ini, $f_fin));
 }
 
-// Consolidar ventas por Facturador y SKU
-$ventasPorFacturador = [];
+// Consolidar ventas por NIT del Vendedor y SKU
+$ventasPorCedula = [];
 foreach ($rawVentas as $v) {
-    $facturador = trim($v['FACTURADOR']);
-    $sku        = trim($v['SKU']);
-    $cantidad   = (float)$v['CANTIDAD'];
-    $valor      = (float)$v['TOTAL_VENTA'];
+    $nitVendedor = trim($v['VENDEDOR_NIT']);
+    $sku         = trim($v['SKU']);
+    $cantidad    = (float)$v['CANTIDAD'];
+    $valor       = (float)$v['TOTAL_VENTA'];
 
-    if (!isset($ventasPorFacturador[$facturador])) {
-        $ventasPorFacturador[$facturador] = [
+    if (!isset($ventasPorCedula[$nitVendedor])) {
+        $ventasPorCedula[$nitVendedor] = [
             'total_valor' => 0.0,
             'skus'        => []
         ];
     }
 
-    $ventasPorFacturador[$facturador]['total_valor'] += $valor;
+    $ventasPorCedula[$nitVendedor]['total_valor'] += $valor;
 
-    if (!isset($ventasPorFacturador[$facturador]['skus'][$sku])) {
-        $ventasPorFacturador[$facturador]['skus'][$sku] = 0.0;
+    if (!isset($ventasPorCedula[$nitVendedor]['skus'][$sku])) {
+        $ventasPorCedula[$nitVendedor]['skus'][$sku] = 0.0;
     }
-    $ventasPorFacturador[$facturador]['skus'][$sku] += $cantidad;
+    $ventasPorCedula[$nitVendedor]['skus'][$sku] += $cantidad;
 }
 
 /* =====================================================
@@ -152,7 +154,7 @@ $resObj = $stmtObj->get_result();
 $reporte = [];
 
 while ($row = $resObj->fetch_assoc()) {
-    $cedula  = $row['CedulaNit'];
+    $cedula  = trim($row['CedulaNit']);
     $empresaNit = $row['NitEmpresa'] ?: 'SIN_NIT';
     $nombreEmpresaDisplay = $row['NombreEmpresa'] ?: ($row['NitEmpresa'] ? 'NIT: ' . $row['NitEmpresa'] : 'Sin Sede Asignada');
     
@@ -169,7 +171,7 @@ while ($row = $resObj->fetch_assoc()) {
 
     $claveCajero = $cedula;
     if (!isset($reporte[$empresaNit]['cajeros'][$claveCajero])) {
-        $ejecutadoValor = $ventasPorFacturador[$nombre]['total_valor'] ?? 0.0;
+        $ejecutadoValor = $ventasPorCedula[$cedula]['total_valor'] ?? 0.0;
 
         $reporte[$empresaNit]['cajeros'][$claveCajero] = [
             'nombre'           => $nombre,
@@ -183,7 +185,7 @@ while ($row = $resObj->fetch_assoc()) {
     if (!empty($row['Sku'])) {
         $sku        = trim($row['Sku']);
         $metaCajas  = (float)$row['meta_cajas'];
-        $cantVendida = $ventasPorFacturador[$nombre]['skus'][$sku] ?? 0.0;
+        $cantVendida = $ventasPorCedula[$cedula]['skus'][$sku] ?? 0.0;
         $nombreProducto = $nombresProductos[$sku] ?? 'Producto No Encontrado';
 
         $reporte[$empresaNit]['cajeros'][$claveCajero]['detalles'][] = [
@@ -208,7 +210,6 @@ while ($row = $resObj->fetch_assoc()) {
         select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
         button { background: #0288d1; color: white; border: none; cursor: pointer; font-weight: bold; }
         
-        /* Estilos para las secciones de Sede / NIT */
         .sede-section { margin-bottom: 35px; }
         .sede-title { font-size: 20px; color: #1e293b; border-bottom: 2px solid #0288d1; padding-bottom: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
         .sede-title span { font-size: 14px; background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 20px; font-weight: normal; }
