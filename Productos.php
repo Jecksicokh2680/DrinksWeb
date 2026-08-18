@@ -110,6 +110,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     exit;
 }
 
+/* --- LOGICA PRECIO PROMEDIO DE COMPRA (Últimas 3 compras) --- */
+function precioPromCompra($mysqli){
+    $sql = "SELECT P.Barcode, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni, C.idcompra, C.FECHA
+            FROM compras C
+            JOIN DETCOMPRAS D ON D.idcompra = C.idcompra
+            JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
+            WHERE C.ESTADO = '0'
+            ORDER BY P.Barcode, C.FECHA DESC, C.idcompra DESC";
+    $r = $mysqli->query($sql);
+    $comprasPorProd = [];
+    while($r && $row = $r->fetch_assoc()){
+        $bc = $row['Barcode'];
+        if(!isset($comprasPorProd[$bc])) {
+            $comprasPorProd[$bc] = [];
+        }
+        if(!isset($comprasPorProd[$bc][$row['idcompra']]) && count($comprasPorProd[$bc]) < 3){
+            $comprasPorProd[$bc][$row['idcompra']] = [];
+        }
+        if(isset($comprasPorProd[$bc][$row['idcompra']])){
+            $comprasPorProd[$bc][$row['idcompra']][] = $row;
+        }
+    }
+
+    $out = [];
+    foreach($comprasPorProd as $bc => $compras){
+        $acumuladoCostoPonderado = 0;
+        $cantidadTotal = 0;
+        foreach($compras as $idcompra => $items){
+            foreach($items as $row){
+                $cant = (double)$row['CANTIDAD'];
+                if ($cant <= 0) continue;
+                $net = ($row['VALOR'] - ($row['descuento'] / $cant));
+                $costoBruto = $net + ($net * (double)$row['porciva'] / 100) + (double)$row['ValICUIUni'];
+                $acumuladoCostoPonderado += ($costoBruto * $cant);
+                $cantidadTotal += $cant;
+            }
+        }
+        $out[$bc] = ($cantidadTotal > 0) ? ($acumuladoCostoPonderado / $cantidadTotal) : 0;
+    }
+    return $out;
+}
+
+$pcC = isset($mysqliCentral) ? precioPromCompra($mysqliCentral) : [];
+$pcD = isset($mysqliDrinks) ? precioPromCompra($mysqliDrinks) : [];
+
 $term = $_GET['term'] ?? '';
 $like = "%$term%";
 
@@ -153,6 +198,10 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         .stock-input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 5px rgba(37, 99, 235, 0.4); }
         .price-input { width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; color: #166534; background: #f0fdf4; }
         .price-input:focus { background: #fff; border-color: #22c55e; outline: none; box-shadow: 0 0 5px rgba(34, 197, 94, 0.4); }
+        .compra-val { font-weight: bold; color: #b45309; background: #fef3c7; padding: 5px 10px; border-radius: 4px; display: inline-block; font-size: 13px; }
+        .variacion-val { font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; font-size: 13px; }
+        .var-pos { color: #166534; background: #dcfce7; }
+        .var-neg { color: #991b1b; background: #fee2e2; }
         .btn-masive { background: #d97706; color: white; border: none; padding: 12px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 5px; }
         .btn-masive:hover { background: #b45309; }
         .switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
@@ -172,7 +221,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
 <body>
 
 <div class="container">
-    <h2>🛠️ Panel de Inventario con Precios</h2>
+    <h2>🛠️ Panel de Inventario con Precios y Variación</h2>
     
     <div class="filter-container">
         <input type="text" id="filtro" placeholder="🔍 Buscar por nombre o código..." onkeyup="filtrar()">
@@ -200,6 +249,8 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 <th style="text-align:left">Producto / Sede</th>
                 <th>Estado</th>
                 <th>Precio Venta</th>
+                <th>Precio Prom. Compra (Últ. 3)</th>
+                <th>% Variación (Compra vs Venta)</th>
                 <th>Stock</th>
             </tr>
         </thead>
@@ -209,9 +260,17 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 $c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0];
                 $desc = ($c['descripcion'] !== '---') ? $c['descripcion'] : $d['descripcion'];
                 $pv = ($c['precioventa'] != 0) ? $c['precioventa'] : $d['precioventa'];
+                
+                // Promedios de compra por sede (últimas 3 compras)
+                $compraDrinks = $pcD[$b] ?? 0;
+                $compraCentral = $pcC[$b] ?? 0;
+
+                // Cálculo de % de variación: ((Precio Venta - Costo Compra) / Costo Compra) * 100
+                $varDrinks = ($compraDrinks > 0) ? (($pv - $compraDrinks) / $compraDrinks) * 100 : 0;
+                $varCentral = ($compraCentral > 0) ? (($pv - $compraCentral) / $compraCentral) * 100 : 0;
             ?>
             <tr class="product-header" data-barcode="<?= $b ?>">
-                <td colspan="4" style="text-align:left;">
+                <td colspan="6" style="text-align:left;">
                     <span style="color:#666; font-size: 12px; margin-right: 10px;">[<?= $b ?>]</span>
                     <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
@@ -226,6 +285,14 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 </td>
                 <td>
                     <input type="number" step="any" class="price-input" id="price-drinks-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
+                </td>
+                <td>
+                    <span class="compra-val">$<?= number_format($compraDrinks, 0, ',', '.') ?></span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varDrinks >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varDrinks > 0 ? '+' : '') . number_format($varDrinks, 2, ',', '.') ?>%
+                    </span>
                 </td>
                 <td>
                     <input type="number" step="any" class="stock-input stock-val" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>" oninput="filtrar()" onblur="updateStockDynamic('<?= $b ?>', 'Drinks', this.value)">
@@ -243,6 +310,14 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                     <input type="number" step="any" class="price-input" id="price-central-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
                 </td>
                 <td>
+                    <span class="compra-val">$<?= number_format($compraCentral, 0, ',', '.') ?></span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varCentral >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varCentral > 0 ? '+' : '') . number_format($varCentral, 2, ',', '.') ?>%
+                    </span>
+                </td>
+                <td>
                     <input type="number" step="any" class="stock-input stock-val" id="input-central-<?= $b ?>" value="<?= $c['cantidad'] ?>" oninput="filtrar()" onblur="updateStockDynamic('<?= $b ?>', 'Central', this.value)">
                 </td>
             </tr>
@@ -250,7 +325,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="3" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
+                <td colspan="5" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
                 <td id="total-stock" style="text-align: center; font-size: 15px; color: #1a2a6c;">0</td>
             </tr>
         </tfoot>
