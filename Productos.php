@@ -125,7 +125,7 @@ function precioPromCompra($mysqli){
         if(!isset($comprasPorProd[$bc])) {
             $comprasPorProd[$bc] = [];
         }
-        if(!isset($comprasPorProd[$bc][$row['idcompra']]) && count($comprasPorProd[$bc]) < 3){
+        if(!isset($comprasPorProd[$bc][$row['idcompra']]) && count($comprasPorProd[$bc]) < 5){
             $comprasPorProd[$bc][$row['idcompra']] = [];
         }
         if(isset($comprasPorProd[$bc][$row['idcompra']])){
