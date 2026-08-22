@@ -1,6 +1,7 @@
 <?php
 require 'Conexion.php';     // Base Local  ($mysqli)
 require 'ConnCentral.php';  // Base Central ($mysqliPos)
+require 'ConnDrinks.php';   // Base Drinks ($mysqliDrinks)
 session_start();
 
 /* ============================================================
@@ -11,7 +12,7 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'usuarios') {
         $term = "%" . ($_GET['term'] ?? '') . "%";
-        $stmt = $mysqliPos->prepare("SELECT nit, nombres, apellidos FROM terceros WHERE inactivo = 0 AND (nit LIKE ? OR nombres LIKE ? OR apellidos LIKE ?) LIMIT 10");
+        $stmt = $mysqliDrinks->prepare("SELECT nit, nombres, apellidos FROM terceros WHERE inactivo = 0 AND (nit LIKE ? OR nombres LIKE ? OR apellidos LIKE ?) LIMIT 10");
         $stmt->bind_param("sss", $term, $term, $term);
         $stmt->execute();
         $res = $stmt->get_result();
@@ -39,16 +40,14 @@ if (isset($_GET['ajax'])) {
         $sucursal = $_POST['NroSucursal'] ?? '';
         $estado   = isset($_POST['Estado']) ? intval($_POST['Estado']) : 0; // 1 = Activo, 0 = Inactivo
 
-        // 1. Actualizar tabla 'terceros' (Base Central - $mysqliPos)
-        // Si el switch está Activo (1), inactivo = 0. Si está Inactivo (0), inactivo = 1.
+        // 1. Actualizar tabla 'terceros' (Base Drinks - $mysqliDrinks)
         $inactivoVal = ($estado === 1) ? 0 : 1;
-        $stmtTerceros = $mysqliPos->prepare("UPDATE terceros SET inactivo = ? WHERE nit = ?");
+        $stmtTerceros = $mysqliDrinks->prepare("UPDATE terceros SET inactivo = ? WHERE nit = ?");
         $stmtTerceros->bind_param("is", $inactivoVal, $cedula);
         $resTerceros = $stmtTerceros->execute();
         $stmtTerceros->close();
 
         // 2. Actualizar tabla 'usuarios_Seguridad' (Base Local - $mysqli)
-        // Usamos la llave primaria compuesta: CedulaNit, NitEmpresa, NroSucursal
         $stmtSeguridad = $mysqli->prepare("UPDATE usuarios_Seguridad SET Estado = ? WHERE CedulaNit = ? AND NitEmpresa = ? AND NroSucursal = ?");
         $stmtSeguridad->bind_param("isss", $estado, $cedula, $empresa, $sucursal);
         $resSeguridad = $stmtSeguridad->execute();
@@ -119,7 +118,7 @@ $empresas = $mysqli->query("SELECT Nit, NombreComercial FROM empresa WHERE Estad
 $usuariosLocal = $mysqli->query("SELECT u.CedulaNit, u.NitEmpresa, u.NroSucursal, u.Estado, e.NombreComercial FROM usuarios_Seguridad u LEFT JOIN empresa e ON u.NitEmpresa = e.Nit")->fetch_all(MYSQLI_ASSOC);
 
 foreach ($usuariosLocal as $k => $u) {
-    $stmt = $mysqliPos->prepare("SELECT nombres, apellidos FROM terceros WHERE nit = ? LIMIT 1");
+    $stmt = $mysqliDrinks->prepare("SELECT nombres, apellidos FROM terceros WHERE nit = ? LIMIT 1");
     $stmt->bind_param("s", $u['CedulaNit']);
     $stmt->execute();
     $r = $stmt->get_result()->fetch_assoc();
@@ -242,9 +241,8 @@ function editarUser(nit, nitEmpresa, sucursal){
     new bootstrap.Modal(document.getElementById('modalUsuario')).show();
 }
 
-// Función AJAX para actualizar simultáneamente ambas bases de datos
 function cambiarEstado(nit, nitEmpresa, sucursal, element) {
-    let nuevoEstado = element.checked ? 1 : 0; // 1 = Activo, 0 = Inactivo
+    let nuevoEstado = element.checked ? 1 : 0; 
     let label = element.nextElementSibling;
     
     let formData = new URLSearchParams();
@@ -263,12 +261,12 @@ function cambiarEstado(nit, nitEmpresa, sucursal, element) {
             label.innerText = nuevoEstado === 1 ? 'Activo' : 'Inactivo';
         } else {
             alert('Error: ' + data.message);
-            element.checked = !element.checked; // Revertir visualmente si hay error
+            element.checked = !element.checked; 
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        element.checked = !element.checked; // Revertir visualmente si hay fallo de red
+        element.checked = !element.checked; 
     });
 }
 </script>

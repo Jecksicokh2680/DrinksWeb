@@ -44,65 +44,60 @@ if (isset($_GET['ajax_consultar'])) {
    ============================================================ */
 if (isset($_POST['importar_terceros'])) {
     $importados = 0;
+    $errores_importacion = 0;
+
+    // Función auxiliar optimizada con la estructura real de tus bases remotas
+    function sincronizarTercerosA_Local($conexionOrigen, $conexionDestino, &$contadorImportados, &$contadorErrores) {
+        if (!isset($conexionOrigen) || !$conexionOrigen) return;
+
+        $res = $conexionOrigen->query("SELECT COALESCE(NULLIF(idtercero, ''), nit) as documento, nombres, nombre2, apellidos, apellido2, nomcomercial, email FROM terceros");
+        if ($res) {
+            while ($tc = $res->fetch_assoc()) {
+                $documento = trim($tc['documento'] ?? '');
+                if (empty($documento)) continue;
+                
+                $partesNombre = array_filter([
+                    trim($tc['nombres'] ?? ''),
+                    trim($tc['nombre2'] ?? ''),
+                    trim($tc['apellidos'] ?? ''),
+                    trim($tc['apellido2'] ?? '')
+                ]);
+                $nombreCompleto = implode(' ', $partesNombre);
+
+                $idTercero = $conexionDestino->real_escape_string($documento);
+                $cedulaNit = $conexionDestino->real_escape_string($documento);
+                $nombre    = $conexionDestino->real_escape_string(trim(preg_replace('/\s+/', ' ', $nombreCompleto)));
+                $nombreCom = $conexionDestino->real_escape_string(trim($tc['nomcomercial'] ?? ''));
+                $email     = $conexionDestino->real_escape_string(trim($tc['email'] ?? ''));
+
+                $sqlIns = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                           VALUES ('$idTercero', '$cedulaNit', '$nombre', '$nombreCom', '$email', 1)
+                           ON DUPLICATE KEY UPDATE 
+                           IdTercero = VALUES(IdTercero),
+                           Nombre = VALUES(Nombre), 
+                           NombreCom = VALUES(NombreCom), 
+                           Email = VALUES(Email), 
+                           Estado = 1";
+                              
+                if ($conexionDestino->query($sqlIns)) {
+                    $contadorImportados++;
+                } else {
+                    $contadorErrores++;
+                }
+            }
+            $res->free();
+        }
+    }
 
     // 1. Sincronizar desde ConnCentral
-    if (isset($mysqliPos) && $mysqliPos) {
-        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
-        if ($resCen) {
-            while ($tc = $resCen->fetch_assoc()) {
-                $nit   = $mysqli->real_escape_string(trim($tc['nit']));
-                if (empty($nit)) continue;
-                
-                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $tc['nombres'])));
-                $com   = $mysqli->real_escape_string(trim($tc['nomcomercial'] ?? ''));
-                $mail  = $mysqli->real_escape_string(trim($tc['email'] ?? ''));
-
-                $sqlInsCen = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
-                              VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                              ON DUPLICATE KEY UPDATE 
-                              Nombre = VALUES(Nombre), 
-                              NombreCom = VALUES(NombreCom), 
-                              Email = VALUES(Email), 
-                              Estado = 1";
-                              
-                if ($mysqli->query($sqlInsCen)) {
-                    $importados++;
-                }
-            }
-            $resCen->free();
-        }
-    }
+    sincronizarTercerosA_Local($mysqliPos, $mysqli, $importados, $errores_importacion);
 
     // 2. Sincronizar desde ConnDrinks
-    if (isset($mysqliDrinks) && $mysqliDrinks) {
-        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
-        if ($resDrk) {
-            while ($td = $resDrk->fetch_assoc()) {
-                $nit   = $mysqli->real_escape_string(trim($td['nit']));
-                if (empty($nit)) continue;
-                
-                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $td['nombres'])));
-                $com   = $mysqli->real_escape_string(trim($td['nomcomercial'] ?? ''));
-                $mail  = $mysqli->real_escape_string(trim($td['email'] ?? ''));
+    sincronizarTercerosA_Local($mysqliDrinks, $mysqli, $importados, $errores_importacion);
 
-                $sqlInsDrk = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
-                              VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                              ON DUPLICATE KEY UPDATE 
-                              Nombre = VALUES(Nombre), 
-                              NombreCom = VALUES(NombreCom), 
-                              Email = VALUES(Email), 
-                              Estado = 1";
-                              
-                if ($mysqli->query($sqlInsDrk)) {
-                    $importados++;
-                }
-            }
-            $resDrk->free();
-        }
-    }
-
-    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se procesaron e importaron/actualizaron $importados terceros desde las bases Central y Drinks sin duplicados.</div>";
+    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Proceso completado: Se importaron y actualizaron $importados terceros en total desde Central y Drinks sin duplicados ($errores_importacion errores).</div>";
 }
+
 /* ============================================================
     LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
    ============================================================ */
@@ -193,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             $encontradoTercero = false;
             
             if (isset($mysqliPos) && $mysqliPos) {
-                $resC = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resC = $mysqliPos->query("SELECT COALESCE(NULLIF(idtercero, ''), nit) as documento, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE idtercero = '$cedula' OR nit = '$cedula' LIMIT 1");
                 if ($resC && $rowC = $resC->fetch_assoc()) {
                     $nomC = $mysqli->real_escape_string($rowC['nombres']);
                     $comC = $mysqli->real_escape_string($rowC['nomcomercial'] ?? '');
@@ -204,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             }
 
             if (!$encontradoTercero && isset($mysqliDrinks) && $mysqliDrinks) {
-                $resD = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resD = $mysqliDrinks->query("SELECT COALESCE(NULLIF(idtercero, ''), nit) as documento, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE idtercero = '$cedula' OR nit = '$cedula' LIMIT 1");
                 if ($resD && $rowD = $resD->fetch_assoc()) {
                     $nomD = $mysqli->real_escape_string($rowD['nombres']);
                     $comD = $mysqli->real_escape_string($rowD['nomcomercial'] ?? '');
@@ -436,7 +431,7 @@ $resEmpresas = $mysqli->query("SELECT Nit, RazonSocial FROM empresa WHERE Estado
 
 $resTerceros = $mysqli->query("SELECT CedulaNit as nit, Nombre as nombres FROM terceros WHERE Estado = 1 ORDER BY Nombre ASC");
 if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
-    $resTerceros = $mysqliPos->query("SELECT nit, nombres FROM terceros ORDER BY nombres ASC");
+    $resTerceros = $mysqliPos->query("SELECT COALESCE(NULLIF(idtercero, ''), nit) as nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres FROM terceros ORDER BY nombres ASC");
 }
 ?>
 
