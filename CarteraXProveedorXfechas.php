@@ -13,11 +13,14 @@ $f_inicio = $_GET['f_inicio'] ?? date('Y-m-01');
 $f_fin = $_GET['f_fin'] ?? date('Y-m-d');
 $filtro_sql = "";
 
-if ($nit && isset($_GET['consultar'])) {
+if ($nit) {
     $f_ini_clean = str_replace('-', '', $f_inicio);
     $f_fin_clean = str_replace('-', '', $f_fin);
     $nit_sql = $mysqli->real_escape_string($nit);
-    $filtro_sql = " AND F_Creacion BETWEEN '$f_ini_clean' AND '$f_fin_clean'";
+    
+    // REPLACE en F_Creacion por si algún registro viejo tiene guiones guardados
+    $filtro_sql = " AND REPLACE(F_Creacion, '-', '') BETWEEN '$f_ini_clean' AND '$f_fin_clean'";
+    
     if ($tipo_filtro !== 'TODOS') {
         $tipo_clean = $mysqli->real_escape_string($tipo_filtro);
         $filtro_sql .= " AND TipoMonto = '$tipo_clean'";
@@ -25,7 +28,7 @@ if ($nit && isset($_GET['consultar'])) {
 }
 
 // -------------------------------------------------
-// ACCIONES (Exportar, Grabar, Editar, Borrar)
+// ACCIONES (Exportar, Editar, Borrar)
 // -------------------------------------------------
 if (isset($_GET['exportar']) && $nit) {
     header("Content-Type: application/vnd.ms-excel; charset=iso-8859-1");
@@ -37,18 +40,6 @@ if (isset($_GET['exportar']) && $nit) {
         echo "<tr><td>{$row['F_Creacion']}</td><td>{$row['H_Creacion']}</td><td>{$row['TipoMonto']}</td><td>{$row['NumfactProveedor']}</td><td>{$row['Monto']}</td><td>".utf8_decode($row['Descripcion'])."</td></tr>";
     }
     echo "</table>"; exit;
-}
-
-if (isset($_POST['grabar'])) {
-    $m = floatval(str_replace('.', '', $_POST['monto'])) * ($_POST['tipo'] === 'F' ? -1 : 1);
-    $prov = $mysqli->real_escape_string($_POST['proveedor']);
-    $fecha = str_replace('-', '', $_POST['fecha']);
-    $tipo = $mysqli->real_escape_string($_POST['tipo']);
-    $numfact = $mysqli->real_escape_string($_POST['numfact'] ?? '');
-    $desc = $mysqli->real_escape_string(strtoupper($_POST['descripcion']));
-    
-    $mysqli->query("INSERT INTO pagosproveedores (Nit, F_Creacion, H_Creacion, Monto, TipoMonto, Descripcion, Estado, NumfactProveedor) VALUES ('$prov', '$fecha', '".date("H:i:s")."', '$m', '$tipo', '$desc', '1', '$numfact')");
-    header("Location: ?proveedor=$prov&f_inicio=$f_inicio&f_fin=$f_fin&tipo_filtro=$tipo_filtro&consultar=1"); exit;
 }
 
 if (isset($_POST['editar'])) {
@@ -74,10 +65,12 @@ if (isset($_GET['borrar'])) {
 
 $proveedores = $mysqli->query("SELECT CedulaNit AS Nit, Nombre FROM terceros WHERE Estado = 1 ORDER BY Nombre");
 $abonos = []; $saldo_total = 0;
-if ($nit && isset($_GET['consultar'])) {
+if ($nit) {
     $nit_clean = $mysqli->real_escape_string($nit);
     $res = $mysqli->query("SELECT * FROM pagosproveedores WHERE Nit='$nit_clean' AND Estado='1' $filtro_sql ORDER BY F_Creacion DESC, H_Creacion DESC");
-    while ($r = $res->fetch_assoc()) { $abonos[] = $r; $saldo_total += $r['Monto']; }
+    if ($res) {
+        while ($r = $res->fetch_assoc()) { $abonos[] = $r; $saldo_total += $r['Monto']; }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -98,8 +91,7 @@ if ($nit && isset($_GET['consultar'])) {
         .btn-excel { background: #198754; color: #fff; border: none; cursor: pointer; }
         .btn-print { background: #6c757d; color: #fff; border: none; cursor: pointer; }
         .btn-save { background: #ffc107; border: none; cursor: pointer; padding: 5px 10px; border-radius: 3px; }
-        .form-nuevo { background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px dashed #ccc; }
-        @media print { .row, .no-print, .form-nuevo { display: none !important; } .box { box-shadow: none; width: 100%; } }
+        @media print { .row, .no-print { display: none !important; } .box { box-shadow: none; width: 100%; } }
     </style>
 </head>
 <body>
@@ -128,24 +120,6 @@ if ($nit && isset($_GET['consultar'])) {
     </form>
 
     <?php if($nit): ?>
-        
-        <!-- Formulario para Registrar Nuevo Movimiento con N° de Factura -->
-        <div class="form-nuevo no-print">
-            <strong>Nuevo Movimiento:</strong>
-            <form method="POST" style="display:inline-flex; gap:8px; margin-top:5px; flex-wrap:wrap;">
-                <input type="hidden" name="proveedor" value="<?=$nit?>">
-                <input type="date" name="fecha" value="<?=date('Y-m-d')?>" required>
-                <select name="tipo" required>
-                    <option value="F">Factura (F)</option>
-                    <option value="P">Pago (P)</option>
-                </select>
-                <input type="text" name="numfact" placeholder="N° Factura" style="width: 110px;">
-                <input type="text" name="monto" placeholder="Monto" style="width: 100px;" required>
-                <input type="text" name="descripcion" placeholder="Descripción" style="flex:2;" required>
-                <button type="submit" name="grabar" style="background:#0d6efd; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;">Registrar</button>
-            </form>
-        </div>
-
         <div class="table-container">
             <table>
                 <tr>

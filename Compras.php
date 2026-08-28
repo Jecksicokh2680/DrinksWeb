@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         
         $fechaActual = date('Ymd');
         $horaActual  = date('H:i:s'); 
-        $tipoMonto   = 'E'; // 'E' de Egreso
+        $tipoMonto   = 'F'; // 'F' de Factura
         
         $nit = substr(trim($input['nit']), 0, 10);
         $idCompra = trim($input['idcompra']);
