@@ -314,11 +314,12 @@ function abrirPopup(event, url) {
                             </button>
                             <div id="adminOp" class="accordion-collapse collapse" data-bs-parent="#adminSubAccordion">
                                 <div class="accordion-body">
-                                    <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>
-                                                        
+                                    <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>                                                        
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>
+                                    <a class="nav-link" href="TipologiasGastos.php" target="contentFrame">Tipologías de Gastos</a>
+                                    <a class="nav-link" href="RegistroGastos.php" target="contentFrame">Registro de Gastos</a>
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras BNMA</a>
                                     <a class="nav-link" href="DashBoard1.php" target="contentFrame">Control Cierre Central</a>
                                     <a class="nav-link" href="DashBoard2.php" target="contentFrame">Control Cierre Drinks</a>
