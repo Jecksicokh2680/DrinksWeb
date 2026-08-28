@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $db_conexion && $db_conexion instan
             $mensaje_exito = "¡Arranque del día $fecha_arranque actualizado con éxito!";
         } else {
             $db_conexion->query("INSERT INTO flujo_efectivo (sede, tipo, fecha, nombre_tercero, motivo, valor, nombre_pc, id_origen) 
-                        VALUES ('$sede_arranque', 'INGRESO', '$fecha_arranque', 'SISTEMA', '[ARRANQUE DE CAJA]', $valor_arranque, 'MANUAL_WEB', NULL)");
+                                VALUES ('$sede_arranque', 'INGRESO', '$fecha_arranque', 'SISTEMA', '[ARRANQUE DE CAJA]', $valor_arranque, 'MANUAL_WEB', NULL)");
             $mensaje_exito = "¡Arranque del día $fecha_arranque registrado con éxito!";
         }
     }
@@ -103,8 +103,8 @@ if ($db_conexion) {
     SINCRONIZACIÓN AUTOMÁTICA (SALIDASCAJA -> flujo_efectivo)
 ============================================================ */
 $sedes = [
-    'CENTRAL' => $mysqliCentral,
-    'DRINKS'  => $mysqliDrinks
+    'CENTRAL' => $mysqliCentral ?? null,
+    'DRINKS'  => $mysqliDrinks ?? null
 ];
 
 if ($db_conexion) {
@@ -139,7 +139,6 @@ if ($db_conexion) {
                 $nombre_pc = $conexion_sede->real_escape_string($row['NOMBREPC']);
                 $id_origen = (int)$row['IDSALIDA'];
 
-                // Evitar duplicados físicos evaluando sede e id_origen
                 $check_sql = "SELECT id_transaccion FROM flujo_efectivo WHERE sede = '$sede_db' AND id_origen = $id_origen LIMIT 1";
                 $check_res = $db_conexion->query($check_sql);
 
@@ -156,7 +155,7 @@ if ($db_conexion) {
 }
 
 /* ============================================================
-    LECTURA ÚNICA DESDE flujo_efectivo (EVITA DUPLICAR MONTOS)
+    LECTURA ÚNICA DESDE flujo_efectivo
 ============================================================ */
 $reporte = [];
 $resumen_cajeros = [];
@@ -179,7 +178,6 @@ if ($db_conexion) {
             $valor_m = (float)$row_m['valor'];
             $tipo_real = strtoupper($row_m['tipo']); 
             
-            // Si es Pago/Gasto resta, si es Ingreso (o Recaudo) suma
             if ($tipo_real === 'PAGO' || $tipo_real === 'GASTO') {
                 $total_egresos += $valor_m;
                 $valor_neto = -$valor_m; 
