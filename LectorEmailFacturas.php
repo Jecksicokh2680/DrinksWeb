@@ -18,17 +18,43 @@ if (!isset($mysqliWeb) || $mysqliWeb->connect_error) {
     die("<div class='alert alert-danger text-center m-3'>❌ La conexión remota ($mysqliWeb) no está disponible o falló.</div>");
 }
 
-// Configurar la zona horaria en la sesión de la Base de Datos usando tu variable global
+// Configurar la zona horaria en la sesión de la Base de Datos
 $mysqliWeb->query("SET time_zone = '-05:00'");
 
+// Determinar la fecha seleccionada por el usuario (por defecto es hoy)
+$fecha_seleccionada = isset($_GET['fecha']) && !empty($_GET['fecha']) ? $_GET['fecha'] : date('Y-m-d');
+
+// Procesar la solicitud de actualización de fecha individual si se envía por POST
+$mensaje_alerta = "";
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'actualizar_fecha') {
+    $id_factura = intval($_POST['id_factura']);
+    $nueva_fecha = trim($_POST['nueva_fecha']); 
+
+    if ($id_factura > 0 && !empty($nueva_fecha)) {
+        if (strlen($nueva_fecha) === 10) {
+            $nueva_fecha .= ' ' . date('H:i:s');
+        }
+
+        $stmt_upd = $mysqliWeb->prepare("UPDATE facturas_recibidas SET fecha_recepcion_correo = ? WHERE id = ?");
+        $stmt_upd->bind_param("si", $nueva_fecha, $id_factura);
+        
+        if ($stmt_upd->execute()) {
+            $mensaje_alerta = "<div class='alert alert-success alert-dismissible fade show' role='alert'>✅ Fecha de recepción actualizada correctamente.<button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>";
+        } else {
+            $mensaje_alerta = "<div class='alert alert-danger alert-dismissible fade show' role='alert'>❌ Error al actualizar la fecha: " . htmlspecialchars($mysqliWeb->error) . "<button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>";
+        }
+        $stmt_upd->close();
+    }
+}
+
 // 2. Ejecutar el script nativo de Python para leer las facturas de Gmail
-$command = 'python3 ' . __DIR__ . '/LectorEmailFacturas.py 2>&1';
+// Le pasamos la fecha seleccionada para que el script Python busque los correos de ese día específico
+$command = 'python3 ' . __DIR__ . '/LectorEmailFacturas.py ' . escapeshellarg($fecha_seleccionada) . ' 2>&1';
 $output = shell_exec($command);
 
 // Decodificar la respuesta de Python
 $nuevas_facturas = json_decode($output, true);
 
-// Variable para capturar errores de ejecución o parsing
 $error_python = null;
 if ($output === null) {
     $error_python = "No se pudo ejecutar el script de Python.";
@@ -92,10 +118,9 @@ if (empty($error_python) && !empty($nuevas_facturas) && is_array($nuevas_factura
     $stmt_insert->close();
 }
 
-// 4. Filtrar por el día actual en Bogotá
-$hoy = date('Y-m-d');
-$inicio_dia = $hoy . ' 00:00:00';
-$fin_dia    = $hoy . ' 23:59:59';
+// 4. Filtrar por la fecha seleccionada en la interfaz
+$inicio_dia = $fecha_seleccionada . ' 00:00:00';
+$fin_dia    = $fecha_seleccionada . ' 23:59:59';
 
 $sql_select = "SELECT id, id_unico, cuenta_receptora, remitente_correo, proveedor, numero_documento, tipo_documento, fecha_emision, valor, fecha_recepcion_correo, estado_procesado 
                FROM facturas_recibidas 
@@ -124,7 +149,7 @@ $stmt_select->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Facturas Electrónicas - Hoy</title>
+    <title>Control de Facturas Electrónicas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         @media (max-width: 576px) {
@@ -139,13 +164,25 @@ $stmt_select->close();
 <body class="bg-light p-2 p-md-4">
 
 <div class="container-fluid container-xl bg-white p-3 p-md-4 rounded shadow-sm container-main">
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 mb-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mb-4">
         <div>
-            <h2 class="text-primary m-0 fs-3 fs-md-2">📋 Facturas Recibidas Hoy</h2>
-            <small class="text-muted">Mostrando registros de Bogotá: <?php echo date('d/m/Y'); ?></small>
+            <h2 class="text-primary m-0 fs-3 fs-md-2">📋 Control de Facturas Recibidas</h2>
+            <small class="text-muted">Mostrando registros para la fecha: <?php echo date('d/m/Y', strtotime($fecha_seleccionada)); ?></small>
         </div>
-        <button onclick="location.reload();" class="btn btn-success w-100 w-sm-auto text-nowrap">🔄 Sincronizar Facturas</button>
+
+        <!-- SELECTOR DE FECHA Y BOTONES DE ACCIÓN -->
+        <form method="GET" class="d-flex flex-wrap align-items-center gap-2 w-100 w-lg-auto">
+            <div class="input-group" style="width: auto;">
+                <span class="input-group-text bg-light">📅 Fecha:</span>
+                <input type="date" name="fecha" class="form-control" value="<?php echo htmlspecialchars($fecha_seleccionada); ?>">
+            </div>
+            <button type="submit" class="btn btn-primary text-nowrap">🔍 Ver Día</button>
+            <a href="?" class="btn btn-outline-secondary text-nowrap">Hoy</a>
+            <button type="button" onclick="location.reload();" class="btn btn-success text-nowrap">🔄 Sincronizar</button>
+        </form>
     </div>
+
+    <?php echo $mensaje_alerta; ?>
 
     <?php if ($error_python): ?>
         <div class="alert alert-warning alert-dismissible fade show small" role="alert">
@@ -157,7 +194,7 @@ $stmt_select->close();
         <div class="col-12 col-sm-6 col-md-4">
             <div class="card bg-success text-white shadow-sm">
                 <div class="card-body p-3 p-md-4">
-                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Facturado Hoy</h6>
+                    <h6 class="card-title text-uppercase opacity-75 small mb-1">Total Facturado en este Día</h6>
                     <h2 class="card-text fw-bold m-0 fs-2">$<?php echo number_format($valor_total, 0, ',', '.'); ?></h2>
                 </div>
             </div>
@@ -182,6 +219,8 @@ $stmt_select->close();
                             <td class="text-nowrap">
                                 <strong><?php echo date("d/m/Y", strtotime($row['fecha_recepcion_correo'])); ?></strong><br>
                                 <span class="text-muted small"><?php echo date("h:i A", strtotime($row['fecha_recepcion_correo'])); ?></span>
+                                <!-- Botón para abrir modal de cambio de fecha individual -->
+                                <button class="btn btn-sm btn-outline-primary py-0 px-1 ms-1" style="font-size: 0.7rem;" data-bs-toggle="modal" data-bs-target="#modalFecha<?php echo $row['id']; ?>">✏️ Editar</button>
                             </td>
 
                             <td>
@@ -220,11 +259,41 @@ $stmt_select->close();
                                 </div>
                             </td>
                         </tr>
+
+                        <!-- Modal para cambiar la fecha de cada factura de forma individual -->
+                        <div class="modal fade" id="modalFecha<?php echo $row['id']; ?>" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content">
+                                    <form method="POST">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title fs-6">Cambiar Fecha de Recepción</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <input type="hidden" name="accion" value="actualizar_fecha">
+                                            <input type="hidden" name="id_factura" value="<?php echo $row['id']; ?>">
+                                            
+                                            <p class="small text-muted mb-2">Doc: <strong><?php echo htmlspecialchars($row['numero_documento']); ?></strong> - Proveedor: <strong><?php echo htmlspecialchars($row['proveedor']); ?></strong></p>
+                                            
+                                            <div class="mb-3">
+                                                <label for="nueva_fecha_<?php echo $row['id']; ?>" class="form-label">Nueva Fecha y Hora:</label>
+                                                <input type="datetime-local" class="form-control" id="nueva_fecha_<?php echo $row['id']; ?>" name="nueva_fecha" value="<?php echo date('Y-m-d\TH:i', strtotime($row['fecha_recepcion_correo'])); ?>" required>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                                            <button type="submit" class="btn btn-primary btn-sm">Guardar Cambios</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="5" class="text-center text-muted py-4">
-                            No se encontraron facturas registradas el día de hoy.
+                            No se encontraron facturas registradas para esta fecha.
                         </td>
                     </tr>
                 <?php endif; ?>
@@ -233,5 +302,6 @@ $stmt_select->close();
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

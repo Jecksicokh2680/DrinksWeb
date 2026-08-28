@@ -4,6 +4,7 @@ from email.header import decode_header
 from email.utils import parseaddr
 import re
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 
 # ==========================================
@@ -30,6 +31,19 @@ REMITENTES_VALIDOS = [
 # Configurar la zona horaria de Bogotá (UTC -5)
 TZ_BOGOTA = timezone(timedelta(hours=-5))
 
+# Permitir recibir una fecha por argumento (Ej: python3 LectorEmailFacturas.py 2026-08-26)
+# Si no se pasa ningún argumento, toma la fecha actual de Bogotá.
+if len(sys.argv) > 1:
+    fecha_param = sys.argv[1].strip()
+    try:
+        # Validar formato YYYY-MM-DD
+        dt_obj = datetime.strptime(fecha_param, "%Y-%m-%d")
+        fecha_imap = dt_obj.strftime("%d-%b-%Y")
+    except ValueError:
+        fecha_imap = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
+else:
+    fecha_imap = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
+
 lista_facturas = []
 
 for cuenta in CUENTAS_GMAIL:
@@ -41,13 +55,9 @@ for cuenta in CUENTAS_GMAIL:
         mail.login(GMAIL_USER, GMAIL_PASS)
         mail.select("INBOX")
 
-        # Fecha formateada para el estándar IMAP (Ej: 08-Jul-2026)
-        fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
+        # BÚSQUEDA ROBUSTA: Traemos los correos del día especificado (hoy o histórico)
+        criterio_busqueda = f'ON {fecha_imap}'
 
-        # BÚSQUEDA ROBUSTA: Traemos todos los correos recibidos HOY.
-        criterio_busqueda = f'ON {fecha_hoy}'
-
-        # CORREGIDO: Ahora usa 'criterio_busqueda' correctamente
         status, messages = mail.uid('search', None, criterio_busqueda)
         mail_ids = messages[0].split()
 
@@ -179,7 +189,7 @@ for cuenta in CUENTAS_GMAIL:
                         valor = 0.00
 
                 # ==========================================
-                #        CONTROL DE DUPLICADOS Y AGREGADO
+                #         CONTROL DE DUPLICADOS Y AGREGADO
                 # ==========================================
                 id_unico_factura = f"{num_documento}_{int(round(valor))}"
                 ya_existe = any(f['id_unico'] == id_unico_factura for f in lista_facturas)
