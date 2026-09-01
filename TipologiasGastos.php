@@ -80,7 +80,7 @@ if ($resultado_tipologias) {
 <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Gestión de Tipología de Gastos</h2>
-        <a href="egresos.php" class="btn btn-outline-primary">Ir a Registro de Egresos &rarr;</a>
+        <a href="RegistroGastos.php" class="btn btn-outline-primary">Ir a Registro de Egresos &rarr;</a>
     </div>
 
     <div class="row">
