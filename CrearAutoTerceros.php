@@ -1,6 +1,7 @@
 <?php
 require 'Conexion.php';    // Base Local ($mysqli)
 require 'ConnCentral.php'; // Base Central ($mysqliPos)
+require 'ConnDrinks.php';  // Base Drinks ($mysqliDrinks)
 require 'helpers.php';
 session_start();
 
@@ -15,10 +16,54 @@ if (empty($_SESSION['Usuario'])) {
 $mensaje = "";
 
 /* ============================================================
-   CARGAR LISTAS (Terceros desde CENTRAL, Autorizaciones LOCAL)
+   CARGAR MAPA GLOBAL DE TERCEROS (Central + Drinks)
+   Maneja de forma inteligente los ceros a la izquierda ('01' vs '1')
    ============================================================ */
-// Nota: Ajusté 'nit' y 'nombres/apellidos' según la estructura estándar de tu base central
-$terceros = $mysqliPos->query("SELECT nit AS CedulaNit, trim(concat(nombres,' ',apellidos)) AS Nombre FROM terceros WHERE inactivo = 0 ORDER BY nombres ASC");
+$tercerosList = [];
+$mapaTercerosGlobal = [];
+
+// 1. Cargar desde Central ($mysqliPos)
+if (isset($mysqliPos) && $mysqliPos instanceof mysqli) {
+    $resPos = $mysqliPos->query("SELECT nit, trim(concat(nombres,' ',apellidos)) AS Nombre FROM terceros WHERE inactivo = 0");
+    if ($resPos) {
+        while ($t = $resPos->fetch_assoc()) {
+            $rawNit = trim($t['nit']);
+            $nombre = $t['Nombre'];
+            
+            // Guardamos para el select (usando el NIT original)
+            if (!isset($tercerosList[$rawNit])) {
+                $tercerosList[$rawNit] = $nombre;
+            }
+            // Mapeo flexible para cruces (original y versión numérica sin ceros)
+            $mapaTercerosGlobal[$rawNit] = $nombre;
+            $mapaTercerosGlobal[(string)(int)$rawNit] = $nombre;
+        }
+    }
+}
+
+// 2. Cargar desde Drinks ($mysqliDrinks)
+if (isset($mysqliDrinks) && $mysqliDrinks instanceof mysqli) {
+    $resDrinks = $mysqliDrinks->query("SELECT nit, trim(concat(nombres,' ',apellidos)) AS Nombre FROM terceros WHERE inactivo = 0");
+    if ($resDrinks) {
+        while ($t = $resDrinks->fetch_assoc()) {
+            $rawNit = trim($t['nit']);
+            $nombre = $t['Nombre'];
+
+            if (!isset($tercerosList[$rawNit])) {
+                $tercerosList[$rawNit] = $nombre;
+            }
+            if (!isset($mapaTercerosGlobal[$rawNit])) {
+                $mapaTercerosGlobal[$rawNit] = $nombre;
+                $mapaTercerosGlobal[(string)(int)$rawNit] = $nombre;
+            }
+        }
+    }
+}
+
+// Ordenar alfabéticamente el listado para el select
+asort($tercerosList);
+
+// Cargar autorizaciones locales
 $autorizaciones = $mysqli->query("SELECT Nro_Auto, Nombre FROM Autorizaciones WHERE Estado='1' ORDER BY Nro_Auto ASC");
 
 /* ============================================================
@@ -37,15 +82,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardarAsignacion']))
     if ($cedula === "" || $Nro_Auto === "") {
         $mensaje = "Debe seleccionar un tercero y una autorización.";
     } else {
-        // 1) Verificar existencia del tercero en CENTRAL
-        $stmt = $mysqliPos->prepare("SELECT COUNT(*) AS total FROM terceros WHERE nit=?");
-        $stmt->bind_param("s", $cedula);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+        // Verificar existencia usando nuestro mapa global flexible
+        $cedulaIntKey = (string)(int)$cedula;
+        $existeTercero = isset($mapaTercerosGlobal[$cedula]) || isset($mapaTercerosGlobal[$cedulaIntKey]);
 
-        if ($row['total'] == 0) {
-            $mensaje = "❌ El tercero no existe en el Servidor Central.";
+        if (!$existeTercero) {
+            $mensaje = "❌ El tercero no existe ni en el Servidor Central ni en Drinks.";
         } else {
             // 2) Verificar existencia de la autorización en LOCAL
             $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM Autorizaciones WHERE Nro_Auto=?");
@@ -89,11 +131,10 @@ if (isset($_GET['delete'])) {
 }
 
 /* ============================================================
-   CONSULTA DE ASIGNACIONES (Cruce de bases de datos)
+   CONSULTA DE ASIGNACIONES Y CRUCE USANDO EL MAPA GLOBAL
    ============================================================ */
-$where = $filtroTercero ? "WHERE at.CedulaNit='$filtroTercero'" : "";
+$where = $filtroTercero ? "WHERE at.CedulaNit = '" . $mysqli->real_escape_string($filtroTercero) . "'" : "";
 
-// Traemos las asignaciones locales
 $resAsignaciones = $mysqli->query("
     SELECT at.Id, at.CedulaNit, at.Nro_Auto, a.Nombre AS AutoNombre, at.Swich, at.Estado, at.F_Creacion
     FROM autorizacion_tercero at
@@ -104,11 +145,18 @@ $resAsignaciones = $mysqli->query("
 
 $asignacionesFinales = [];
 while ($reg = $resAsignaciones->fetch_assoc()) {
-    // Buscamos el nombre del tercero en la base CENTRAL para cada fila
-    $nit = $reg['CedulaNit'];
-    $buscT = $mysqliPos->query("SELECT trim(concat(nombres,' ',apellidos)) AS Nombre FROM terceros WHERE nit='$nit' LIMIT 1");
-    $infoT = $buscT->fetch_assoc();
-    $reg['NombreTercero'] = $infoT ? $infoT['Nombre'] : "<span class='text-danger'>No encontrado en Central</span>";
+    $nit = trim($reg['CedulaNit']);
+    $nitIntKey = (string)(int)$nit;
+
+    // Resolver el nombre buscando tanto el NIT exacto como su versión sin ceros
+    if (isset($mapaTercerosGlobal[$nit])) {
+        $reg['NombreTercero'] = $mapaTercerosGlobal[$nit];
+    } elseif (isset($mapaTercerosGlobal[$nitIntKey])) {
+        $reg['NombreTercero'] = $mapaTercerosGlobal[$nitIntKey];
+    } else {
+        $reg['NombreTercero'] = "<span class='text-danger'>No encontrado en Central ni Drinks</span>";
+    }
+
     $asignacionesFinales[] = $reg;
 }
 ?>
@@ -137,13 +185,11 @@ while ($reg = $resAsignaciones->fetch_assoc()) {
             <label class="form-label fw-bold">Filtrar por Tercero:</label>
             <select name="filtro_tercero" class="form-select" onchange="this.form.submit()">
                 <option value="">-- Todos los terceros --</option>
-                <?php 
-                $terceros->data_seek(0);
-                while ($t = $terceros->fetch_assoc()): 
-                    $sel = ($t['CedulaNit'] === $filtroTercero) ? "selected" : "";
+                <?php foreach ($tercerosList as $cedulaNit => $nombreTercero): 
+                    $sel = ($cedulaNit === $filtroTercero) ? "selected" : "";
                 ?>
-                    <option value="<?= $t['CedulaNit'] ?>" <?= $sel ?>><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
-                <?php endwhile; ?>
+                    <option value="<?= $cedulaNit ?>" <?= $sel ?>><?= $nombreTercero ?> (<?= $cedulaNit ?>)</option>
+                <?php endforeach; ?>
             </select>
         </div>
         <div class="col-md-2">
@@ -159,7 +205,7 @@ while ($reg = $resAsignaciones->fetch_assoc()) {
         <table class="table table-hover align-middle">
             <thead>
                 <tr>
-                    <th>Tercero (Central)</th>
+                    <th>Tercero (Central / Drinks)</th>
                     <th>Cédula/NIT</th>
                     <th>Autorización</th>
                     <th>Switch</th>
@@ -197,14 +243,12 @@ while ($reg = $resAsignaciones->fetch_assoc()) {
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Tercero (Desde Central)</label>
+                    <label class="form-label fw-bold">Tercero (Central / Drinks)</label>
                     <select name="CedulaNit" class="form-select" required>
                         <option value="">-- Seleccione un tercero --</option>
-                        <?php 
-                        $terceros->data_seek(0);
-                        while ($t = $terceros->fetch_assoc()): ?>
-                            <option value="<?= $t['CedulaNit'] ?>"><?= $t['Nombre'] ?> (<?= $t['CedulaNit'] ?>)</option>
-                        <?php endwhile; ?>
+                        <?php foreach ($tercerosList as $cedulaNit => $nombreTercero): ?>
+                            <option value="<?= $cedulaNit ?>"><?= $nombreTercero ?> (<?= $cedulaNit ?>)</option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="mb-3">
