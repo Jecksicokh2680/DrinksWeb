@@ -71,12 +71,12 @@ if ($resultado_tip) {
     }
 }
 
-// 3. Obtener todos los registros de gastos y calcular totales al vuelo
+// 3. Obtener todos los registros ordenados por Tipología y Fecha descendente
 $sql_registros = "
     SELECT r.id, r.tipologia_id, t.nombre AS tipologia, t.tipo, r.monto, r.fecha, r.observacion 
     FROM RegistroGastos r 
     INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id 
-    ORDER BY r.fecha DESC, r.id DESC
+    ORDER BY t.nombre ASC, r.fecha DESC, r.id DESC
 ";
 $resultado_regs = $mysqliWeb->query($sql_registros);
 $registros = [];
@@ -202,11 +202,11 @@ if ($resultado_regs) {
             </div>
         </div>
 
-        <!-- Tabla de Listado -->
+        <!-- Tabla de Listado Agrupada por Tipología -->
         <div class="col-md-8">
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">Historial de Egresos</h5>
+                    <h5 class="mb-0">Historial de Egresos por Tipología</h5>
                 </div>
                 <div class="card-body table-responsive">
                     <table class="table table-striped align-middle">
@@ -221,7 +221,19 @@ if ($resultado_regs) {
                         </thead>
                         <tbody>
                             <?php if (count($registros) > 0): ?>
-                                <?php foreach ($registros as $row): ?>
+                                <?php 
+                                $tipologia_actual = "";
+                                $subtotal_tipologia = 0;
+                                
+                                // Para manejar los subtotales por corte de grupo, recorreremos el array agrupado
+                                // Como ya viene ordenado por tipología, podemos detectar el cambio.
+                                for ($i = 0; $i < count($registros); $i++):
+                                    $row = $registros[$i];
+                                    $siguiente_row = $registros[$i + 1] ?? null;
+                                    
+                                    $subtotal_tipologia += floatval($row['monto']);
+                                    $es_ultima_de_tipologia = ($siguiente_row === null || $siguiente_row['tipologia_id'] !== $row['tipologia_id']);
+                                ?>
                                     <tr>
                                         <td><?= $row['fecha'] ?></td>
                                         <td>
@@ -236,7 +248,6 @@ if ($resultado_regs) {
                                                 Editar
                                             </button>
                                             
-                                            <!-- Formulario independiente para eliminar por POST -->
                                             <form action="<?= htmlspecialchars($pagina_actual) ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar este registro?');">
                                                 <input type="hidden" name="accion" value="eliminar">
                                                 <input type="hidden" name="id_egreso" value="<?= $row['id'] ?>">
@@ -244,7 +255,21 @@ if ($resultado_regs) {
                                             </form>
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
+
+                                    <!-- Fila de Subtotal al terminar cada tipología -->
+                                    <?php if ($es_ultima_de_tipologia): ?>
+                                        <tr class="table-dark fw-bold">
+                                            <td colspan="2" class="text-end">Subtotal <?= htmlspecialchars($row['tipologia']) ?>:</td>
+                                            <td colspan="3">$<?= number_format($subtotal_tipologia, 2, ',', '.') ?></td>
+                                        </tr>
+                                        <?php 
+                                        // Reiniciar subtotal para la siguiente tipología
+                                        $subtotal_tipologia = 0; 
+                                        ?>
+                                    <?php endif; ?>
+
+                                <?php endfor; ?>
+
                             <?php else: ?>
                                 <tr>
                                     <td colspan="5" class="text-center text-muted">No hay egresos registrados aún.</td>

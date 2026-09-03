@@ -43,17 +43,22 @@ if (isset($_GET['ajax_consultar'])) {
     LÓGICA 1: IMPORTACIÓN MASIVA Y UNIFICADA DE TERCEROS
    ============================================================ */
 if (isset($_POST['importar_terceros'])) {
-    $importados = 0;
+    $importadosCentral = 0;
+    $importadosDrinks = 0;
+    $erroresCentral = 0;
 
-    // 1. Sincronizar desde ConnCentral
+    // 1. Sincronizar desde ConnCentral (Adaptado a la estructura real de la tabla terceros)
     if (isset($mysqliPos) && $mysqliPos) {
-        $resCen = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
+        $resCen = $mysqliPos->query("SELECT * FROM terceros");
         if ($resCen) {
             while ($tc = $resCen->fetch_assoc()) {
-                $nit   = $mysqli->real_escape_string(trim($tc['nit']));
+                $nit = $mysqli->real_escape_string(trim($tc['nit'] ?? ''));
                 if (empty($nit)) continue;
                 
-                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $tc['nombres'])));
+                // El campo 'nombres' almacena tanto personas naturales como la razón social de empresas (ej. DAVIVIENDA)
+                $nombresStr = trim($tc['nombres'] ?? 'Sin Nombre');
+                
+                $nom   = $mysqli->real_escape_string(preg_replace('/\s+/', ' ', $nombresStr));
                 $com   = $mysqli->real_escape_string(trim($tc['nomcomercial'] ?? ''));
                 $mail  = $mysqli->real_escape_string(trim($tc['email'] ?? ''));
 
@@ -66,7 +71,9 @@ if (isset($_POST['importar_terceros'])) {
                               Estado = 1";
                               
                 if ($mysqli->query($sqlInsCen)) {
-                    $importados++;
+                    $importadosCentral++;
+                } else {
+                    $erroresCentral++;
                 }
             }
             $resCen->free();
@@ -75,13 +82,15 @@ if (isset($_POST['importar_terceros'])) {
 
     // 2. Sincronizar desde ConnDrinks
     if (isset($mysqliDrinks) && $mysqliDrinks) {
-        $resDrk = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros");
+        $resDrk = $mysqliDrinks->query("SELECT * FROM terceros");
         if ($resDrk) {
             while ($td = $resDrk->fetch_assoc()) {
-                $nit   = $mysqli->real_escape_string(trim($td['nit']));
+                $nit = $mysqli->real_escape_string(trim($td['nit'] ?? ''));
                 if (empty($nit)) continue;
                 
-                $nom   = $mysqli->real_escape_string(trim(preg_replace('/\s+/', ' ', $td['nombres'])));
+                $nombresStr = trim($td['nombres'] ?? 'Sin Nombre');
+
+                $nom   = $mysqli->real_escape_string(preg_replace('/\s+/', ' ', $nombresStr));
                 $com   = $mysqli->real_escape_string(trim($td['nomcomercial'] ?? ''));
                 $mail  = $mysqli->real_escape_string(trim($td['email'] ?? ''));
 
@@ -94,15 +103,17 @@ if (isset($_POST['importar_terceros'])) {
                               Estado = 1";
                               
                 if ($mysqli->query($sqlInsDrk)) {
-                    $importados++;
+                    $importadosDrinks++;
                 }
             }
             $resDrk->free();
         }
     }
 
-    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Se procesaron e importaron/actualizaron $importados terceros desde las bases Central y Drinks sin duplicados.</div>";
+    $totalImp = $importadosCentral + $importadosDrinks;
+    $mensaje = "<div class='alert alert-info fw-bold shadow-sm mb-3'>🔄 Sincronización finalizada: <b>$importadosCentral</b> terceros de Central, <b>$importadosDrinks</b> de Drinks (Total: $totalImp procesados sin duplicados).</div>";
 }
+
 /* ============================================================
     LÓGICA 2: ELIMINACIÓN FISICA DE COLABORADOR
    ============================================================ */
@@ -193,9 +204,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             $encontradoTercero = false;
             
             if (isset($mysqliPos) && $mysqliPos) {
-                $resC = $mysqliPos->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resC = $mysqliPos->query("SELECT * FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resC && $rowC = $resC->fetch_assoc()) {
-                    $nomC = $mysqli->real_escape_string($rowC['nombres']);
+                    $nomC = $mysqli->real_escape_string($rowC['nombres'] ?? '');
                     $comC = $mysqli->real_escape_string($rowC['nomcomercial'] ?? '');
                     $emC  = $mysqli->real_escape_string($rowC['email'] ?? '');
                     $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomC', '$comC', '$emC', 1)");
@@ -204,9 +215,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             }
 
             if (!$encontradoTercero && isset($mysqliDrinks) && $mysqliDrinks) {
-                $resD = $mysqliDrinks->query("SELECT nit, CONCAT(nombres, ' ', COALESCE(nombre2, ''), ' ', apellidos, ' ', COALESCE(apellido2, '')) as nombres, nomcomercial, email FROM terceros WHERE nit = '$cedula' LIMIT 1");
+                $resD = $mysqliDrinks->query("SELECT * FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resD && $rowD = $resD->fetch_assoc()) {
-                    $nomD = $mysqli->real_escape_string($rowD['nombres']);
+                    $nomD = $mysqli->real_escape_string($rowD['nombres'] ?? '');
                     $comD = $mysqli->real_escape_string($rowD['nomcomercial'] ?? '');
                     $emD  = $mysqli->real_escape_string($rowD['email'] ?? '');
                     $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomD', '$comD', '$emD', 1)");
@@ -729,7 +740,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                                     <?php if ($esActivo): ?>
                                         <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
-                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.147a.5.5 0 0 1-.708-.708L14 7.707l-1.146 1.146a.5.5 0 0 1 0-.708"/>
+                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.146a.5.5 0 0 1 0-.708"/>
                                             </svg>
                                         </a>
                                     <?php endif; ?>
