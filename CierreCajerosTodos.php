@@ -1,17 +1,41 @@
 <?php
 /* ============================================================
-    CONFIGURACIÓN Y CONEXIONES
+    CONFIGURACIÓN DE SESIÓN Y CONEXIONES
 ============================================================ */
-$session_timeout = 3600;
-session_start();
 date_default_timezone_set('America/Bogota'); 
+ini_set('session.gc_maxlifetime', 3600);
+session_set_cookie_params(3600);
+
+session_start();
+require 'auth_check.php';
+session_regenerate_id(true);
+
 require("ConnCentral.php"); 
 require("Conexion.php");    
 require("ConnDrinks.php");  
 
-$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
-if ($UsuarioSesion === '') { die("Debe iniciar sesión."); }
+// Definición de NITs para las sedes
+define('NIT_CENTRAL', '86057267-8');
+define('NIT_DRINKS',  '901724534-7');
 
+$inactive_timeout = 1800;
+
+if (isset($_SESSION['ultimo_acceso']) && (time() - $_SESSION['ultimo_acceso'] > $inactive_timeout)) {
+    header("Location: logout.php?msg=Sesion expirada");
+    exit;
+}
+$_SESSION['ultimo_acceso'] = time();
+
+// Validación de usuario basada en CedulaNit
+$UsuarioSesion = $_SESSION['CedulaNit'] ?? '';
+if ($UsuarioSesion === '') { 
+    header("Location: logout.php?msg=Sesion expirada");
+    exit; 
+}
+
+/* ============================================================
+    FUNCIÓN DE PERMISOS
+============================================================ */
 function Autorizacion($User, $Solicitud) {
     global $mysqli; 
     $stmt = $mysqli->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=?");
@@ -22,135 +46,138 @@ function Autorizacion($User, $Solicitud) {
 }
 
 $permiso9999 = Autorizacion($UsuarioSesion, '9999'); 
-$permiso0003 = Autorizacion($UsuarioSesion, '0003');
-
-if ($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
-    die("No tiene autorización para ver este módulo.");
-}
+$permiso7777 = Autorizacion($UsuarioSesion, '7777'); 
+$permiso0003 = Autorizacion($UsuarioSesion, '0003'); 
 
 $fecha_input = $_GET['fecha'] ?? date('Y-m-d');
-$fecha_esc   = str_replace('-', '', $fecha_input);
+$fecha       = str_replace('-', '', $fecha_input); 
+$UsuarioFact = trim($_GET['nit'] ?? '');
+
+// Si no tiene permisos de supervisor/administrador, se fuerza su propia cédula
+if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
+    $UsuarioFact = $UsuarioSesion;
+}
+
+$fecha_esc       = $fecha; // Se escapará por conexión individual
+
+/* ============================================================
+    CONFIGURACIÓN DE SEDES A PROCESAR SIMULTÁNEAMENTE
+============================================================ */
+$sedesArray = [
+    'central' => [
+        'nombre'      => 'CENTRAL',
+        'mysqli'      => $mysqliCentral,
+        'nit_empresa' => NIT_CENTRAL
+    ],
+    'drinks' => [
+        'nombre'      => 'DRINKS (AWS)',
+        'mysqli'      => $mysqliDrinks,
+        'nit_empresa' => NIT_DRINKS
+    ]
+];
 
 function money($v){ return number_format(round((float)$v), 0, ',', '.'); }
 
-$sedes = [
-    ['conn' => $mysqliCentral, 'nombre' => 'CENTRAL', 'id' => 'central'],
-    ['conn' => $mysqliDrinks,  'nombre' => 'DRINKS (AWS)', 'id' => 'drinks']
-];
+// Función auxiliar para obtener datos de un cajero específico en una sede dada
+function obtenerDatosCajero($nitCajero, $mysqliActiva, $fecha_esc, $fecha_input, $nit_empresa_filtro) {
+    $nitCajero_esc = $mysqliActiva->real_escape_string($nitCajero);
+    $fecha_esc_s   = $mysqliActiva->real_escape_string($fecha_esc);
+    
+    // Validación de Cierre
+    $cierreRealizado = false;
+    $qryCheckCierre = "SELECT T2.NIT FROM ARQUEO AS A1
+                        INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
+                        INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
+                        WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
+                        AND T2.NIT = '$nitCajero_esc' LIMIT 1";
+    $resCheck = $mysqliActiva->query($qryCheckCierre);
+    if ($resCheck && $resCheck->num_rows > 0) { $cierreRealizado = true; }
 
-$globalVentas = 0; 
-$globalEgresos = 0; 
-$globalTransf = 0; 
-$globalFisico = 0;
-$globalEfectivoEntregado = 0;
-$globalTrfNequi = 0; 
-
-$dataConsolidada = [];
-$egresosAgrupados = [];
-$resumenSedes = []; 
-
-foreach ($sedes as $s) {
-    $mysqliActiva = $s['conn'];
-    $nombreSede   = $s['nombre'];
-    $idSede       = $s['id'];
-
-    $resumenSedes[$idSede] = [
-        'nombre' => $nombreSede, 
-        'ventas' => 0, 
-        'egresos' => 0, 
-        'transf' => 0, 
-        'efectivo' => 0, 
-        'neto' => 0
-    ];
-
-    $qryCajeros = "SELECT NIT, NOMBRE FROM (
-        SELECT T1.NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOMBRE FROM FACTURAS F 
-        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fecha_esc'
-        UNION 
-        SELECT V.NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS NOMBRE FROM PEDIDOS P 
-        INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO 
-        INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fecha_esc'
-    ) X GROUP BY NIT ORDER BY NOMBRE ASC";
-
-    $resCajeros = $mysqliActiva->query($qryCajeros);
-
-    if ($resCajeros) {
-        while ($c = $resCajeros->fetch_assoc()) {
-            $nit = $c['NIT'];
-            $nombreCajero = $c['NOMBRE'];
-
-            $cierreCajero = false;
-            $qryCheck = "SELECT T2.NIT FROM ARQUEO AS A1
-                         INNER JOIN USUVENDEDOR AS V1 ON V1.IDUSUARIO = A1.IDUSUARIO
-                         INNER JOIN TERCEROS AS T2 ON T2.IDTERCERO = V1.IDTERCERO
-                         WHERE DATE_FORMAT(A1.fechacie, '%Y-%m-%d') = '$fecha_input' 
-                         AND T2.NIT = '$nit' LIMIT 1";
-            $resCheck = $mysqliActiva->query($qryCheck);
-            if ($resCheck && $resCheck->num_rows > 0) { $cierreCajero = true; }
-
-            $qV = "SELECT SUM(VAL) AS TOTAL FROM (
-                SELECT SUM(DF.CANTIDAD*DF.VALORPROD) AS VAL FROM FACTURAS F 
-                INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA WHERE F.ESTADO='0' AND F.FECHA='$fecha_esc' AND F.IDVENDEDOR IN (SELECT IDTERCERO FROM TERCEROS WHERE NIT='$nit')
-                UNION ALL 
-                SELECT SUM(DP.CANTIDAD*DP.VALORPROD) FROM PEDIDOS P 
-                INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO WHERE P.ESTADO='0' AND P.FECHA='$fecha_esc' AND P.IDUSUARIO IN (SELECT IDUSUARIO FROM USUVENDEDOR UV INNER JOIN TERCEROS T ON T.IDTERCERO=UV.IDTERCERO WHERE T.NIT='$nit')
-            ) AS X";
-            $vts = (float)($mysqliActiva->query($qV)->fetch_assoc()['TOTAL'] ?? 0);
-
-            $qE = "SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
-                   INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
-                   WHERE S1.FECHA='$fecha_esc' AND T1.NIT='$nit'";
-            $resE = $mysqliActiva->query($qE);
-            
-            $egrTotalCajero = 0;
-            $efectivoCajero = 0;
-            $tieneTransferenciaEnEgresos = false;
-
-            if($resE->num_rows > 0){
-                if(!isset($egresosAgrupados[$nit])){
-                    $egresosAgrupados[$nit] = ['nombre' => $nombreCajero, 'sede' => $nombreSede, 'id_sede' => $idSede, 'detalles' => [], 'total' => 0];
-                }
-                while($eg = $resE->fetch_assoc()){
-                    $motivo = $eg['MOTIVO'];
-                    $valor  = (float)$eg['VALOR'];
-                    $egresosAgrupados[$nit]['detalles'][] = $eg;
-                    $egresosAgrupados[$nit]['total'] += $valor;
-                    $egrTotalCajero += $valor;
-
-                    if (stripos($motivo, 'TRANSF') !== false) { $tieneTransferenciaEnEgresos = true; }
-                    if (stripos($motivo, 'ENTREGA') !== false || stripos($motivo, 'EFECTIVO') !== false || stripos($motivo, 'MONEDA') !== false) {
-                        $efectivoCajero += $valor;
-                    }
-                }
-            }
-
-            $qT = "SELECT SUM(Monto) AS TOTAL FROM Relaciontransferencias WHERE Fecha='$fecha_esc' AND CedulaNit='$nit'";
-            $trf_auto = (float)($mysqli->query($qT)->fetch_assoc()['TOTAL'] ?? 0);
-            
-            $trf_a_operar = ($tieneTransferenciaEnEgresos) ? 0 : $trf_auto;
-            $diferencia = ($egrTotalCajero + $trf_a_operar) - $vts;
-            
-            $leyenda = "CUADRADO";
-            if($diferencia > 0) $leyenda = "SOBRA";
-            if($diferencia < 0) $leyenda = "FALTA";
-
-            $dataConsolidada[] = [
-                'sede' => $nombreSede, 'nombre' => $nombreCajero,
-                'ventas' => $vts, 'egr' => $egrTotalCajero, 'trf' => $trf_auto, 'efectivo' => $efectivoCajero,
-                'diferencia' => $diferencia, 'cerrado' => $cierreCajero, 'leyenda' => $leyenda
-            ];
-
-            $globalVentas += $vts; $globalEgresos += $egrTotalCajero; $globalTransf += $trf_auto; $globalFisico += $diferencia;
-            $globalEfectivoEntregado += $efectivoCajero;
-
-            $resumenSedes[$idSede]['ventas']   += $vts;
-            $resumenSedes[$idSede]['egresos']  += $egrTotalCajero;
-            $resumenSedes[$idSede]['transf']   += $trf_auto;
-            $resumenSedes[$idSede]['efectivo'] += $efectivoCajero;
-            $resumenSedes[$idSede]['neto']     += $diferencia;
-        }
+    // Ventas
+    $totalVentas = 0; $nombreCompleto = ""; 
+    $qryV = "SELECT SUM(T) AS TOTAL, NOM FROM (
+        SELECT (DF.CANTIDAD*DF.VALORPROD) AS T, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS NOM FROM FACTURAS F 
+        INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
+        LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fecha_esc_s' AND T1.NIT='$nitCajero_esc' 
+        UNION ALL 
+        SELECT (DP.CANTIDAD*DP.VALORPROD), CONCAT_WS(' ', V.nombres, V.apellidos) FROM PEDIDOS P 
+        INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO=P.IDPEDIDO INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO=P.IDUSUARIO 
+        INNER JOIN TERCEROS V ON V.IDTERCERO=UV.IDTERCERO WHERE P.ESTADO='0' AND P.FECHA='$fecha_esc_s' AND V.NIT='$nitCajero_esc'
+    ) X GROUP BY NOM";
+    $resV = $mysqliActiva->query($qryV);
+    if($vRow = $resV->fetch_assoc()){ 
+        $totalVentas = (float)$vRow['TOTAL']; 
+        $nombreCompleto = $vRow['NOM']; 
+    } else {
+        global $mysqli;
+        $qNom = $mysqli->prepare("SELECT CONCAT_WS(' ', Nombre, NombreCom) AS NOM FROM terceros WHERE CedulaNit = ?");
+        $qNom->bind_param("s", $nitCajero);
+        $qNom->execute();
+        $rNom = $qNom->get_result()->fetch_assoc();
+        $nombreCompleto = $rNom['NOM'] ?? 'Cajero ID: '.$nitCajero;
     }
+
+    // Egresos
+    $totalEgresos = 0; $listaEgresos = []; $yaExisteTransferEnEgresos = false;
+    $resE = $mysqliActiva->query("SELECT S1.IDSALIDA, S1.MOTIVO, S1.VALOR FROM SALIDASCAJA S1 
+        INNER JOIN USUVENDEDOR V1 ON V1.IDUSUARIO=S1.IDUSUARIO INNER JOIN TERCEROS T1 ON T1.IDTERCERO=V1.IDTERCERO 
+        WHERE S1.FECHA='$fecha_esc_s' AND T1.NIT='$nitCajero_esc'");
+    if($resE){ 
+        while($eg=$resE->fetch_assoc()){ 
+            $totalEgresos += (float)$eg['VALOR']; 
+            $listaEgresos[] = $eg; 
+            if (stripos($eg['MOTIVO'], 'TRANSFERENCIA') !== false || stripos($eg['MOTIVO'], 'TRANSFER') !== false) {
+                $yaExisteTransferEnEgresos = true;
+            }
+        } 
+    }
+
+    // Normalización de NIT para búsquedas flexibles
+    $nitLimpio = preg_replace('/[^0-9]/', '', $nitCajero);
+
+    // Transferencias Manuales (Búsqueda flexible)
+    global $mysqli;
+    $stmtT = $mysqli->prepare("SELECT SUM(Monto) AS total FROM Relaciontransferencias 
+                               WHERE Fecha = ? AND (CedulaNit = ? OR REPLACE(REPLACE(CedulaNit, '-', ''), ' ', '') LIKE CONCAT('%', ?, '%')) AND NitEmpresa = ?");
+    $stmtT->bind_param("ssss", $fecha_input, $nitCajero, $nitLimpio, $nit_empresa_filtro);
+    $stmtT->execute();
+    $totalTransfer = (float)($stmtT->get_result()->fetch_assoc()['total'] ?? 0);
+
+    // Transferencias Automáticas (Búsqueda flexible)
+    $stmtTA = $mysqli->prepare("SELECT SUM(n.monto) AS total_auto 
+                                FROM control_checks_nequi c
+                                INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
+                                WHERE DATE(c.fecha_hora_check) = ? 
+                                AND (c.usuario_cedula = ? OR REPLACE(REPLACE(c.usuario_cedula, '-', ''), ' ', '') LIKE CONCAT('%', ?, '%'))
+                                AND c.nit_empresa = ?");
+    $stmtTA->bind_param("ssss", $fecha_input, $nitCajero, $nitLimpio, $nit_empresa_filtro);
+    $stmtTA->execute();
+    $totalTransferAuto = (float)($stmtTA->get_result()->fetch_assoc()['total_auto'] ?? 0);
+
+    $totalTransferGeneral = $totalTransfer + $totalTransferAuto;
+
+    if ($yaExisteTransferEnEgresos) {
+        $efectivo_neto_final = $totalEgresos - $totalVentas;
+    } else {
+        $efectivo_neto_final = ($totalEgresos + $totalTransfer + $totalTransferAuto) - $totalVentas;
+    }
+
+    return [
+        'nit'                  => $nitCajero,
+        'nombre'               => $nombreCompleto,
+        'cierreRealizado'      => $cierreRealizado,
+        'totalVentas'          => $totalVentas,
+        'totalEgresos'         => $totalEgresos,
+        'listaEgresos'         => $listaEgresos,
+        'totalTransfer'        => $totalTransfer,
+        'totalTransferAuto'    => $totalTransferAuto,
+        'totalTransferGeneral' => $totalTransferGeneral,
+        'efectivo_neto_final'  => $efectivo_neto_final
+    ];
 }
+
+$mes_sel  = (int)($_GET['mm'] ?? date('m'));
+$anio_sel = (int)($_GET['aa'] ?? date('Y'));
 ?>
 
 <!DOCTYPE html>
@@ -158,193 +185,364 @@ foreach ($sedes as $s) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auditoría Consolidada</title>
+    <title>Corte de Caja Masivo - Ambas Sedes</title>
     <style>
-        :root { --primary: #2c3e50; --secondary: #1f2d3d; --accent: #f39c12; --success: #27ae60; --danger: #e74c3c; --bg: #f4f7f6; --info: #3498db; }
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
-        .header-box { background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 25px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; }
-        .header-box h2 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.8rem); }
-        .universal-grid { display: grid; gap: 20px; margin-bottom: 30px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 5px solid var(--primary); display: flex; flex-direction: column; height: 100%; transition: transform 0.2s; }
-        .card:hover { transform: translateY(-3px); }
-        .card-egreso { border-top: 5px solid var(--danger); }
-        .sede-label { font-size: 10px; font-weight: bold; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
-        .cajero-name { margin: 5px 0 15px 0; color: var(--primary); font-size: 1.1rem; }
-        .row-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-        .total-box { margin-top: auto; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; }
-        .bg-sobra { background: #d4edda; color: #155724; } 
-        .bg-falta { background: #f8d7da; color: #721c24; } 
-        .bg-ok { background: #e3f2fd; color: #0d47a1; }
-        .status-badge { margin-top: 15px; padding: 8px; border-radius: 6px; text-align: center; font-size: 12px; font-weight: bold; text-transform: uppercase; }
-        .status-open { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .status-closed { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .input-edit { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px; font-size: 13px; margin-bottom: 5px; background: #fafafa; }
-        .btn-save { background: var(--success); color: white; border: none; border-radius: 6px; cursor: pointer; padding: 8px 15px; font-size: 14px; width: 100%; transition: 0.3s; }
-        .footer-summary { background: var(--secondary); color: white; padding: 25px; border-radius: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 20px; text-align: center; margin-top: 40px; }
-        .footer-item b { display: block; font-size: 1.2rem; margin-top: 5px; }
-        .neto-destaque { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); }
-        #timer { background: var(--accent); color: white; padding: 8px 16px; border-radius: 8px; font-weight: bold; font-family: monospace; }
+        body{font-family:"Segoe UI",sans-serif; margin:15px; background:#eef3f7; color:#333;}
+        .panel{background:#fff; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
+        .form-grid { display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .form-group { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+        .form-group select, .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         
-        .sede-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 15px; }
+        .sede-section-title { background: #1f2d3d; color: #fff; padding: 12px 15px; border-radius: 6px; font-size: 18px; margin-top: 25px; margin-bottom: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* Tarjeta de Resumen por Sede */
+        .sede-summary-box { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 20px; margin-bottom: 15px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; }
+        .sede-summary-item { font-size: 14px; color: #0d47a1; }
+        .sede-summary-item b { font-size: 15px; }
+
+        /* Tarjeta de Gran Total General */
+        .grand-total-box { background: #fffde7; border: 2px solid #fbc02d; border-radius: 10px; padding: 20px; margin-top: 30px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+        .grand-total-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; text-align: center; }
+        .grand-total-metric { background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #f9a825; }
+        .grand-total-metric span { display: block; font-size: 12px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        .grand-total-metric strong { font-size: 16px; color: #272727; }
+
+        .cajero-panel-container { border: 2px solid #cfd8dc; border-radius: 10px; background: #fff; padding: 15px; margin-bottom: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.08); }
+        .cajero-inner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media (max-width: 1100px) { .cajero-inner-grid { grid-template-columns: 1fr; } }
+
+        .table{width:100%; border-collapse:collapse;}
+        .table td, .table th{padding:8px 10px; border-bottom:1px solid #eee; text-align: left; font-size: 13px;}
+        .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; width: auto; text-align: center;}
+        .btn-save{background:#0b63a3; color:#fff; border:none; padding:6px 10px; border-radius:4px; cursor:pointer;}
+        .actions-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px; }
+        .text-end{ text-align: right; }
+        .input-edit { width: 100%; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
+        .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        @media print {
+            body * { visibility: hidden; }
+            #modalVoucher, #modalVoucher * { visibility: visible; }
+            #modalVoucher { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: transparent !important; padding: 0; }
+            .modal-content { box-shadow: none !important; margin: 0 auto !important; width: 100% !important; max-width: 100% !important; padding: 0 !important; font-size: 10px !important; color: #000 !important; font-weight: 900 !important; }
+            .modal-content * { color: #000 !important; font-weight: 900 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
     </style>
 </head>
 <body>
 
-<div class="header-box">
-    <h2>🚀 Panel de Auditoría</h2>
-    <div style="display:flex; align-items:center; gap:12px;">
-        <input type="date" value="<?= $fecha_input ?>" onchange="location.href='?fecha='+this.value" style="padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-        <div id="timer">03:00</div>
-    </div>
+<div class="panel no-print">
+    <form method="GET" class="form-grid">
+        <div class="form-group">
+            <label>Fecha:</label>
+            <input type="date" name="fecha" value="<?= $fecha_input ?>">
+        </div>
+        <div class="form-group">
+            <label>Filtrar por Cajero (Opcional):</label>
+            <select name="nit">
+                <option value="">-- TODOS LOS CAJEROS DE AMBAS SEDES --</option>
+                <?php 
+                $nitsVistosSelect = [];
+                foreach($sedesArray as $sKey => $sInfo) {
+                    $mActivo = $sInfo['mysqli'];
+                    if (!$mActivo || $mActivo->connect_error) continue;
+                    $fEsc = $mActivo->real_escape_string($fecha);
+                    $qF = "SELECT FACTURADOR_NIT, FACTURADOR FROM (
+                        SELECT T1.NIT AS FACTURADOR_NIT, CONCAT_WS(' ', T1.nombres, T1.apellidos) AS FACTURADOR FROM FACTURAS F 
+                        INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fEsc'
+                        UNION 
+                        SELECT V.NIT AS FACTURADOR_NIT, CONCAT_WS(' ', V.nombres, V.apellidos) AS FACTURADOR FROM PEDIDOS P 
+                        INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fEsc'
+                    ) X GROUP BY FACTURADOR_NIT ORDER BY FACTURADOR ASC";
+                    $resF = $mActivo->query($qF);
+                    if($resF) {
+                        while($rowF = $resF->fetch_assoc()) {
+                            if(!isset($nitsVistosSelect[$rowF['FACTURADOR_NIT']])) {
+                                $nitsVistosSelect[$rowF['FACTURADOR_NIT']] = $rowF['FACTURADOR'];
+                ?>
+                                <option value="<?= $rowF['FACTURADOR_NIT'] ?>" <?= ($rowF['FACTURADOR_NIT'] === $UsuarioFact)?'selected':'' ?>><?= $rowF['FACTURADOR'] ?> (<?= $sInfo['nombre'] ?>)</option>
+                <?php 
+                            }
+                        }
+                    }
+                } 
+                ?>
+            </select>
+        </div>
+        <input type="hidden" name="mm" value="<?= $mes_sel ?>">
+        <input type="hidden" name="aa" value="<?= $anio_sel ?>">
+        <button class="button" type="submit">Consultar Ambas Sedes</button>
+    </form>
 </div>
 
-<h3 style="color: var(--primary); font-size: 1.1rem; margin-bottom: 15px; border-left: 5px solid var(--info); padding-left: 10px;">🏢 Resumen de Operación</h3>
-<div class="sede-summary-grid">
+<div class="dashboard-grid">
     <?php 
-    $sumVentas = 0; $sumEgresos = 0; $sumNeto = 0; $sumTransf = 0; $sumEfectivo = 0;
-    foreach($resumenSedes as $rSede): 
-        $sumVentas += $rSede['ventas'];
-        $sumEgresos += $rSede['egresos'];
-        $sumNeto += $rSede['neto'];
-        $sumTransf += $rSede['transf'];
-        $sumEfectivo += $rSede['efectivo'];
+    // Acumuladores para el Gran Total General
+    $granTotalVentas = 0;
+    $granTotalEgresos = 0;
+    $granTotalTransferMan = 0;
+    $granTotalTransferAuto = 0;
+    $granTotalTransferGen = 0;
+    $granTotalFisico = 0;
+
+    foreach($sedesArray as $sedeKey => $sedeInfo): 
+        $nombreSedeDisplay = $sedeInfo['nombre'];
+        $mysqliActiva = $sedeInfo['mysqli'];
+        $nitEmpresaFiltro = $sedeInfo['nit_empresa'];
+
+        if (!$mysqliActiva || $mysqliActiva->connect_error) {
+            echo '<div class="panel"><p style="color:red;">Error de conexión con la sede: ' . $nombreSedeDisplay . '</p></div>';
+            continue;
+        }
+
+        $fEsc = $mysqliActiva->real_escape_string($fecha);
+        $qryFacturadores = "SELECT FACTURADOR_NIT FROM (
+            SELECT T1.NIT AS FACTURADOR_NIT FROM FACTURAS F 
+            INNER JOIN TERCEROS T1 ON T1.IDTERCERO = F.IDVENDEDOR WHERE F.FECHA = '$fEsc'
+            UNION 
+            SELECT V.NIT AS FACTURADOR_NIT FROM PEDIDOS P 
+            INNER JOIN USUVENDEDOR UV ON UV.IDUSUARIO = P.IDUSUARIO INNER JOIN TERCEROS V ON V.IDTERCERO = UV.IDTERCERO WHERE P.FECHA = '$fEsc'
+        ) X GROUP BY FACTURADOR_NIT";
+        $factList = $mysqliActiva->query($qryFacturadores);
+
+        $cajerosSede = [];
+        if ($UsuarioFact !== '') {
+            $cajerosSede[] = $UsuarioFact;
+        } else {
+            if ($factList) {
+                while ($f = $factList->fetch_assoc()) {
+                    $cajerosSede[] = $f['FACTURADOR_NIT'];
+                }
+            }
+        }
+
+        // Acumuladores específicos de la Sede
+        $sedeVentas = 0;
+        $sedeEgresos = 0;
+        $sedeTransferMan = 0;
+        $sedeTransferAuto = 0;
+        $sedeTransferGen = 0;
+        $sedeFisico = 0;
         
-        $claseSede = "bg-ok";
-        $leyendaSede = "CUADRADO";
-        if($rSede['neto'] > 0) { $claseSede = "bg-sobra"; $leyendaSede = "SOBRA"; }
-        if($rSede['neto'] < 0) { $claseSede = "bg-falta"; $leyendaSede = "FALTA"; }
+        $datosCajerosSede = [];
+        foreach($cajerosSede as $nitCajeroItem) {
+            $datos = obtenerDatosCajero($nitCajeroItem, $mysqliActiva, $fecha, $fecha_input, $nitEmpresaFiltro);
+            $datosCajerosSede[] = $datos;
+
+            $sedeVentas         += $datos['totalVentas'];
+            $sedeEgresos        += $datos['totalEgresos'];
+            $sedeTransferMan    += $datos['totalTransfer'];
+            $sedeTransferAuto   += $datos['totalTransferAuto'];
+            $sedeTransferGen    += $datos['totalTransferGeneral'];
+            $sedeFisico         += $datos['efectivo_neto_final'];
+        }
+
+        // Sumar al Gran Total
+        $granTotalVentas      += $sedeVentas;
+        $granTotalEgresos     += $sedeEgresos;
+        $granTotalTransferMan += $sedeTransferMan;
+        $granTotalTransferAuto+= $sedeTransferAuto;
+        $granTotalTransferGen += $sedeTransferGen;
+        $granTotalFisico      += $sedeFisico;
     ?>
-    <div class="card" style="border-top: 5px solid <?= ($rSede['nombre'] == 'CENTRAL') ? '#3498db' : '#9b59b6' ?>;">
-        <span class="sede-label">INDICADORES</span>
-        <h4 class="cajero-name"><?= $rSede['nombre'] ?></h4>
-        <div class="row-item"><span>Ventas:</span> <b>$<?= money($rSede['ventas']) ?></b></div>
-        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($rSede['egresos']) ?></b></div>
-        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($rSede['efectivo']) ?></b></div>
-        <div class="row-item"><span>Transf (Informativo):</span> <b style="color:blue;">$<?= money($rSede['transf']) ?></b></div>
-        
-        <div class="total-box <?= $claseSede ?>" style="margin-top: 15px;">
-            <span><?= $leyendaSede ?> SEDE:</span> 
-            <span>$<?= money(abs($rSede['neto'])) ?></span>
+        <div class="sede-section-title">
+            <span>🏢 SEDE: <?= $nombreSedeDisplay ?></span>
+            <span style="font-size: 13px; font-weight: normal;">Cajeros activos: <?= count($cajerosSede) ?></span>
         </div>
-    </div>
-    <?php endforeach; ?>
 
-    <div class="card" style="border-top: 5px solid #2c3e50; background: #f8f9fa;">
-        <span class="sede-label">GLOBAL</span>
-        <h4 class="cajero-name">TOTAL CONSOLIDADO</h4>
-        <div class="row-item"><span>Ventas:</span> <b>$<?= money($sumVentas) ?></b></div>
-        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($sumEgresos) ?></b></div>
-        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($sumEfectivo) ?></b></div>
-        <div class="row-item"><span>Transf (Informativo):</span> <b style="color:blue;">$<?= money($sumTransf) ?></b></div>
-        
-        <?php 
-            $claseGlobal = "bg-ok";
-            $leyendaGlobal = "CUADRADO";
-            if($sumNeto > 0) { $claseGlobal = "bg-sobra"; $leyendaGlobal = "SOBRA"; }
-            if($sumNeto < 0) { $claseGlobal = "bg-falta"; $leyendaGlobal = "FALTA"; }
-        ?>
-        <div class="total-box <?= $claseGlobal ?>" style="margin-top: 15px; background: #2c3e50; color: white;">
-            <span><?= $leyendaGlobal ?> GLOBAL:</span> 
-            <span>$<?= money(abs($sumNeto)) ?></span>
-        </div>
-    </div>
-</div>
-
-<h3 style="color: var(--primary); font-size: 1.1rem; margin-bottom: 15px; border-left: 5px solid var(--primary); padding-left: 10px;">👤 Detalle por Cajero</h3>
-<div class="universal-grid">
-    <?php foreach($dataConsolidada as $item): 
-        $claseFisico = "bg-ok";
-        if($item['diferencia'] > 0) $claseFisico = "bg-sobra";
-        if($item['diferencia'] < 0) $claseFisico = "bg-falta";
-    ?>
-    <div class="card">
-        <span class="sede-label"><?= $item['sede'] ?></span>
-        <h4 class="cajero-name"><?= htmlspecialchars($item['nombre']) ?></h4>
-        <div class="row-item"><span>Ventas:</span> <b>$<?= money($item['ventas']) ?></b></div>
-        <div class="row-item"><span>Total Egresos:</span> <b style="color:var(--danger);">$<?= money($item['egr']) ?></b></div>
-        <div class="row-item"><span>Efectivo Entregado:</span> <b style="color:var(--info);">$<?= money($item['efectivo']) ?></b></div>
-        <div class="row-item"><span>Transf (Informativo):</span> <b style="color:blue;">$<?= money($item['trf']) ?></b></div>
-        <div class="total-box <?= $claseFisico ?>">
-            <span><?= $item['leyenda'] ?>:</span>
-            <span>$<?= money(abs($item['diferencia'])) ?></span>
-        </div>
-        <div class="status-badge <?= $item['cerrado'] ? 'status-closed' : 'status-open' ?>">
-            <?= $item['cerrado'] ? '🔒 SESIÓN CERRADA' : '🔓 SESIÓN ABIERTA' ?>
-        </div>
-    </div>
-    <?php endforeach; ?>
-</div>
-
-<h3 style="color: var(--danger); border-left: 5px solid var(--danger); padding-left: 15px; margin: 40px 0 20px 0;">💸 Gestión de Egresos</h3>
-<div class="universal-grid">
-    <?php if(count($egresosAgrupados) > 0): foreach($egresosAgrupados as $nit => $egAg): ?>
-    <div class="card card-egreso">
-        <span class="sede-label"><?= $egAg['sede'] ?></span>
-        <h4 class="cajero-name"><?= htmlspecialchars($egAg['nombre']) ?></h4>
-        <div style="flex-grow: 1; overflow-y: auto; max-height: 250px; margin-bottom: 15px; padding-right: 5px;">
-            <?php foreach($egAg['detalles'] as $det): $idE = $det['IDSALIDA']; ?>
-            <div style="margin-bottom: 15px; border-bottom: 1px dashed #eee; padding-bottom: 10px;">
-                <?php if($permiso9999 === 'SI'): ?>
-                    <label style="font-size: 11px; color: #888;">Motivo:</label>
-                    <input type="text" id="motivo_<?= $idE ?>" class="input-edit" value="<?= htmlspecialchars($det['MOTIVO']) ?>">
-                    <label style="font-size: 11px; color: #888;">Valor:</label>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="number" id="valor_<?= $idE ?>" class="input-edit" value="<?= $det['VALOR'] ?>">
-                        <button class="btn-save" style="width: 50px;" onclick="guardarEgreso(<?= $idE ?>, '<?= $egAg['id_sede'] ?>')">💾</button>
-                    </div>
-                <?php else: ?>
-                    <div class="row-item">
-                        <span><?= htmlspecialchars($det['MOTIVO']) ?></span>
-                        <b style="color: var(--danger);">$<?= money($det['VALOR']) ?></b>
-                    </div>
-                <?php endif; ?>
+        <?php if(empty($cajerosSede)): ?>
+            <div class="panel">
+                <p style="text-align:center; color:#777; margin: 10px;">No se encontraron cajeros con actividad o ventas para esta fecha en la sede <?= $nombreSedeDisplay ?>.</p>
             </div>
+        <?php else: ?>
+            <!-- TARJETA DE RESUMEN POR SEDE -->
+            <div class="sede-summary-box">
+                <div class="sede-summary-item">Ventas Brutas: <b>$ <?= money($sedeVentas) ?></b></div>
+                <div class="sede-summary-item">Egresos: <b style="color:c, #d32f2f;">$ <?= money($sedeEgresos) ?></b></div>
+                <div class="sede-summary-item">Transferencias: <b style="color:#0277bd;">$ <?= money($sedeTransferGen) ?></b></div>
+                <div class="sede-summary-item" style="background:#fff; padding:5px 10px; border-radius:4px; border:1px solid #90caf9;">Total Físico Sede: <b style="color:#2e7d32;">$ <?= money($sedeFisico) ?></b></div>
+            </div>
+
+            <?php foreach($datosCajerosSede as $datos): 
+                $ocultarValores = ($permiso0003 !== 'SI' && $permiso9999 !== 'SI' && !$datos['cierreRealizado']);
+            ?>
+                <div class="cajero-panel-container">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #37474f; padding-bottom: 8px; margin-bottom: 12px;">
+                        <h2 style="margin:0; font-size:18px; color:#263238;">👤 <?= htmlspecialchars($datos['nombre']) ?> <span style="font-size:12px; color:#666;">(NIT/Cédula: <?= $datos['nit'] ?>)</span></h2>
+                        <div>
+                            <?php if($datos['cierreRealizado']): ?>
+                                <span style="background:#d32f2f; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold;">🔒 CERRADO</span>
+                            <?php else: ?>
+                                <span style="background:#2e7d32; color:#fff; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold;">🔓 ABIERTO</span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="cajero-inner-grid">
+                        <!-- Columna Izquierda Totales -->
+                        <div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <tr><td>(+) Ventas Brutas:</td><td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($datos['totalVentas']) ?></b></td></tr>
+                                    <tr><td>(-) Egresos:</td><td class="text-end" style="color:red;">$ <?= money($datos['totalEgresos']) ?></td></tr>
+                                    <tr><td>(-) Transferencias Manuales:</td><td class="text-end" style="color:blue;">$ <?= money($datos['totalTransfer']) ?></td></tr>
+                                    <tr><td>(-) Transferencias Automáticas:</td><td class="text-end" style="color:purple;">$ <?= money($datos['totalTransferAuto']) ?></td></tr>
+                                    <tr style="background:#f8f9fa; border-top:1px dashed #ccc;">
+                                        <td><b>ℹ️ Total Transferencias:</b></td>
+                                        <td class="text-end" style="color:#0056b3;"><b>$ <?= money($datos['totalTransferGeneral']) ?></b></td>
+                                    </tr>
+                                    <tr style="font-size:1.2em; border-top:2px solid #333; background:#fff3cd;">
+                                        <td><b>TOTAL FÍSICO:</b></td>
+                                        <td class="text-end"><b><?= $ocultarValores ? '***' : '$ '.money($datos['efectivo_neto_final']) ?></b></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <div class="actions-container no-print">
+                                <button class="button" style="background:#f39c12; padding:6px 12px; font-size:13px;" onclick="mostrarVoucher('precierre', '<?= $datos['nit'] ?>', '<?= htmlspecialchars($datos['nombre'], ENT_QUOTES) ?>', '<?= $datos['totalVentas'] ?>', '<?= $datos['totalEgresos'] ?>', '<?= $datos['totalTransfer'] ?>', '<?= $datos['totalTransferAuto'] ?>', '<?= $datos['totalTransferGeneral'] ?>', '<?= $datos['efectivo_neto_final'] ?>', '<?= $datos['cierreRealizado'] ? '1' : '0' ?>', '<?= $nombreSedeDisplay ?>')">📋 Precierre</button>
+                                <?php if($datos['cierreRealizado']): ?>
+                                    <button class="button" style="background:#2ecc71; padding:6px 12px; font-size:13px;" onclick="mostrarVoucher('cierre', '<?= $datos['nit'] ?>', '<?= htmlspecialchars($datos['nombre'], ENT_QUOTES) ?>', '<?= $datos['totalVentas'] ?>', '<?= $datos['totalEgresos'] ?>', '<?= $datos['totalTransfer'] ?>', '<?= $datos['totalTransferAuto'] ?>', '<?= $datos['totalTransferGeneral'] ?>', '<?= $datos['efectivo_neto_final'] ?>', '1', '<?= $nombreSedeDisplay ?>')">🖨️ Imprimir Cierre</button>
+                                <?php else: ?>
+                                    <button class="button" style="background:#d32f2f; padding:6px 12px; font-size:13px;" onclick="mostrarVoucher('cierre', '<?= $datos['nit'] ?>', '<?= htmlspecialchars($datos['nombre'], ENT_QUOTES) ?>', '<?= $datos['totalVentas'] ?>', '<?= $datos['totalEgresos'] ?>', '<?= $datos['totalTransfer'] ?>', '<?= $datos['totalTransferAuto'] ?>', '<?= $datos['totalTransferGeneral'] ?>', '<?= $datos['efectivo_neto_final'] ?>', '0', '<?= $nombreSedeDisplay ?>')">🔒 Cierre Definitivo</button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <!-- Columna Derecha Egresos Individuales -->
+                        <div>
+                            <h4 style="margin:0 0 5px 0; font-size:14px;">💸 Egresos de este Cajero</h4>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead><tr style="background:#f1f1f1;"><th>ID</th><th>Motivo</th><th class="text-end">Valor</th><th>Acción</th></tr></thead>
+                                    <tbody>
+                                        <?php if(empty($datos['listaEgresos'])): ?>
+                                            <tr><td colspan="4" style="text-align:center; color:#777;">Sin egresos registrados.</td></tr>
+                                        <?php else: foreach($datos['listaEgresos'] as $eg): $idE = $eg['IDSALIDA']; ?>
+                                        <tr>
+                                            <td><?= $idE ?></td>
+                                            <td><?= ($permiso9999 === 'SI') ? "<input type='text' id='motivo_$idE' class='input-edit' value='".htmlspecialchars($eg['MOTIVO'])."'>" : $eg['MOTIVO'] ?></td>
+                                            <td class="text-end"><?= ($permiso9999 === 'SI') ? "<input type='number' id='valor_$idE' class='input-edit text-end' value='{$eg['VALOR']}'>" : "$".money($eg['VALOR']) ?></td>
+                                            <td style="text-align:center;"><?= ($permiso9999 === 'SI') ? "<button class='btn-save' onclick='guardarEgreso($idE, \"$sedeKey\")'>💾</button>" : "-" ?></td>
+                                        </tr>
+                                        <?php endforeach; endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             <?php endforeach; ?>
-        </div>
-        <div class="total-box bg-ok" style="background: #f8f9fa; border: 1px solid #eee; color: var(--danger);">
-            <span>TOTAL EGRESOS:</span>
-            <span>$<?= money($egAg['total']) ?></span>
+        <?php endif; ?>
+    <?php endforeach; ?>
+
+    <!-- TARJETA DE GRAN TOTAL GENERAL CONSOLIDADO -->
+    <div class="grand-total-box">
+        <h3 style="margin:0 0 15px 0; text-align:center; color:#f57f17; font-size:20px;">🌟 GRAN TOTAL GENERAL (AMBAS SEDES CONSOLIDADAS)</h3>
+        <div class="grand-total-grid">
+            <div class="grand-total-metric">
+                <span>Ventas Brutas Totales</span>
+                <strong>$ <?= money($granTotalVentas) ?></strong>
+            </div>
+            <div class="grand-total-metric">
+                <span>Egresos Totales</span>
+                <strong style="color:#d32f2f;">$ <?= money($granTotalEgresos) ?></strong>
+            </div>
+            <div class="grand-total-metric">
+                <span>Transferencias Manuales</span>
+                <strong style="color:#1565c0;">$ <?= money($granTotalTransferMan) ?></strong>
+            </div>
+            <div class="grand-total-metric">
+                <span>Transferencias Automáticas</span>
+                <strong style="color:#7b1fa2;">$ <?= money($granTotalTransferAuto) ?></strong>
+            </div>
+            <div class="grand-total-metric" style="background:#e3f2fd;">
+                <span>Total General Transferencias</span>
+                <strong style="color:#0d47a1;">$ <?= money($granTotalTransferGen) ?></strong>
+            </div>
+            <div class="grand-total-metric" style="background:#e8f5e9; border-color:#66bb6a;">
+                <span>GRAN TOTAL FÍSICO NETO</span>
+                <strong style="color:#2e7d32; font-size:18px;">$ <?= money($granTotalFisico) ?></strong>
+            </div>
         </div>
     </div>
-    <?php endforeach; endif; ?>
 </div>
 
-<div class="footer-summary">
-    <div class="footer-item"><span>VENTAS TOTALES</span><b>$<?= money($globalVentas) ?></b></div>
-    <div class="footer-item"><span>EGRESOS TOTALES</span><b>$<?= money($globalEgresos) ?></b></div>
-    <div class="footer-item"><span style="color: #00d4ff;">EFECTIVO ENTREGADO</span><b style="color: #00d4ff;">$<?= money($globalEfectivoEntregado) ?></b></div>
-    <div class="footer-item"><span>TRANSF TOTALES</span><b>$<?= money($globalTransf) ?></b></div>
-    <div class="footer-item neto-destaque"><span>NETO TOTAL</span><b>$<?= money($globalFisico) ?></b></div>
+<div id="modalVoucher" class="modal">
+    <div class="modal-content" id="printArea"></div>
 </div>
 
 <script>
-    function guardarEgreso(id, sede){
+    function moneyJs(num) {
+        return Number(num).toLocaleString('es-CO');
+    }
+
+    function mostrarVoucher(tipo, nitCajero, nombreCajero, vVentas, vEgresos, vTransM, vTransA, vTransG, vNeto, cierreHechoStr, nombreSede) {
+        const p9999 = '<?= $permiso9999 ?>';
+        const p7777 = '<?= $permiso7777 ?>';
+        const p0003 = '<?= $permiso0003 ?>';
+        const cierreYaHecho = (cierreHechoStr === '1');
+
+        if(tipo === 'cierre' && !cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
+            alert('ACCESO DENEGADO: Requiere permiso de supervisor para realizar el cierre.'); 
+            return;
+        }
+
+        const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
+        const horaImpresion = '<?= date("h:i a") ?>';
+        const estadoSesion = cierreYaHecho ? "SESIÓN CERRADA" : "SESIÓN ABIERTA";
+        
+        const displayVentas = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$' + moneyJs(vVentas) : '***';
+        const displayTotal = (cierreYaHecho || p9999 === 'SI' || p0003 === 'SI') ? '$' + moneyJs(vNeto) : '***';
+
+        let html = `
+            <div class="ticket-header" style="text-align:center;">
+                <h2 style="margin:0;"><b>${titulo}</b></h2>
+                <p style="margin:0;"><b>SEDE: ${nombreSede}</b></p>
+                <p style="margin:0;">FECHA: <?= $fecha_input ?> | ${horaImpresion}</p>
+                <p style="margin:0;">CAJERO: ${nombreCajero.substring(0, 25)}</p>
+                <p style="margin:0;"><b>ESTADO: ${estadoSesion}</b></p>
+                <hr style="border: 1px solid #000;">
+            </div>
+            <table class="ticket-table" style="width:100%;">
+                <tr><td>VENTAS BRUTAS:</td><td style="text-align:right;"><b>${displayVentas}</b></td></tr>
+                <tr><td>(-) EGRESOS:</td><td style="text-align:right;"><b>$${moneyJs(vEgresos)}</b></td></tr>
+                <tr><td>(-) TRANSFER. MANUAL:</td><td style="text-align:right;"><b>$${moneyJs(vTransM)}</b></td></tr>
+                <tr><td>(-) TRANS. AUTO:</td><td style="text-align:right;"><b>$${moneyJs(vTransA)}</b></td></tr>
+                <tr><td><b>TOT. TRANSFER.:</b></td><td style="text-align:right;"><b>$${moneyJs(vTransG)}</b></td></tr>
+                <tr><td colspan="2"><hr style="border: 1px solid #000;"></td></tr>
+                <tr style="font-size:15px;">
+                    <td><b>TOTAL FÍSICO:</b></td>
+                    <td style="text-align:right;"><b>${displayTotal}</b></td>
+                </tr>
+            </table>
+            <div style="margin-top:40px; display:flex; justify-content:space-between; font-size:11px;">
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>FIRMA CAJERO</b></div>
+                <div style="border-top:2px solid #000; width:45%; text-align:center; padding-top:4px;"><b>SUPERVISOR</b></div>
+            </div>
+            <div class="no-print" style="margin-top:20px;">
+                <button class="button" style="background:#2ecc71; width:100%; font-size:18px;" onclick="window.print()">🖨 IMPRIMIR</button>
+                <button class="button" style="background:#7f8c8d; width:100%; margin-top:10px;" onclick="document.getElementById('modalVoucher').style.display='none'">Cerrar</button>
+            </div>
+        `;
+        document.getElementById('printArea').innerHTML = html;
+        document.getElementById('modalVoucher').style.display = 'block';
+    }
+
+    function guardarEgreso(id, sedeKey){
         const mot = document.getElementById('motivo_'+id).value;
         const val = document.getElementById('valor_'+id).value;
-        if(!confirm('¿Actualizar este egreso?')) return;
+        if(!confirm('¿Desea actualizar este egreso?')) return;
         fetch('update_egreso.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=${sede}`
+            body: `id=${id}&motivo=${encodeURIComponent(mot)}&valor=${encodeURIComponent(val)}&sede=${sedeKey}`
         }).then(r => r.text()).then(t => { alert(t); location.reload(); });
     }
-
-    (function() {
-        let timeLeft = 180; 
-        const timerElement = document.getElementById('timer');
-        const countdown = setInterval(() => {
-            if (timeLeft <= 0) {
-                clearInterval(countdown);
-                window.location.reload(true);
-            } else {
-                timeLeft--;
-                let m = Math.floor(timeLeft / 60);
-                let s = timeLeft % 60;
-                timerElement.innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
-            }
-        }, 1000);
-    })();
 </script>
 </body>
 </html>
