@@ -107,7 +107,6 @@ if (isset($mysqli) && !$mysqli->connect_error) {
   <div class="card">
     <div class="user-badge-screen no-print">
       👤 Conteo Billetes<br>Responsable: <?= htmlspecialchars($nombreUsuario) ?><br>
-      
     </div>
 
     <div class="user-info-print solo-impresion">
@@ -133,7 +132,8 @@ if (isset($mysqli) && !$mysqli->connect_error) {
     </table>
 
     <div class="solo-impresion">
-      <div style="text-align: center; margin-bottom: 5px;">Fecha: <?= $fechaActual; ?></div>
+      <!-- Se agregó un ID para actualizar la fecha/hora mediante JavaScript -->
+      <div style="text-align: center; margin-bottom: 5px;">Fecha: <span id="fechaImpresion"><?= $fechaActual; ?></span></div>
       <div class="firma-linea"></div>
       <div style="text-align: center; font-weight: bold; font-size: 9pt;">FIRMA RESPONSABLE</div>
       <div style="text-align: center; font-size: 8pt; text-transform: uppercase; margin-top: 2px;">(<?= htmlspecialchars($nombreUsuario) ?>)</div>
@@ -142,7 +142,7 @@ if (isset($mysqli) && !$mysqli->connect_error) {
 
   <div class="buttons no-print">
     <button class="btn-clear" onclick="limpiar()">Limpiar</button>
-    <button onclick="window.print()">Imprimir Ticket</button>
+    <button onclick="imprimirTicket()">Imprimir Ticket</button>
   </div>
 
   <script>
@@ -192,6 +192,26 @@ if (isset($mysqli) && !$mysqli->connect_error) {
         document.getElementById("total").value = 0;
         document.getElementById("cant_0").focus();
       }
+    }
+
+    // Nueva función para actualizar la fecha/hora actual y proceder a imprimir
+    function imprimirTicket() {
+      const ahora = new Date();
+      
+      // Formatear la fecha a YYYY-MM-DD HH:MM (ajustado a la hora local del dispositivo)
+      const año = ahora.getFullYear();
+      const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+      const dia = String(ahora.getDate()).padStart(2, '0');
+      const horas = String(ahora.getHours()).padStart(2, '0');
+      const minutos = String(ahora.getMinutes()).padStart(2, '0');
+      
+      const fechaFormateada = `${año}-${mes}-${dia} ${horas}:${minutos}`;
+      
+      // Actualizar el span en la vista de impresión
+      document.getElementById("fechaImpresion").innerText = fechaFormateada;
+      
+      // Lanzar la impresión
+      window.print();
     }
   </script>
 </body>

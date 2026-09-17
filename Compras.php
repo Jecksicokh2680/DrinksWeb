@@ -405,6 +405,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         return $out;
     }
 
+    
     $pvC = ($SucursalGet != 'DRINKS') ? precioProm($mysqliCentral) : [];
     $pvD = ($SucursalGet != 'CENTRAL') ? precioProm($mysqliDrinks) : [];
 
