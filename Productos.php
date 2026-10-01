@@ -5,103 +5,119 @@ require_once("Conexion.php");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
-    $bc   = $_POST['barcode'] ?? '';
-    $sede = $_POST['sede'] ?? 'Central';
-    $db   = ($sede === 'Central') ? $mysqliCentral : $mysqliDrinks;
+    $bc   =$_POST['barcode'] ?? '';
+    $sede =$_POST['sede'] ?? 'Central';
+    $db   = ($sede === 'Central') ? $mysqliCentral :$mysqliDrinks;
 
     $response = ['success' => false];
 
     switch ($_POST['action']) {
         case 'update_stock':
-            $nueva_cant = floatval($_POST['cantidad']);
-            $db->begin_transaction();
+            $nueva_cant = floatval($_POST['cantidad']);$db->begin_transaction();
             try {
-                $stmt = $db->prepare("SELECT idproducto FROM productos WHERE barcode = ? LIMIT 1");
-                $stmt->bind_param("s", $bc);
-                $stmt->execute();
-                $res = $stmt->get_result();
+                $stmt =$db->prepare("SELECT idproducto FROM productos WHERE barcode = ? LIMIT 1");
+                $stmt->bind_param("s", $bc);$stmt->execute();
+                $res =$stmt->get_result();
                 
-                if ($r = $res->fetch_assoc()) {
-                    $idp = $r['idproducto'];
-                    $stmt_up = $db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
-                    $stmt_up->bind_param("di", $nueva_cant, $idp);
-                    $stmt_up->execute();
+                if ($r =$res->fetch_assoc()) {
+                    $idp =$r['idproducto'];
+                    $stmt_up =$db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
+                    $stmt_up->bind_param("di", $nueva_cant, $idp);$stmt_up->execute();
                     
-                    $db->commit();
-                    $response['success'] = true;
+                    $db->commit();$response['success'] = true;
                 } else {
                     $db->rollback();
                 }
-            } catch (Exception $e) {
-                $db->rollback();
+            } catch (Exception $e) {$db->rollback();
             }
             break;
 
         case 'toggle_status':
             $nuevo_estado = intval($_POST['estado']);
-            $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
-            $stmt->bind_param("is", $nuevo_estado, $bc);
-            $response['success'] = $stmt->execute();
+            $stmt =$db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
+            $stmt->bind_param("is", $nuevo_estado,$bc);
+            $response['success'] =$stmt->execute();
             break;
 
         case 'update_name':
             $nombre = trim($_POST['nombre']);
-            $stmtC = $mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-            $stmtC->bind_param("ss", $nombre, $bc);
-            $res1 = $stmtC->execute();
+            $stmtC =$mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtC->bind_param("ss", $nombre,$bc);
+            $res1 =$stmtC->execute();
 
-            $stmtD = $mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-            $stmtD->bind_param("ss", $nombre, $bc);
-            $res2 = $stmtD->execute();
+            $stmtD =$mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtD->bind_param("ss", $nombre,$bc);
+            $res2 =$stmtD->execute();
 
-            $response['success'] = ($res1 && $res2);
+            $response['success'] = ($res1 &&$res2);
             break;
 
         case 'update_price':
             $nuevo_precio = floatval($_POST['precio']);
-            
-            $mysqliCentral->begin_transaction();
-            $mysqliDrinks->begin_transaction();
+            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
             try {
-                $stmt1 = $mysqliCentral->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
-                $stmt1->bind_param("ds", $nuevo_precio, $bc);
-                $stmt1->execute();
+                $stmt1 =$mysqliCentral->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio, $bc);$stmt1->execute();
 
-                $stmt2 = $mysqliDrinks->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
-                $stmt2->bind_param("ds", $nuevo_precio, $bc);
-                $stmt2->execute();
+                $stmt2 =$mysqliDrinks->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio, $bc);$stmt2->execute();
 
                 $mysqliCentral->commit();
-                $mysqliDrinks->commit();
-                $response['success'] = true;
+                $mysqliDrinks->commit();$response['success'] = true;
             } catch (Exception $e) {
-                $mysqliCentral->rollback();
-                $mysqliDrinks->rollback();
+                $mysqliCentral->rollback();$mysqliDrinks->rollback();
+            }
+            break;
+
+        case 'update_special_price_1':
+            $nuevo_precio_esp1 = floatval($_POST['precio']);
+            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
+            try {
+                $stmt1 =$mysqliCentral->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio_esp1, $bc);$stmt1->execute();
+
+                $stmt2 =$mysqliDrinks->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio_esp1, $bc);$stmt2->execute();
+
+                $mysqliCentral->commit();
+                $mysqliDrinks->commit();$response['success'] = true;
+            } catch (Exception $e) {
+                $mysqliCentral->rollback();$mysqliDrinks->rollback();
+            }
+            break;
+
+        case 'update_special_price_2':
+            $nuevo_precio_esp2 = floatval($_POST['precio']);
+            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
+            try {
+                $stmt1 =$mysqliCentral->prepare("UPDATE productos SET precioespecial2 = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio_esp2, $bc);$stmt1->execute();
+
+                $stmt2 =$mysqliDrinks->prepare("UPDATE productos SET precioespecial2 = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio_esp2, $bc);$stmt2->execute();
+
+                $mysqliCentral->commit();
+                $mysqliDrinks->commit();$response['success'] = true;
+            } catch (Exception $e) {
+                $mysqliCentral->rollback();$mysqliDrinks->rollback();
             }
             break;
 
         case 'zero_stock_retired':
-            $mysqliCentral->begin_transaction();
-            $mysqliDrinks->begin_transaction();
+            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
             try {
-                $resC = $mysqliCentral->query("SELECT idproducto FROM productos WHERE estado = 0");
-                while ($row = $resC->fetch_assoc()) {
-                    $idp = intval($row['idproducto']);
-                    $mysqliCentral->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
+                $resC =$mysqliCentral->query("SELECT idproducto FROM productos WHERE estado = 0");
+                while ($row = $resC->fetch_assoc()) {$idp = intval($row['idproducto']);$mysqliCentral->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
                 }
 
-                $resD = $mysqliDrinks->query("SELECT idproducto FROM productos WHERE estado = 0");
-                while ($row = $resD->fetch_assoc()) {
-                    $idp = intval($row['idproducto']);
-                    $mysqliDrinks->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
+                $resD =$mysqliDrinks->query("SELECT idproducto FROM productos WHERE estado = 0");
+                while ($row = $resD->fetch_assoc()) {$idp = intval($row['idproducto']);$mysqliDrinks->query("UPDATE inventario SET cantidad = 0 WHERE idproducto = $idp");
                 }
 
                 $mysqliCentral->commit();
-                $mysqliDrinks->commit();
-                $response['success'] = true;
+                $mysqliDrinks->commit();$response['success'] = true;
             } catch (Exception $e) {
-                $mysqliCentral->rollback();
-                $mysqliDrinks->rollback();
+                $mysqliCentral->rollback();$mysqliDrinks->rollback();
             }
             break;
     }
@@ -111,40 +127,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 /* --- LOGICA PRECIO PROMEDIO DE COMPRA (Últimas 3 compras) --- */
-function precioPromCompra($mysqli){
-    $sql = "SELECT P.Barcode, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni, C.idcompra, C.FECHA
+function precioPromCompra($mysqli){$sql = "SELECT P.Barcode, D.CANTIDAD, D.VALOR, D.descuento, D.porciva, D.ValICUIUni, C.idcompra, C.FECHA
             FROM compras C
             JOIN DETCOMPRAS D ON D.idcompra = C.idcompra
             JOIN PRODUCTOS P ON P.IDPRODUCTO = D.IDPRODUCTO
             WHERE C.ESTADO = '0'
             ORDER BY P.Barcode, C.FECHA DESC, C.idcompra DESC";
-    $r = $mysqli->query($sql);
-    $comprasPorProd = [];
-    while($r && $row = $r->fetch_assoc()){
-        $bc = $row['Barcode'];
+    $r =$mysqli->query($sql);$comprasPorProd = [];
+    while($r && $row =$r->fetch_assoc()){
+        $bc =$row['Barcode'];
         if(!isset($comprasPorProd[$bc])) {
             $comprasPorProd[$bc] = [];
         }
-        if(!isset($comprasPorProd[$bc][$row['idcompra']]) && count($comprasPorProd[$bc]) < 3){
-            $comprasPorProd[$bc][$row['idcompra']] = [];
+        if(!isset($comprasPorProd[$bc][$row['idcompra']]) && count($comprasPorProd[$bc]) < 3){$comprasPorProd[$bc][$row['idcompra']] = [];
         }
         if(isset($comprasPorProd[$bc][$row['idcompra']])){
-            $comprasPorProd[$bc][$row['idcompra']][] = $row;
+            $comprasPorProd[$bc][$row['idcompra']][] =$row;
         }
     }
 
     $out = [];
-    foreach($comprasPorProd as $bc => $compras){
-        $acumuladoCostoPonderado = 0;
+    foreach($comprasPorProd as$bc => $compras){$acumuladoCostoPonderado = 0;
         $cantidadTotal = 0;
-        foreach($compras as $idcompra => $items){
-            foreach($items as $row){
+        foreach($compras as $idcompra =>$items){
+            foreach($items as$row){
                 $cant = (double)$row['CANTIDAD'];
                 if ($cant <= 0) continue;
-                $net = ($row['VALOR'] - ($row['descuento'] / $cant));
-                $costoBruto = $net + ($net * (double)$row['porciva'] / 100) + (double)$row['ValICUIUni'];
-                $acumuladoCostoPonderado += ($costoBruto * $cant);
-                $cantidadTotal += $cant;
+                $net = ($row['VALOR'] - ($row['descuento'] /$cant));
+                $costoBruto =$net + ($net * (double)$row['porciva'] / 100) + (double)$row['ValICUIUni'];$acumuladoCostoPonderado += ($costoBruto * $cant);
+                $cantidadTotal +=$cant;
             }
         }
         $out[$bc] = ($cantidadTotal > 0) ? ($acumuladoCostoPonderado / $cantidadTotal) : 0;
@@ -152,29 +163,40 @@ function precioPromCompra($mysqli){
     return $out;
 }
 
-$pcC = isset($mysqliCentral) ? precioPromCompra($mysqliCentral) : [];
-$pcD = isset($mysqliDrinks) ? precioPromCompra($mysqliDrinks) : [];
+$pcC = isset($mysqliCentral) ? precioPromCompra($mysqliCentral) : [];$pcD = isset($mysqliDrinks) ? precioPromCompra($mysqliDrinks) : [];
 
-$term = $_GET['term'] ?? '';
+$term =$_GET['term'] ?? '';
 $like = "%$term%";
 
-$sql = "SELECT p.barcode, p.descripcion, p.estado, p.precioventa, IFNULL(SUM(i.cantidad),0) cantidad 
-        FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
-        WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
+$central = [];$drinks = [];
 
-$stmtC = $mysqliCentral->prepare($sql);
-$stmtC->bind_param("ss", $like, $like);
-$stmtC->execute();
-$central = [];
-$resC = $stmtC->get_result();
-while ($r = $resC->fetch_assoc()) { $central[$r['barcode']] = $r; }
+// Consulta segura para Central
+$sqlC = "SELECT p.barcode, p.descripcion, p.estado, p.precioventa, 
+         IFNULL(p.precioespecial1, 0) AS precioespecial1, 
+         IFNULL(p.precioespecial2, 0) AS precioespecial2, 
+         IFNULL(SUM(i.cantidad),0) cantidad 
+         FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
+         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
 
-$stmtD = $mysqliDrinks->prepare($sql);
-$stmtD->bind_param("ss", $like, $like);
-$stmtD->execute();
-$drinks = [];
-$resD = $stmtD->get_result();
-while ($r = $resD->fetch_assoc()) { $drinks[$r['barcode']] = $r; }
+if ($stmtC = $mysqliCentral->prepare($sqlC)) {
+    $stmtC->bind_param("ss", $like, $like);$stmtC->execute();
+    $resC =$stmtC->get_result();
+    while ($r = $resC->fetch_assoc()) {$central[$r['barcode']] =$r; }
+}
+
+// Consulta segura para Drinks
+$sqlD = "SELECT p.barcode, p.descripcion, p.estado, p.precioventa, 
+         IFNULL(p.precioespecial1, 0) AS precioespecial1, 
+         IFNULL(p.precioespecial2, 0) AS precioespecial2, 
+         IFNULL(SUM(i.cantidad),0) cantidad 
+         FROM productos p LEFT JOIN inventario i ON p.idproducto = i.idproducto 
+         WHERE p.barcode LIKE ? OR p.descripcion LIKE ? GROUP BY p.barcode";
+
+if ($stmtD = $mysqliDrinks->prepare($sqlD)) {
+    $stmtD->bind_param("ss", $like, $like);$stmtD->execute();
+    $resD =$stmtD->get_result();
+    while ($r = $resD->fetch_assoc()) {$drinks[$r['barcode']] =$r; }
+}
 
 $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
 ?>
@@ -198,6 +220,10 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         .stock-input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 5px rgba(37, 99, 235, 0.4); }
         .price-input { width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; color: #166534; background: #f0fdf4; }
         .price-input:focus { background: #fff; border-color: #22c55e; outline: none; box-shadow: 0 0 5px rgba(34, 197, 94, 0.4); }
+        .special-price-1-input { width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; color: #1e40af; background: #eff6ff; }
+        .special-price-1-input:focus { background: #fff; border-color: #3b82f6; outline: none; box-shadow: 0 0 5px rgba(59, 130, 246, 0.4); }
+        .special-price-2-input { width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; text-align: center; font-weight: bold; color: #5b21b6; background: #f5f3ff; }
+        .special-price-2-input:focus { background: #fff; border-color: #8b5cf6; outline: none; box-shadow: 0 0 5px rgba(139, 92, 246, 0.4); }
         .compra-val { font-weight: bold; color: #b45309; background: #fef3c7; padding: 5px 10px; border-radius: 4px; display: inline-block; font-size: 13px; }
         .variacion-val { font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; font-size: 13px; }
         .var-pos { color: #166534; background: #dcfce7; }
@@ -249,28 +275,38 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                 <th style="text-align:left">Producto / Sede</th>
                 <th>Estado</th>
                 <th>Precio Venta</th>
+                <th>Precio Especial 1</th>
+                <th>Precio Especial 2</th>
                 <th>Precio Prom. Compra (Últ. 3)</th>
-                <th>% Variación (Compra vs Venta)</th>
+                <th>% Var. (Venta)</th>
+                <th>% Var. (Esp. 1)</th>
+                <th>% Var. (Esp. 2)</th>
                 <th>Stock</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($barcodes as $b): 
-                $d = $drinks[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0];
-                $c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0];
-                $desc = ($c['descripcion'] !== '---') ? $c['descripcion'] : $d['descripcion'];
-                $pv = ($c['precioventa'] != 0) ? $c['precioventa'] : $d['precioventa'];
+            <?php foreach ($barcodes as$b): 
+                $d =$drinks[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0, 'precioespecial1'=>0, 'precioespecial2'=>0];$c = $central[$b] ?? ['cantidad'=>0, 'estado'=>0, 'descripcion'=>'---', 'precioventa'=>0, 'precioespecial1'=>0, 'precioespecial2'=>0];
+                $desc = ($c['descripcion'] !== '---') ? $c['descripcion'] :$d['descripcion'];
+                $pv = ($c['precioventa'] != 0) ? $c['precioventa'] :$d['precioventa'];
+                $pe1 = ($c['precioespecial1'] != 0) ? $c['precioespecial1'] :$d['precioespecial1'];
+                $pe2 = ($c['precioespecial2'] != 0) ? $c['precioespecial2'] :$d['precioespecial2'];
                 
                 // Promedios de compra por sede (últimas 3 compras)
                 $compraDrinks = $pcD[$b] ?? 0;
                 $compraCentral = $pcC[$b] ?? 0;
 
-                // Cálculo de % de variación: ((Precio Venta - Costo Compra) / Costo Compra) * 100
-                $varDrinks = ($compraDrinks > 0) ? (($pv - $compraDrinks) / $compraDrinks) * 100 : 0;
-                $varCentral = ($compraCentral > 0) ? (($pv - $compraCentral) / $compraCentral) * 100 : 0;
+                // Cálculos de % de variación por sede
+                $varVentaDrinks = ($compraDrinks > 0) ? (($pv - $compraDrinks) /$compraDrinks) * 100 : 0;
+                $varEsp1Drinks  = ($compraDrinks > 0) ? (($pe1 - $compraDrinks) /$compraDrinks) * 100 : 0;
+                $varEsp2Drinks  = ($compraDrinks > 0) ? (($pe2 - $compraDrinks) /$compraDrinks) * 100 : 0;
+
+                $varVentaCentral = ($compraCentral > 0) ? (($pv - $compraCentral) /$compraCentral) * 100 : 0;
+                $varEsp1Central  = ($compraCentral > 0) ? (($pe1 - $compraCentral) /$compraCentral) * 100 : 0;
+                $varEsp2Central  = ($compraCentral > 0) ? (($pe2 - $compraCentral) /$compraCentral) * 100 : 0;
             ?>
             <tr class="product-header" data-barcode="<?= $b ?>">
-                <td colspan="6" style="text-align:left;">
+                <td colspan="10" style="text-align:left;">
                     <span style="color:#666; font-size: 12px; margin-right: 10px;">[<?= $b ?>]</span>
                     <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
@@ -287,11 +323,27 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                     <input type="number" step="any" class="price-input" id="price-drinks-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
                 </td>
                 <td>
+                    <input type="number" step="any" class="special-price-1-input" id="esp1-drinks-<?= $b ?>" value="<?= $pe1 ?>" oninput="syncSpecialPrices1('<?= $b ?>', this.value)" onblur="updateSpecialPrice1('<?= $b ?>', this.value)" title="Modificar precio especial 1">
+                </td>
+                <td>
+                    <input type="number" step="any" class="special-price-2-input" id="esp2-drinks-<?= $b ?>" value="<?= $pe2 ?>" oninput="syncSpecialPrices2('<?= $b ?>', this.value)" onblur="updateSpecialPrice2('<?= $b ?>', this.value)" title="Modificar precio especial 2">
+                </td>
+                <td>
                     <span class="compra-val">$<?= number_format($compraDrinks, 0, ',', '.') ?></span>
                 </td>
                 <td>
-                    <span class="variacion-val <?= ($varDrinks >= 0) ? 'var-pos' : 'var-neg' ?>">
-                        <?= ($varDrinks > 0 ? '+' : '') . number_format($varDrinks, 2, ',', '.') ?>%
+                    <span class="variacion-val <?= ($varVentaDrinks >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varVentaDrinks > 0 ? '+' : '') . number_format($varVentaDrinks, 2, ',', '.') ?>%
+                    </span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varEsp1Drinks >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varEsp1Drinks > 0 ? '+' : '') . number_format($varEsp1Drinks, 2, ',', '.') ?>%
+                    </span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varEsp2Drinks >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varEsp2Drinks > 0 ? '+' : '') . number_format($varEsp2Drinks, 2, ',', '.') ?>%
                     </span>
                 </td>
                 <td>
@@ -310,11 +362,27 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                     <input type="number" step="any" class="price-input" id="price-central-<?= $b ?>" value="<?= $pv ?>" oninput="syncPrices('<?= $b ?>', this.value)" onblur="updatePrice('<?= $b ?>', this.value)" title="Modificar precio de venta de forma dinámica">
                 </td>
                 <td>
+                    <input type="number" step="any" class="special-price-1-input" id="esp1-central-<?= $b ?>" value="<?= $pe1 ?>" oninput="syncSpecialPrices1('<?= $b ?>', this.value)" onblur="updateSpecialPrice1('<?= $b ?>', this.value)" title="Modificar precio especial 1">
+                </td>
+                <td>
+                    <input type="number" step="any" class="special-price-2-input" id="esp2-central-<?= $b ?>" value="<?= $pe2 ?>" oninput="syncSpecialPrices2('<?= $b ?>', this.value)" onblur="updateSpecialPrice2('<?= $b ?>', this.value)" title="Modificar precio especial 2">
+                </td>
+                <td>
                     <span class="compra-val">$<?= number_format($compraCentral, 0, ',', '.') ?></span>
                 </td>
                 <td>
-                    <span class="variacion-val <?= ($varCentral >= 0) ? 'var-pos' : 'var-neg' ?>">
-                        <?= ($varCentral > 0 ? '+' : '') . number_format($varCentral, 2, ',', '.') ?>%
+                    <span class="variacion-val <?= ($varVentaCentral >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varVentaCentral > 0 ? '+' : '') . number_format($varVentaCentral, 2, ',', '.') ?>%
+                    </span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varEsp1Central >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varEsp1Central > 0 ? '+' : '') . number_format($varEsp1Central, 2, ',', '.') ?>%
+                    </span>
+                </td>
+                <td>
+                    <span class="variacion-val <?= ($varEsp2Central >= 0) ? 'var-pos' : 'var-neg' ?>">
+                        <?= ($varEsp2Central > 0 ? '+' : '') . number_format($varEsp2Central, 2, ',', '.') ?>%
                     </span>
                 </td>
                 <td>
@@ -325,7 +393,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         </tbody>
         <tfoot>
             <tr class="total-row">
-                <td colspan="5" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
+                <td colspan="9" style="text-align: right; padding-right: 15px;">TOTAL STOCK VISIBLE:</td>
                 <td id="total-stock" style="text-align: center; font-size: 15px; color: #1a2a6c;">0</td>
             </tr>
         </tfoot>
@@ -423,6 +491,42 @@ function updatePrice(b, v) {
     });
 }
 
+function syncSpecialPrices1(b, v) {
+    const pDrinks = document.getElementById(`esp1-drinks-${b}`);
+    const pCentral = document.getElementById(`esp1-central-${b}`);
+    if (pDrinks) pDrinks.value = v;
+    if (pCentral) pCentral.value = v;
+}
+
+function updateSpecialPrice1(b, v) { 
+    fetch('', {
+        method: 'POST', 
+        body: new URLSearchParams({action: 'update_special_price_1', barcode: b, precio: v})
+    }).then(response => response.json()).then(data => {
+        if (!data.success) {
+            alert('Error al actualizar el precio especial 1 en el servidor.');
+        }
+    });
+}
+
+function syncSpecialPrices2(b, v) {
+    const pDrinks = document.getElementById(`esp2-drinks-${b}`);
+    const pCentral = document.getElementById(`esp2-central-${b}`);
+    if (pDrinks) pDrinks.value = v;
+    if (pCentral) pCentral.value = v;
+}
+
+function updateSpecialPrice2(b, v) { 
+    fetch('', {
+        method: 'POST', 
+        body: new URLSearchParams({action: 'update_special_price_2', barcode: b, precio: v})
+    }).then(response => response.json()).then(data => {
+        if (!data.success) {
+            alert('Error al actualizar el precio especial 2 en el servidor.');
+        }
+    });
+}
+
 function updateStockDynamic(b, s, v) {
     fetch('', {
         method: 'POST', 
@@ -445,7 +549,7 @@ function updateStockDynamic(b, s, v) {
 }
 
 function setZeroStockRetiredMasive() {
-    if (confirm("⚠️ ¿Estás seguro de poner el stock en 0 a TODOS los productos que se encuentran con estado 'Retirado' en ambas sedes?")) {
+    if (confirm("⚠️️ ¿Estás seguro de poner el stock en 0 a TODOS los productos que se encuentran con estado 'Retirado' en ambas sedes?")) {
         fetch('', {
             method: 'POST',
             body: new URLSearchParams({ action: 'zero_stock_retired' })
