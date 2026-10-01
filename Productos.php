@@ -5,79 +5,92 @@ require_once("Conexion.php");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
-    $bc   =$_POST['barcode'] ?? '';
-    $sede =$_POST['sede'] ?? 'Central';
-    $db   = ($sede === 'Central') ? $mysqliCentral :$mysqliDrinks;
+    $bc   = $_POST['barcode'] ?? '';
+    $sede = $_POST['sede'] ?? 'Central';
+    $db   = ($sede === 'Central') ? $mysqliCentral : $mysqliDrinks;
 
     $response = ['success' => false];
 
     switch ($_POST['action']) {
         case 'update_stock':
-            $nueva_cant = floatval($_POST['cantidad']);$db->begin_transaction();
+            $nueva_cant = floatval($_POST['cantidad']);
+            $db->begin_transaction();
             try {
-                $stmt =$db->prepare("SELECT idproducto FROM productos WHERE barcode = ? LIMIT 1");
-                $stmt->bind_param("s", $bc);$stmt->execute();
-                $res =$stmt->get_result();
+                $stmt = $db->prepare("SELECT idproducto FROM productos WHERE barcode = ? LIMIT 1");
+                $stmt->bind_param("s", $bc);
+                $stmt->execute();
+                $res = $stmt->get_result();
                 
-                if ($r =$res->fetch_assoc()) {
-                    $idp =$r['idproducto'];
-                    $stmt_up =$db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
-                    $stmt_up->bind_param("di", $nueva_cant, $idp);$stmt_up->execute();
+                if ($r = $res->fetch_assoc()) {
+                    $idp = $r['idproducto'];
+                    $stmt_up = $db->prepare("UPDATE inventario SET cantidad = ? WHERE idproducto = ?");
+                    $stmt_up->bind_param("di", $nueva_cant, $idp);
+                    $stmt_up->execute();
                     
-                    $db->commit();$response['success'] = true;
+                    $db->commit();
+                    $response['success'] = true;
                 } else {
                     $db->rollback();
                 }
-            } catch (Exception $e) {$db->rollback();
+            } catch (Exception $e) {
+                $db->rollback();
             }
             break;
 
         case 'toggle_status':
             $nuevo_estado = intval($_POST['estado']);
-            $stmt =$db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
-            $stmt->bind_param("is", $nuevo_estado,$bc);
-            $response['success'] =$stmt->execute();
+            $stmt = $db->prepare("UPDATE productos SET estado = ? WHERE barcode = ?");
+            $stmt->bind_param("is", $nuevo_estado, $bc);
+            $response['success'] = $stmt->execute();
             break;
 
         case 'update_name':
             $nombre = trim($_POST['nombre']);
-            $stmtC =$mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-            $stmtC->bind_param("ss", $nombre,$bc);
-            $res1 =$stmtC->execute();
+            $stmtC = $mysqliCentral->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtC->bind_param("ss", $nombre, $bc);
+            $res1 = $stmtC->execute();
 
-            $stmtD =$mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
-            $stmtD->bind_param("ss", $nombre,$bc);
-            $res2 =$stmtD->execute();
+            $stmtD = $mysqliDrinks->prepare("UPDATE productos SET descripcion = ? WHERE barcode = ?");
+            $stmtD->bind_param("ss", $nombre, $bc);
+            $res2 = $stmtD->execute();
 
-            $response['success'] = ($res1 &&$res2);
+            $response['success'] = ($res1 && $res2);
             break;
 
         case 'update_price':
             $nuevo_precio = floatval($_POST['precio']);
-            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
+            $mysqliCentral->begin_transaction();
+            $mysqliDrinks->begin_transaction();
             try {
-                $stmt1 =$mysqliCentral->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
-                $stmt1->bind_param("ds", $nuevo_precio, $bc);$stmt1->execute();
+                $stmt1 = $mysqliCentral->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio, $bc);
+                $stmt1->execute();
 
-                $stmt2 =$mysqliDrinks->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
-                $stmt2->bind_param("ds", $nuevo_precio, $bc);$stmt2->execute();
+                $stmt2 = $mysqliDrinks->prepare("UPDATE productos SET precioventa = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio, $bc);
+                $stmt2->execute();
 
                 $mysqliCentral->commit();
-                $mysqliDrinks->commit();$response['success'] = true;
+                $mysqliDrinks->commit();
+                $response['success'] = true;
             } catch (Exception $e) {
-                $mysqliCentral->rollback();$mysqliDrinks->rollback();
+                $mysqliCentral->rollback();
+                $mysqliDrinks->rollback();
             }
             break;
 
         case 'update_special_price_1':
             $nuevo_precio_esp1 = floatval($_POST['precio']);
-            $mysqliCentral->begin_transaction();$mysqliDrinks->begin_transaction();
+            $mysqliCentral->begin_transaction();
+            $mysqliDrinks->begin_transaction();
             try {
-                $stmt1 =$mysqliCentral->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
-                $stmt1->bind_param("ds", $nuevo_precio_esp1, $bc);$stmt1->execute();
+                $stmt1 = $mysqliCentral->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
+                $stmt1->bind_param("ds", $nuevo_precio_esp1, $bc);
+                $stmt1->execute();
 
-                $stmt2 =$mysqliDrinks->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
-                $stmt2->bind_param("ds", $nuevo_precio_esp1, $bc);$stmt2->execute();
+                $stmt2 = $mysqliDrinks->prepare("UPDATE productos SET precioespecial1 = ? WHERE barcode = ?");
+                $stmt2->bind_param("ds", $nuevo_precio_esp1, $bc);
+                $stmt2->execute();
 
                 $mysqliCentral->commit();
                 $mysqliDrinks->commit();$response['success'] = true;
@@ -239,7 +252,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
         .badge-sede { font-size: 10px; padding: 3px 6px; border-radius: 4px; color: white; font-weight: bold; text-transform: uppercase; }
         .bg-drinks { background: #d97706; }
         .bg-central { background: #2563eb; }
-        #filtro { flex: 2; min-width: 200px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; }
+        #filtro { flex: 2; min-width: 180px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; }
         .select-filtro { flex: 1; min-width: 140px; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; }
         .total-row { background: #e2e8f0; font-weight: bold; }
     </style>
@@ -262,6 +275,16 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
             <option value="todos">⚡ Todos los estados</option>
             <option value="1" selected>🟢 Activos</option>
             <option value="0">🔴 Retirados</option>
+        </select>
+
+        <select id="filtro-utilidad" class="select-filtro" onchange="filtrar()">
+            <option value="todos">📊 % Utilidad (Venta): Todos</option>
+            <option value="negativo">🔴 Negativo (< 0%)</option>
+            <option value="0-6">🟡 0% a 6%</option>
+            <option value="6-15">🟢 6% a 15%</option>
+            <option value="15-25">🟢 15% a 25%</option>
+            <option value="25-35">🟢 25% a 35%</option>
+            <option value="35-mas">⭐ Mayor a 35%</option>
         </select>
 
         <button class="btn-masive" onclick="setZeroStockRetiredMasive()" title="Poner el stock en 0 a todos los productos inactivos/retirados">
@@ -311,7 +334,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                     <input type="text" class="nombre-producto" value="<?= htmlspecialchars($desc) ?>" style="border:none; background:transparent; width: 70%; font-weight:bold; font-size: 14px;" onblur="updateName('<?= $b ?>', this.value)">
                 </td>
             </tr>
-            <tr class="row-drinks" data-sede="drinks" data-barcode="<?= $b ?>" data-estado="<?= $d['estado'] ?>">
+            <tr class="row-drinks" data-sede="drinks" data-barcode="<?= $b ?>" data-estado="<?= $d['estado'] ?>" data-variacion="<?= $varVentaDrinks ?>">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-drinks">Drinks</span></td>
                 <td>
                     <label class="switch">
@@ -350,7 +373,7 @@ $barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)))
                     <input type="number" step="any" class="stock-input stock-val" id="input-drinks-<?= $b ?>" value="<?= $d['cantidad'] ?>" oninput="filtrar()" onblur="updateStockDynamic('<?= $b ?>', 'Drinks', this.value)">
                 </td>
             </tr>
-            <tr class="row-central" data-sede="central" data-barcode="<?= $b ?>" data-estado="<?= $c['estado'] ?>">
+            <tr class="row-central" data-sede="central" data-barcode="<?= $b ?>" data-estado="<?= $c['estado'] ?>" data-variacion="<?= $varVentaCentral ?>">
                 <td style="text-align:left; padding-left: 30px;"><span class="badge-sede bg-central">Central</span></td>
                 <td>
                     <label class="switch">
@@ -405,6 +428,7 @@ function filtrar() {
     const term = document.getElementById('filtro').value.toLowerCase();
     const sedeSeleccionada = document.getElementById('filtro-sede').value;
     const estadoSeleccionado = document.getElementById('filtro-estado').value;
+    const utilidadSeleccionada = document.getElementById('filtro-utilidad').value;
     const headers = document.querySelectorAll('.product-header');
 
     let stockTotal = 0;
@@ -429,8 +453,15 @@ function filtrar() {
         let mostrarDrinksEstado = (estadoSeleccionado === 'todos' || estadoDrinks === estadoSeleccionado);
         let mostrarCentralEstado = (estadoSeleccionado === 'todos' || estadoCentral === estadoSeleccionado);
 
-        const mostrarFilaDrinks = coincideTexto && mostrarDrinksSede && mostrarDrinksEstado;
-        const mostrarFilaCentral = coincideTexto && mostrarCentralSede && mostrarCentralEstado;
+        // Validación de intervalos de utilidad (% Var. Venta)
+        const varDrinks = parseFloat(rowDrinks.getAttribute('data-variacion')) || 0;
+        const varCentral = parseFloat(rowCentral.getAttribute('data-variacion')) || 0;
+
+        let cumplirUtilidadDrinks = cumpleIntervalo(varDrinks, utilidadSeleccionada);
+        let cumplirUtilidadCentral = cumpleIntervalo(varCentral, utilidadSeleccionada);
+
+        const mostrarFilaDrinks = coincideTexto && mostrarDrinksSede && mostrarDrinksEstado && cumplirUtilidadDrinks;
+        const mostrarFilaCentral = coincideTexto && mostrarCentralSede && mostrarCentralEstado && cumplirUtilidadCentral;
 
         if (rowDrinks) {
             rowDrinks.style.display = mostrarFilaDrinks ? '' : 'none';
@@ -454,6 +485,17 @@ function filtrar() {
     });
 
     document.getElementById('total-stock').textContent = stockTotal.toLocaleString('es-CO', {maximumFractionDigits: 2});
+}
+
+function cumpleIntervalo(val, rango) {
+    if (rango === 'todos') return true;
+    if (rango === 'negativo') return val < 0;
+    if (rango === '0-6') return val >= 0 && val <= 6;
+    if (rango === '6-15') return val > 6 && val <= 15;
+    if (rango === '15-25') return val > 15 && val <= 25;
+    if (rango === '25-35') return val > 25 && val <= 35;
+    if (rango === '35-mas') return val > 35;
+    return true;
 }
 
 function updateRowState(checkbox, sede, barcode) {
@@ -549,7 +591,7 @@ function updateStockDynamic(b, s, v) {
 }
 
 function setZeroStockRetiredMasive() {
-    if (confirm("⚠️️ ¿Estás seguro de poner el stock en 0 a TODOS los productos que se encuentran con estado 'Retirado' en ambas sedes?")) {
+    if (confirm("⚠ ¿Estás seguro de poner el stock en 0 a TODOS los productos que se encuentran con estado 'Retirado' en ambas sedes?")) {
         fetch('', {
             method: 'POST',
             body: new URLSearchParams({ action: 'zero_stock_retired' })
