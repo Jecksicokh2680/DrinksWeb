@@ -329,12 +329,11 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>
                                     <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>
-                                    <a class="nav-link" href="ComprasxProveedor.php" target="contentFrame">Compras por Proveedor</a>    
+                                    <a class="nav-link" href="ComprasXProveedor.php" target="contentFrame">Compras por Proveedor</a>    
                                     <a class="nav-link" href="ComprasXProveedorXmeses.php" target="contentFrame">Compras Graficas</a>    
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
                                     <a class="nav-link" href="Validador_NrosFacturas.php" target="contentFrame">Consecutivos de Facturas</a>
                                     <a class="nav-link" href="listafactdiagrafica.php" target="contentFrame">Grafica de rangos de venta</a>
-                                    
                                 </div>
                             </div>
                         </div>
@@ -550,8 +549,15 @@ document.getElementById('toggleMenu').onclick = () => {
     document.getElementById('sidebar').classList.toggle('show');
 };
 
+// Cambio automático del título de la página y ocultar menú en móviles al hacer clic
 document.querySelectorAll('.sidebar .nav-link').forEach(link => {
     link.addEventListener('click', () => {
+        const tituloOpcion = link.textContent.trim();
+        
+        if (tituloOpcion) {
+            document.title = tituloOpcion + " - Sistema BNMA";
+        }
+
         const sidebar = document.getElementById('sidebar');
         if (sidebar.classList.contains('show')) {
             sidebar.classList.remove('show');
