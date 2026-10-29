@@ -99,6 +99,16 @@ function fmoneda($v) {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .proveedor-total {
+            background: #065f46;
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
         }
 
         h2 { margin-top: 0; color: #111; font-size: 1.35rem; }
@@ -334,7 +344,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         }
 
         return $mysqli->query("
-            SELECT '$suc' sucursal, C.FECHA, C.idcompra, T.NIT, CONCAT(T.nombres,' ',T.apellidos) prov, 
+            SELECT '$suc' sucursal, C.FECHA, C.idcompra, C.VALORTOTAL, T.NIT, CONCAT(T.nombres,' ',T.apellidos) prov, 
                    P.Barcode, P.descripcion, D.CANTIDAD
             FROM compras C
             JOIN TERCEROS T ON T.IDTERCERO=C.IDTERCERO
@@ -359,19 +369,32 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     if(empty($filasCrudas)){
         echo "<div style='text-align:center;padding:20px;background:#fff;border-radius:8px;'>No se encontraron registros para la consulta actual.</div>";
     } else {
-        // Agrupar filas por Proveedor
+        // Agrupar filas por Proveedor y calcular el total único de cada factura (evitando duplicar si un item se repite)
         $proveedoresAgrupados = [];
+        $totalesFacturasPorProveedor = [];
+
         foreach($filasCrudas as $x){
             $proveedorKey = $x['prov'] . ' (NIT: ' . $x['NIT'] . ')';
             $proveedoresAgrupados[$proveedorKey][] = $x;
+            
+            // Usamos el idcompra y sucursal como llave única para sumar el VALORTOTAL de la cabecera de la factura una sola vez
+            $facturaKey = $x['sucursal'] . '-' . $x['idcompra'];
+            if (!isset($totalesFacturasPorProveedor[$proveedorKey][$facturaKey])) {
+                $totalesFacturasPorProveedor[$proveedorKey][$facturaKey] = (double)$x['VALORTOTAL'];
+            }
         }
 
         echo "<div class='scroll-hint'>↔️ Desliza horizontalmente para ver los campos de las tablas</div>";
 
-        // Renderizar un panel independiente por proveedor
+        // Renderizar un panel independiente por proveedor con su respectivo total general sumado
         foreach($proveedoresAgrupados as $nombreProveedor => $filasProveedor){
+            $totalProveedor = array_sum($totalesFacturasPorProveedor[$nombreProveedor]);
+
             echo "<div class='proveedor-panel' data-proveedor-name='".htmlspecialchars(strtolower($nombreProveedor))."'>";
-            echo "<div class='proveedor-header'>🏢 Proveedor: {$nombreProveedor}</div>";
+            echo "<div class='proveedor-header'>
+                    <span>🏢 Proveedor: {$nombreProveedor}</span>
+                    <span class='proveedor-total'>Total Facturas: $ " . fmoneda($totalProveedor) . "</span>
+                  </div>";
             echo "<div class='table-container'><table><thead><tr>";
             echo "<th style='width: 70px;'>Suc</th><th style='width: 100px;'>Fecha</th><th style='width: 80px;'>ID</th><th class='text-left' style='width: 120px;'>Sku</th><th class='text-left'>Producto</th><th style='width: 80px;'>Cantidad</th>";
             echo "</tr></thead><tbody>";
