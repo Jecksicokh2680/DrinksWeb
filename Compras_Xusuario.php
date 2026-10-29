@@ -48,7 +48,7 @@ function fmoneda($v) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Compras Gerenciales</title>
     <style>
         :root {
@@ -58,82 +58,66 @@ function fmoneda($v) {
             --warning: #ffc107;
             --dark: #212529;
             --gray-bg: #f4f6f8;
-            --border-color: #ddd;
+            --border-color: #dee2e6;
+        }
+
+        * {
+            box-sizing: border-box;
         }
 
         body { 
             font-family: 'Segoe UI', Arial, sans-serif; 
             margin: 0; 
-            padding: 10px; 
+            padding: 8px; 
             background: var(--gray-bg); 
-            font-size: 14px; 
+            font-size: 13.5px; 
             color: #333;
         }
 
         .card { 
             background: #fff; 
-            padding: 15px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,.08); 
-            margin-bottom: 20px; 
-            overflow-x: hidden;
+            padding: 12px; 
+            border-radius: 10px; 
+            box-shadow: 0 3px 10px rgba(0,0,0,.06); 
+            margin-bottom: 15px; 
+            width: 100%;
         }
 
-        /* Estilo para los paneles individuales por proveedor */
-        .proveedor-panel {
-            background: #fff;
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            box-shadow: 0 2px 6px rgba(0,0,0,.04);
-            margin-bottom: 20px;
-            overflow: hidden;
+        h2 { 
+            margin-top: 0; 
+            margin-bottom: 12px; 
+            color: #111; 
+            font-size: 1.25rem; 
         }
 
-        .proveedor-header {
-            background: #eef2f7;
-            padding: 12px 15px;
-            font-size: 1.05rem;
-            font-weight: 800;
-            color: #1e3a8a;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .proveedor-total {
-            background: #065f46;
-            color: #fff;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.95rem;
-        }
-
-        h2 { margin-top: 0; color: #111; font-size: 1.35rem; }
-
+        /* Filtros 100% responsivos */
         .filters { 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); 
-            gap: 10px; 
-            margin-bottom: 15px; 
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
+            gap: 8px; 
+            margin-bottom: 12px; 
         }
 
         @media (min-width: 1200px) {
             .filters { grid-template-columns: repeat(6, 1fr) auto; }
         }
 
-        label { font-size: 12px; font-weight: 700; display: block; margin-bottom: 4px; color: #555; }
+        label { 
+            font-size: 11.5px; 
+            font-weight: 700; 
+            display: block; 
+            margin-bottom: 3px; 
+            color: #555; 
+        }
+
         select, input, button { 
             width: 100%; 
-            padding: 8px 10px; 
-            border-radius: 8px; 
-            border: 1px solid #ccc; 
-            font-size: 14px; 
-            box-sizing: border-box;
-            transition: all 0.2s;
+            padding: 7px 9px; 
+            border-radius: 6px; 
+            border: 1px solid #ced4da; 
+            font-size: 13.5px; 
             background: #fff;
+            height: 36px;
         }
         
         select:focus, input:focus {
@@ -148,60 +132,117 @@ function fmoneda($v) {
             font-weight: 700; 
             cursor: pointer; 
             border: none;
-            height: 38px;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         button:hover { background: #0b5ed7; }
 
-        .btn-container { display: flex; align-items: flex-end; }
+        .btn-container { 
+            display: flex; 
+            align-items: flex-end; 
+        }
 
+        /* Paneles por Sede y Proveedor */
+        .proveedor-panel {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,.03);
+            margin-bottom: 15px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .proveedor-header {
+            background: #eef2f7;
+            padding: 10px 12px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #1e3a8a;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .proveedor-total {
+            background: #065f46;
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        /* Contenedor de tabla con scroll fluido en móviles */
         .table-container { 
-            max-height: 50vh; 
+            width: 100%;
+            max-height: 48vh; 
             overflow-x: auto; 
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             background: #fff;
-            position: relative;
         }
         
-        table { border-collapse: collapse; width: 100%; min-width: 750px; font-size: 13px; }
+        table { 
+            border-collapse: collapse; 
+            width: 100%; 
+            min-width: 650px; 
+            font-size: 12.5px; 
+        }
+
         thead th { 
             position: sticky; 
             top: 0; 
-            z-index: 10; 
+            z-index: 5; 
             background: #f8f9fa; 
             font-weight: 800; 
             text-align: center;
-            padding: 10px 8px;
+            padding: 8px 6px;
             border-bottom: 2px solid var(--border-color);
+            white-space: nowrap;
         }
         
-        th, td { border: 1px solid #eee; padding: 8px 10px; text-align: right; white-space: nowrap; }
+        th, td { 
+            border: 1px solid #eee; 
+            padding: 7px 8px; 
+            text-align: right; 
+        }
+
         .text-left { text-align: left; }
         .text-center { text-align: center; }
         
-        .badge { padding: 3px 8px; border-radius: 12px; color: #fff; font-size: 11px; font-weight: 700; display: inline-block; }
+        .badge { 
+            padding: 2px 6px; 
+            border-radius: 10px; 
+            color: #fff; 
+            font-size: 10.5px; 
+            font-weight: 700; 
+            display: inline-block; 
+            white-space: nowrap;
+        }
         .central { background: var(--primary); } 
         .drinks { background: var(--success); }
 
         .hidden-row { display: none !important; }
         .hidden-panel { display: none !important; }
 
-        .scroll-hint {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 6px;
-            font-style: italic;
-            display: none;
+        .search-box {
+            margin-bottom: 12px; 
+            background: #eef2f7; 
+            padding: 10px; 
+            border-radius: 8px;
         }
 
-        @media (max-width: 768px) {
-            body { padding: 5px; }
-            .card { padding: 10px; border-radius: 8px; }
-            .scroll-hint { display: block; }
-            h2 { font-size: 1.2rem; }
+        /* Ajustes específicos para móviles pequeños */
+        @media (max-width: 576px) {
+            body { padding: 4px; font-size: 13px; }
+            .card { padding: 8px; border-radius: 6px; }
+            h2 { font-size: 1.1rem; }
+            .proveedor-header { font-size: 0.9rem; padding: 8px 10px; }
         }
     </style>
 </head>
@@ -322,7 +363,7 @@ function fmoneda($v) {
         </div>
     </form>
 
-    <div style="margin-bottom: 15px; background: #eef2f7; padding: 10px; border-radius: 8px;">
+    <div class="search-box">
         <label style="color: #0b5ed7;">🔍 Filtrar sobre el resultado actual (Búsqueda rápida en pantalla)</label>
         <input type="text" id="filtroProductoInput" placeholder="Escribe para buscar al instante..." onkeyup="filtrarPorProductoHtml()">
     </div>
@@ -367,39 +408,41 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     }
 
     if(empty($filasCrudas)){
-        echo "<div style='text-align:center;padding:20px;background:#fff;border-radius:8px;'>No se encontraron registros para la consulta actual.</div>";
+        echo "<div style='text-align:center;padding:15px;background:#fff;border-radius:6px;'>No se encontraron registros para la consulta actual.</div>";
     } else {
-        // Agrupar filas por Proveedor y calcular el total único de cada factura (evitando duplicar si un item se repite)
-        $proveedoresAgrupados = [];
-        $totalesFacturasPorProveedor = [];
+        // Agrupar filas separando por Sede y Proveedor
+        $panelesAgrupados = [];
+        $totalesFacturasPorPanel = [];
 
         foreach($filasCrudas as $x){
-            $proveedorKey = $x['prov'] . ' (NIT: ' . $x['NIT'] . ')';
-            $proveedoresAgrupados[$proveedorKey][] = $x;
+            $panelKey = $x['sucursal'] . ' | ' . $x['prov'] . ' (NIT: ' . $x['NIT'] . ')';
+            $panelesAgrupados[$panelKey][] = $x;
             
-            // Usamos el idcompra y sucursal como llave única para sumar el VALORTOTAL de la cabecera de la factura una sola vez
-            $facturaKey = $x['sucursal'] . '-' . $x['idcompra'];
-            if (!isset($totalesFacturasPorProveedor[$proveedorKey][$facturaKey])) {
-                $totalesFacturasPorProveedor[$proveedorKey][$facturaKey] = (double)$x['VALORTOTAL'];
+            $facturaKey = $x['idcompra'];
+            if (!isset($totalesFacturasPorPanel[$panelKey][$facturaKey])) {
+                $totalesFacturasPorPanel[$panelKey][$facturaKey] = (double)$x['VALORTOTAL'];
             }
         }
 
-        echo "<div class='scroll-hint'>↔️ Desliza horizontalmente para ver los campos de las tablas</div>";
+        // Renderizar un panel independiente por cada combinación de Sede y Proveedor
+        foreach($panelesAgrupados as $panelKey => $filasPanel){
+            $totalPanel = array_sum($totalesFacturasPorPanel[$panelKey]);
+            $primeraFila = $filasPanel[0];
+            $clsBadge = $primeraFila['sucursal'] == 'Central' ? 'central' : 'drinks';
 
-        // Renderizar un panel independiente por proveedor con su respectivo total general sumado
-        foreach($proveedoresAgrupados as $nombreProveedor => $filasProveedor){
-            $totalProveedor = array_sum($totalesFacturasPorProveedor[$nombreProveedor]);
-
-            echo "<div class='proveedor-panel' data-proveedor-name='".htmlspecialchars(strtolower($nombreProveedor))."'>";
+            echo "<div class='proveedor-panel' data-proveedor-name='".htmlspecialchars(strtolower($panelKey))."'>";
             echo "<div class='proveedor-header'>
-                    <span>🏢 Proveedor: {$nombreProveedor}</span>
-                    <span class='proveedor-total'>Total Facturas: $ " . fmoneda($totalProveedor) . "</span>
+                    <div>
+                        <span class='badge {$clsBadge}'>{$primeraFila['sucursal']}</span>
+                        <span style='margin-left: 6px;'>Proveedor: {$primeraFila['prov']} (NIT: {$primeraFila['NIT']})</span>
+                    </div>
+                    <span class='proveedor-total'>Total: $ " . fmoneda($totalPanel) . "</span>
                   </div>";
             echo "<div class='table-container'><table><thead><tr>";
-            echo "<th style='width: 70px;'>Suc</th><th style='width: 100px;'>Fecha</th><th style='width: 80px;'>ID</th><th class='text-left' style='width: 120px;'>Sku</th><th class='text-left'>Producto</th><th style='width: 80px;'>Cantidad</th>";
+            echo "<th style='width: 60px;'>Suc</th><th style='width: 90px;'>Fecha</th><th style='width: 70px;'>ID</th><th class='text-left' style='width: 110px;'>Sku</th><th class='text-left'>Producto</th><th style='width: 70px;'>Cant</th>";
             echo "</tr></thead><tbody>";
 
-            foreach($filasProveedor as $x){
+            foreach($filasPanel as $x){
                 $fechaRaw = $x['FECHA'];
                 $fechaFormateada = (strlen($fechaRaw) == 8) ? substr($fechaRaw, 0, 4) . '-' . substr($fechaRaw, 4, 2) . '-' . substr($fechaRaw, 6, 2) : $fechaRaw;
                 $cls = $x['sucursal'] == 'Central' ? 'central' : 'drinks';
@@ -444,7 +487,6 @@ function filtrarPorProductoHtml() {
             }
         });
 
-        // Ocultar todo el panel si ninguna fila coincide y el filtro no coincide con el proveedor
         if (visibleRowsInPanel > 0 || filter === '' || provName.includes(filter)) {
             panel.classList.remove('hidden-panel');
             if (provName.includes(filter)) {
