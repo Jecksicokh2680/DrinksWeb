@@ -243,12 +243,7 @@ function abrirPopup(event, url) {
 </script>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                
                         <a class="nav-link" href="Compras_Xusuario.php" target="contentFrame">🔄 Ver Compras</a>   
-                         <ul class="nav flex-column">
-                            <!-- Tus otros enlaces de navegación -->
-                            <li class="nav-item">
-                                <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>
-                            </li>
-                        </ul>
+                         
                         
                         
                          <a class="nav-link" href="minequi.php"
@@ -256,9 +251,8 @@ function abrirPopup(event, url) {
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                     
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
-                        <!-- 
-<a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a> 
--->
+                          
+                    </div>
                     
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
