@@ -205,6 +205,17 @@ function fmoneda($v) {
             border-bottom: 2px solid var(--border-color);
             white-space: nowrap;
         }
+
+        /* Estilo interactivo para ordenar al hacer clic en el nombre del producto */
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        th.sortable:hover {
+            background: #e2e6ea;
+            color: var(--primary);
+        }
         
         th, td { 
             border: 1px solid #eee; 
@@ -237,7 +248,6 @@ function fmoneda($v) {
             border-radius: 8px;
         }
 
-        /* Ajustes específicos para móviles pequeños */
         @media (max-width: 576px) {
             body { padding: 4px; font-size: 13px; }
             .card { padding: 8px; border-radius: 6px; }
@@ -439,7 +449,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
                     <span class='proveedor-total'>Total: $ " . fmoneda($totalPanel) . "</span>
                   </div>";
             echo "<div class='table-container'><table><thead><tr>";
-            echo "<th style='width: 60px;'>Suc</th><th style='width: 90px;'>Fecha</th><th style='width: 70px;'>ID</th><th class='text-left' style='width: 110px;'>Sku</th><th class='text-left'>Producto</th><th style='width: 70px;'>Cant</th>";
+            echo "<th style='width: 60px;'>Suc</th><th style='width: 90px;'>Fecha</th><th style='width: 70px;'>ID</th><th class='text-left' style='width: 110px;'>Sku</th><th class='text-left sortable' onclick='ordenarTablaProducto(this, 4)' title='Haz clic para ordenar'>Producto ↕</th><th style='width: 70px;'>Cant</th>";
             echo "</tr></thead><tbody>";
 
             foreach($filasPanel as $x){
@@ -496,6 +506,33 @@ function filtrarPorProductoHtml() {
             panel.classList.add('hidden-panel');
         }
     });
+}
+
+// Función para ordenar los productos al hacer clic en el encabezado de la columna Producto de cada panel
+function ordenarTablaProducto(thElement, colIndex) {
+    const table = thElement.closest('table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr.data-row'));
+    
+    // Determinar dirección del ordenamiento (alternar ascendente/descendente)
+    const currentDirection = thElement.getAttribute('data-sort') || 'asc';
+    const newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
+    thElement.setAttribute('data-sort', newDirection);
+    
+    // Actualizar indicador visual en la flecha
+    thElement.innerText = newDirection === 'asc' ? 'Producto ▲' : 'Producto ▼';
+
+    rows.sort((a, b) => {
+        const textA = a.children[colIndex].textContent.trim().toLowerCase();
+        const textB = b.children[colIndex].textContent.trim().toLowerCase();
+        
+        if (textA < textB) return newDirection === 'asc' ? -1 : 1;
+        if (textA > textB) return newDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Reordenar las filas en el tbody de esta tabla en específico
+    rows.forEach(row => tbody.appendChild(row));
 }
 </script>
 
