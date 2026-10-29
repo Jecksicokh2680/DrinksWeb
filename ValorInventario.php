@@ -39,17 +39,17 @@ $fecha_45_atras = date('Y-m-d', strtotime('-60 days'));
 
 $nitSedes = ['CENTRAL' => '86057267-8', 'DRINKS' => '901724534-7'];
 
-// Función para calcular el precio promedio de compra ponderado
-function precioPromCompra($mysqli_conn, $fDesde, $fHasta){
-    $sql = "SELECT P.Barcode, SUM(Q.CANTIDAD * Q.VALOR) / NULLIF(SUM(Q.CANTIDAD), 0) pv_compra 
-            FROM (
-                SELECT D.IDPRODUCTO, D.CANTIDAD, D.VALOR 
-                FROM DETCOMPRAS D 
-                JOIN COMPRAS C ON C.idcompra = D.idcompra 
-                WHERE C.ESTADO = '0' AND C.FECHA BETWEEN '$fDesde' AND '$fHasta'
-            ) Q 
-            JOIN PRODUCTOS P ON P.IDPRODUCTO = Q.IDPRODUCTO 
-            GROUP BY P.Barcode";
+// Función mejorada para calcular el costo promedio ponderado real con impuestos de las últimas compras
+function precioPromCompraAvanzado($mysqli_conn, $fDesde, $fHasta){
+    $sql = "SELECT 
+                d.idproducto,
+                P.Barcode,
+                SUM(d.cantidad * ( (d.valor - (d.descuento / NULLIF(d.cantidad, 0))) * (1 + d.porciva/100) + d.ValICUIUni )) / NULLIF(SUM(d.cantidad), 0) AS pv_compra 
+            FROM detcompras d
+            INNER JOIN compras c ON c.idcompra = d.idcompra AND c.estado = '0'
+            INNER JOIN productos P ON P.idproducto = d.idproducto
+            WHERE c.fecha BETWEEN '$fDesde' AND '$fHasta'
+            GROUP BY d.idproducto, P.Barcode";
     
     $out = []; 
     $r = $mysqli_conn->query($sql);
@@ -59,9 +59,9 @@ function precioPromCompra($mysqli_conn, $fDesde, $fHasta){
     return $out;
 }
 
-// Generamos los diccionarios de precios promedios de compra corregidos
-$pcC = ($mysqliCentral) ? precioPromCompra($mysqliCentral, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
-$pcD = ($mysqliDrinks) ? precioPromCompra($mysqliDrinks, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+// Generamos los diccionarios de precios promedios de compra con impuestos
+$pcC = ($mysqliCentral) ? precioPromCompraAvanzado($mysqliCentral, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
+$pcD = ($mysqliDrinks) ? precioPromCompraAvanzado($mysqliDrinks, str_replace('-', '', $fecha_45_atras), $fechaSinGuion) : [];
 
 function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
     global $mes, $anio, $fechaSQL, $mysqli, $nitSedes; 
@@ -91,7 +91,7 @@ function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
         SELECT DP.CANTIDAD * DP.VALORPROD FROM PEDIDOS P INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO WHERE P.ESTADO='0' AND DATE(P.FECHA)='$fechaSQL'
     ) X")->fetch_assoc()['v'] ?? 0;
 
-    // 4. TRANSFERENCIAS MANUALES (Relaciontransferencias)
+    // 4. TRANSFERENCIAS MANUALES
     $tr_res = $mysqli->query("SELECT SUM(Monto) AS total FROM Relaciontransferencias WHERE Fecha = '$fechaSQL' AND NitEmpresa = '$nit' AND Estado = 1");
     $transDia = ($tr_res) ? $tr_res->fetch_assoc()['total'] : 0;
 
@@ -112,7 +112,7 @@ function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
         }
     }
 
-    // 5. VENTA MES Y UTILIDAD
+    // 5. VENTA MES Y UTILIDAD CON COSTO REAL PONDERADO
     $sqlMesF = "SELECT D.CANTIDAD, D.VALORPROD, P.costo, P.Barcode FROM FACTURAS F INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA INNER JOIN productos P ON P.idproducto = D.IDPRODUCTO WHERE F.ESTADO='0' AND MONTH(F.FECHA)='$mes' AND YEAR(F.FECHA)='$anio'";
     $sqlMesP = "SELECT DP.CANTIDAD, DP.VALORPROD, P.costo, P.Barcode FROM PEDIDOS PE INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = PE.IDPEDIDO INNER JOIN productos P ON P.idproducto = DP.IDPRODUCTO WHERE PE.ESTADO='0' AND MONTH(PE.FECHA)='$mes' AND YEAR(PE.FECHA)='$anio'";
 
@@ -213,7 +213,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Administrative</title>
+    <title>Panel Administrativo</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>

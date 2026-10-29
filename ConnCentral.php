@@ -1,10 +1,20 @@
 <?php
-// --- Parámetros de Conexión ---
-$host    = "52.15.192.69";
-$usuario = "aws_user";
-$pass    = "root";
+// --- Llamana .env nisqamanta lloqsiqkunata maskanapaq ---
+if (file_exists(__DIR__ . '/.env')) {
+    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue;
+        list($name, $value) = explode('=', $line, 2);
+        putenv(trim($name) . '=' . trim($value));
+    }
+}
+
+// --- Parámetros de Conexión (.env nisqamanta otaq chaylla kasqanmanta) ---
+$host    = getenv('DB_HOST') ?: "52.15.192.69";
+$usuario = getenv('DB_USER') ?: "aws_user";
+$pass    = getenv('DB_PASS') ?: "root";
 $db      = "empresa001";
-$puerto  = 3307;
+$puerto  = (int)(getenv('DB_PORT_CENTRAL') ?: 3307);
 
 global $mysqliPos;  
 global $mysqliCentral;

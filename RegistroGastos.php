@@ -71,11 +71,13 @@ if ($resultado_tip) {
     }
 }
 
-// 3. Obtener todos los registros ordenados por Tipología y Fecha descendente
+// 3. Obtener registros filtrados estrictamente por el MES ACTUAL
 $sql_registros = "
     SELECT r.id, r.tipologia_id, t.nombre AS tipologia, t.tipo, r.monto, r.fecha, r.observacion 
     FROM RegistroGastos r 
     INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id 
+    WHERE MONTH(r.fecha) = MONTH(CURRENT_DATE()) 
+      AND YEAR(r.fecha) = YEAR(CURRENT_DATE())
     ORDER BY t.nombre ASC, r.fecha DESC, r.id DESC
 ";
 $resultado_regs = $mysqliWeb->query($sql_registros);
@@ -110,7 +112,7 @@ if ($resultado_regs) {
 
 <div class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Control y Edición de Egresos</h2>
+        <h2>Control y Edición de Egresos (Mes Actual)</h2>
         <a href="TipologiasGastos.php" class="btn btn-outline-secondary">&larr; Ir a Tipologías</a>
     </div>
 
@@ -133,7 +135,7 @@ if ($resultado_regs) {
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm border-primary">
                 <div class="card-body">
-                    <h6 class="text-muted">Total General Egresos</h6>
+                    <h6 class="text-muted">Total General Egresos (Mes)</h6>
                     <h3 class="text-primary">$<?= number_format($total_general, 2, ',', '.') ?></h3>
                 </div>
             </div>
@@ -141,7 +143,7 @@ if ($resultado_regs) {
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm border-info">
                 <div class="card-body">
-                    <h6 class="text-muted">Total Gastos Fijos</h6>
+                    <h6 class="text-muted">Total Gastos Fijos (Mes)</h6>
                     <h3 class="text-info">$<?= number_format($total_fijos, 2, ',', '.') ?></h3>
                 </div>
             </div>
@@ -149,7 +151,7 @@ if ($resultado_regs) {
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm border-warning">
                 <div class="card-body">
-                    <h6 class="text-muted">Total Gastos Variables</h6>
+                    <h6 class="text-muted">Total Gastos Variables (Mes)</h6>
                     <h3 class="text-warning">$<?= number_format($total_variables, 2, ',', '.') ?></h3>
                 </div>
             </div>
@@ -206,7 +208,7 @@ if ($resultado_regs) {
         <div class="col-md-8">
             <div class="card shadow-sm">
                 <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0">Historial de Egresos por Tipología</h5>
+                    <h5 class="mb-0">Historial de Egresos por Tipología (Mes Actual)</h5>
                 </div>
                 <div class="card-body table-responsive">
                     <table class="table table-striped align-middle">
@@ -222,11 +224,8 @@ if ($resultado_regs) {
                         <tbody>
                             <?php if (count($registros) > 0): ?>
                                 <?php 
-                                $tipologia_actual = "";
                                 $subtotal_tipologia = 0;
                                 
-                                // Para manejar los subtotales por corte de grupo, recorreremos el array agrupado
-                                // Como ya viene ordenado por tipología, podemos detectar el cambio.
                                 for ($i = 0; $i < count($registros); $i++):
                                     $row = $registros[$i];
                                     $siguiente_row = $registros[$i + 1] ?? null;
@@ -263,7 +262,6 @@ if ($resultado_regs) {
                                             <td colspan="3">$<?= number_format($subtotal_tipologia, 2, ',', '.') ?></td>
                                         </tr>
                                         <?php 
-                                        // Reiniciar subtotal para la siguiente tipología
                                         $subtotal_tipologia = 0; 
                                         ?>
                                     <?php endif; ?>
@@ -272,7 +270,7 @@ if ($resultado_regs) {
 
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted">No hay egresos registrados aún.</td>
+                                    <td colspan="5" class="text-center text-muted">No hay egresos registrados para este mes.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>

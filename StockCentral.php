@@ -64,12 +64,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'backup_db') {
 }
 
 /* ============================================================
-   PARÁMETROS DE VISTA (FILTROS Y PAGINACIÓN DINÁMICA)
+   PARÁMETROS DE VISTA (FILTROS SIN PAGINACIÓN)
 ============================================================ */
 $categoria = $_GET['categoria'] ?? '';
 $term      = trim($_GET['term'] ?? '');
-$page      = max(1, (int)($_GET['page'] ?? 1));
-$limit     = 100; 
 $like      = "%$term%";
 
 // 1. Obtener lista de categorías activas para el select (usando LPAD)
@@ -119,41 +117,62 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
     $catB = $prodCat[$b] ?? 'SIN';
     return $catA <=> $catB;
 });
-
-$totalRows  = count($barcodes_filtrados);
-$totalPages = max(1, ceil($totalRows / $limit));
-$offset     = ($page - 1) * $limit;
-$barcodes_pagina = array_slice($barcodes_filtrados, $offset, $limit);
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Inventario Consolidado Dinámico</title>
+    <title>Reporte Gerencial de Inventario Consolidado</title>
     <style>
-        body{font-family:Segoe UI,Arial;background:#eef1f4;color:#333;margin:0;padding:0}
-        .container{max-width:1200px;margin:30px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
-        h2{color:#2c3e50;text-align:center;margin-bottom:20px}
-        form{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center}
-        select,input,button{padding:8px 12px;border-radius:6px;border:1px solid #ccc;font-size:14px}
-        button{background:#007bff;color:#fff;border:none;cursor:pointer}
-        .table-container{overflow-x:auto;border-radius:12px;background:#fff}
-        table{width:100%;border-collapse:collapse;min-width:700px}
-        th,td{padding:12px 8px;text-align:center;border-bottom:1px solid #e1e1e1}
-        th{background:#007bff;color:#fff}
-        tr.subtotal{background:#f8f9fa;font-weight:700;color:#007bff;border-top: 2px solid #007bff;}
-        tr.total-general{background:#2c3e50;color:#fff;font-weight:700;font-size:1.1em}
-        .paginacion{text-align:center;margin-top:15px}
-        .paginacion a{padding:6px 10px;margin:2px;border:1px solid #007bff;color:#007bff;text-decoration:none;border-radius:5px}
-        .paginacion a.activa{background:#007bff;color:#fff}
-        .alert { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border: 1px solid #bee5eb; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; color: #2c3e50; margin: 0; padding: 20px; }
+        .container { max-width: 1250px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.05); }
+        
+        .header-reporte { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2c3e50; padding-bottom: 15px; margin-bottom: 25px; }
+        .header-reporte h2 { margin: 0; color: #2c3e50; font-size: 22px; }
+        .header-reporte .meta { text-align: right; font-size: 13px; color: #555; }
+
+        form { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 25px; align-items: center; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #e1e8ed; }
+        select, input { padding: 8px 12px; border-radius: 4px; border: 1px solid #ccd1d9; font-size: 14px; background: #fff; }
+        button { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; font-size: 14px; }
+        .btn-primary { background: #0056b3; color: #fff; }
+        .btn-success { background: #28a745; color: #fff; }
+        .btn-print { background: #6c757d; color: #fff; }
+
+        .table-container { overflow-x: auto; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+        th { background: #2c3e50; color: #fff; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        
+        tr.subtotal { background: #edf2f7; font-weight: 700; color: #1a202c; border-top: 2px solid #cbd5e0; border-bottom: 2px solid #cbd5e0; }
+        tr.total-general { background: #1a202c; color: #fff; font-weight: 700; font-size: 14px; }
+        
+        .alert { background: #e6fffa; color: #234e52; padding: 12px; border-radius: 6px; text-align: center; margin-bottom: 20px; border: 1px solid #b2f5ea; font-size: 14px; }
+
+        /* Estilos optimizados para Impresión / PDF */
+        @media print {
+            body { background: #fff; padding: 0; color: #000; }
+            .container { box-shadow: none; padding: 0; max-width: 100%; }
+            form, .alert, .btn-print, .btn-success, .btn-primary, button { display: none !important; }
+            th { background: #333 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            tr.total-general { background: #333 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            tr.subtotal { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📦 Inventario Central + Drinks (Dinámico)</h2>
+    <div class="header-reporte">
+        <div>
+            <h2>📊 Reporte Gerencial de Inventario Consolidado</h2>
+            <p style="margin: 5px 0 0; color: #666; font-size: 13px;">Stock unificado: Central + Drinks</p>
+        </div>
+        <div class="meta">
+            <strong>Fecha de emisión:</strong> <?= date("d/m/Y H:i") ?><br>
+            <strong>Filtro aplicado:</strong> <?= $categoria !== '' ? htmlspecialchars($cats[$categoria] ?? $categoria) : 'Todas las categorías' ?>
+        </div>
+    </div>
 
     <?php if(isset($msg_backup)): ?>
         <div class="alert"><?= $msg_backup ?></div>
@@ -166,34 +185,35 @@ $barcodes_pagina = array_slice($barcodes_filtrados, $offset, $limit);
                 <option value="<?= $k ?>" <?= $categoria === $k ? 'selected' : '' ?>><?= htmlspecialchars($k.' - '.$v) ?></option>
             <?php endforeach; ?>
         </select>
-        <input type="text" name="term" placeholder="Buscar producto..." value="<?= htmlspecialchars($term) ?>">
-        <button type="submit">🔍 Consultar</button>
-        <button type="button" onclick="location.href='?action=backup_db'" style="background:#28a745;">💾 Sincronizar Historial</button>
+        <input type="text" name="term" placeholder="Buscar por producto o código..." value="<?= htmlspecialchars($term) ?>" style="flex-grow: 1; max-width: 350px;">
+        <button type="submit" class="btn-primary">🔍 Consultar</button>
+        <button type="button" onclick="window.print()" class="btn-print">🖨️ Imprimir Listado</button>
+        <button type="button" onclick="location.href='?action=backup_db'" class="btn-success">💾 Sincronizar Historial</button>
     </form>
 
     <div class="table-container">
         <table>
             <thead>
                 <tr>
-                    <th>CodCat</th>
-                    <th>Categoría</th>
-                    <th>Barcode</th>
-                    <th style="text-align:left;">Producto</th>
-                    <th>Drinks</th>
-                    <th>Central</th>
-                    <th>Total</th>
+                    <th style="width: 70px;">CodCat</th>
+                    <th style="text-align: left; width: 180px;">Categoría</th>
+                    <th style="width: 120px;">Barcode</th>
+                    <th style="text-align: left;">Descripción del Producto</th>
+                    <th style="width: 90px;">Drinks</th>
+                    <th style="width: 90px;">Central</th>
+                    <th style="width: 100px;">Total</th>
                 </tr>
             </thead>
             <tbody>
             <?php
-            if (empty($barcodes_pagina)):
-                echo '<tr><td colspan="7" style="padding:20px; color:#777;">No se encontraron productos con los filtros seleccionados.</td></tr>';
+            if (empty($barcodes_filtrados)):
+                echo '<tr><td colspan="7" style="padding: 30px; color: #777; font-style: italic;">No se encontraron productos con los filtros seleccionados.</td></tr>';
             else:
                 $lastCat = null;
                 $subD = $subC = $subT = 0;
                 $genD = $genC = $genT = 0; 
 
-                foreach ($barcodes_pagina as $index => $b):
+                foreach ($barcodes_filtrados as $index => $b):
                     $c = $central[$b] ?? ['cantidad' => 0, 'descripcion' => 'Sin descripción'];
                     $d = $drinks[$b] ?? ['cantidad' => 0];
                     $cat = $prodCat[$b] ?? 'SIN';
@@ -205,10 +225,10 @@ $barcodes_pagina = array_slice($barcodes_filtrados, $offset, $limit);
 
                     if($lastCat !== null && $lastCat !== $cat){
                         echo "<tr class='subtotal'>
-                                <td colspan='4' style='text-align:right;'>SUBTOTAL ".htmlspecialchars(($cats[$lastCat] ?? 'SIN CATEGORÍA')." ({$lastCat})")."</td>
-                                <td>".number_format($subD, 0)."</td>
-                                <td>".number_format($subC, 0)."</td>
-                                <td>".number_format($subT, 0)."</td>
+                                <td colspan='4' style='text-align: right;'>SUBTOTAL " . htmlspecialchars(($cats[$lastCat] ?? 'SIN CATEGORÍA') . " ({$lastCat})") . "</td>
+                                <td>" . number_format($subD, 0) . "</td>
+                                <td>" . number_format($subC, 0) . "</td>
+                                <td>" . number_format($subT, 0) . "</td>
                               </tr>";
                         $subD = $subC = $subT = 0;
                     }
@@ -224,41 +244,38 @@ $barcodes_pagina = array_slice($barcodes_filtrados, $offset, $limit);
             ?>
             <tr>
                 <td><?= htmlspecialchars($cat) ?></td>
-                <td><?= htmlspecialchars($nombreCat) ?></td>
+                <td style="text-align: left;"><?= htmlspecialchars($nombreCat) ?></td>
                 <td><?= htmlspecialchars($b) ?></td>
-                <td style="text-align:left;"><?= htmlspecialchars($descripcionProd) ?></td>
+                <td style="text-align: left;"><?= htmlspecialchars($descripcionProd) ?></td>
                 <td><?= number_format($cantD, 0) ?></td>
                 <td><?= number_format($cantC, 0) ?></td>
                 <td><strong><?= number_format($totalUnit, 0) ?></strong></td>
             </tr>
             <?php 
-                    if ($index === count($barcodes_pagina) - 1) {
+                    // Imprimir último subtotal al finalizar el bucle
+                    if ($index === count($barcodes_filtrados) - 1) {
                         echo "<tr class='subtotal'>
-                                <td colspan='4' style='text-align:right;'>SUBTOTAL ".htmlspecialchars("{$nombreCat} ({$cat})")."</td>
-                                <td>".number_format($subD, 0)."</td>
-                                <td>".number_format($subC, 0)."</td>
-                                <td>".number_format($subT, 0)."</td>
+                                <td colspan='4' style='text-align: right;'>SUBTOTAL " . htmlspecialchars("{$nombreCat} ({$cat})") . "</td>
+                                <td>" . number_format($subD, 0) . "</td>
+                                <td>" . number_format($subC, 0) . "</td>
+                                <td>" . number_format($subT, 0) . "</td>
                               </tr>";
                     }
                 endforeach; 
             endif;
             ?>
             </tbody>
+            <?php if (!empty($barcodes_filtrados)): ?>
             <tfoot>
                 <tr class="total-general">
-                    <td colspan="4" style="text-align:right;">TOTAL EN ESTA PÁGINA:</td>
+                    <td colspan="4" style="text-align: right; text-transform: uppercase;">TOTAL GENERAL:</td>
                     <td><?= number_format($genD, 0) ?></td>
                     <td><?= number_format($genC, 0) ?></td>
                     <td><?= number_format($genT, 0) ?></td>
                 </tr>
             </tfoot>
+            <?php endif; ?>
         </table>
-    </div>
-
-    <div class="paginacion">
-        <?php for($i = 1; $i <= $totalPages; $i++): ?>
-            <a class="<?= $i == $page ? 'activa' : '' ?>" href="?categoria=<?= urlencode($categoria) ?>&term=<?= urlencode($term) ?>&page=<?= $i ?>"><?= $i ?></a>
-        <?php endfor; ?>
     </div>
 </div>
 

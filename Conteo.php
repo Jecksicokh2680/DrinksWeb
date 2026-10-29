@@ -1,6 +1,6 @@
 <?php
 /* ============================================================
-   1. CONEXIONES Y CONFIGURACIÓN
+    1. CONEXIONES Y CONFIGURACIÓN
 ============================================================ */
 require_once("ConnCentral.php"); // $mysqliCentral
 require_once("ConnDrinks.php");  // $mysqliDrinks
@@ -76,11 +76,14 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $skus = [];
     while($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
 
-    $html = "<div style='overflow-x:auto;'>
-            <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
-            <thead><tr style='background:#f4f4f4;'>
-                <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
-                <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
+    $html = "<div style='margin-bottom: 10px; text-align: right;' class='no-print'>
+                <button onclick='window.print()' style='background:#6c757d; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;'>🖨️ Imprimir Detalle</button>
+             </div>
+             <div style='overflow-x:auto;'>
+             <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
+             <thead><tr style='background:#f4f4f4;'>
+                 <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
+                 <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
     
     if ($esAdminStock) {
         $html .= "<th style='padding:8px; border:1px solid #ddd;'>Stock</th>";
@@ -175,7 +178,7 @@ if (isset($_POST['guardar_conteo'])) {
     $unicaja       = floatval($_POST['unicaja']);
     $stockSistema  = floatval($_POST['stock_sistema']);
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
-    $diferencia    = $stockFisico - $stockSistema;
+    $diferencia    = $stockFisico - $stockSistema; // Corregido error de sintaxis aquí
     $estadoActivo  = 'A';
 
     $stmt_check = $mysqli->prepare("
@@ -279,7 +282,6 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         *{box-sizing:border-box;}
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
         
-        /* Contenedor adaptado al 100% responsive */
         .card{width:100%; max-width:100%; margin:0; background:#fff; padding:15px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);}
         
         .sede-selector { display:flex; gap:8px; margin-bottom:15px; background:#e9ecef; padding:8px; border-radius:8px; align-items:center; flex-wrap: wrap; }
@@ -301,6 +303,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         
         .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:8px; font-size:18px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
+        .btn-print { background:#6c757d; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:13px; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
         
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 100%;}
@@ -313,27 +316,38 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:20px; width:95%; max-width:800px; border-radius:12px; max-height:85vh; overflow-y:auto; position:relative;}
         .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#999; }
+
+        /* Estilos optimizados para impresión */
+        @media print {
+            body * { visibility: hidden; }
+            .no-print { display: none !important; }
+            #seccion-historial, #seccion-historial * { visibility: visible; }
+            #seccion-historial { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+            .modal { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: none; }
+            .modal-content { box-shadow: none; margin: 0; width: 100%; max-height: none; }
+            .modal-content * { visibility: visible; }
+        }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div class="sede-selector">
+    <div class="sede-selector no-print">
         <span style="font-size:11px; font-weight:bold; color:#777;">📍 SEDE:</span>
         <a href="?cambiar_nit=<?= NIT_CENTRAL ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
         <a href="?cambiar_nit=<?= NIT_DRINKS ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
         <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄</button>
     </div>
 
-    <h3 style="margin:0 0 15px 0;">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
+    <h3 style="margin:0 0 15px 0;" class="no-print">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
     
     <?php if($mensaje): ?>
-        <div style="background:#d4edda; color:#155724; padding:12px; border-radius:8px; margin-bottom:15px; border-left:5px solid #28a745; font-size: 14px;">
+        <div style="background:#d4edda; color:#155724; padding:12px; border-radius:8px; margin-bottom:15px; border-left:5px solid #28a745; font-size: 14px;" class="no-print">
             <?= $mensaje ?>
         </div>
     <?php endif; ?>
 
-    <form method="POST" id="form-main">
+    <form method="POST" id="form-main" class="no-print">
         <label>Seleccionar Categoría:</label>
         <select name="categoria" id="select-categoria" class="select-categoria" onchange="this.form.submit()">
             <option value="">-- Buscar Categoría --</option>
@@ -350,9 +364,9 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     </form>
 
     <?php if($categoriaSel): ?>
-        <button type="button" class="btn-info" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
+        <button type="button" class="btn-info no-print" onclick="verDetalleProductos('<?= $categoriaSel ?>')">🔍 Ver Productos de <?= $categoriaSel ?></button>
 
-        <div style="background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef;">
+        <div style="background:#f8f9fa; padding:15px; border-radius:10px; border:1px solid #e9ecef;" class="no-print">
             <?php if($AUT_CORREGIR === 'SI'): ?>
                 <div style="display:flex; justify-content:space-between; margin-bottom:15px; background:#fff; padding:12px; border-radius:8px; border:1px solid #eee;">
                     <span>📖 Stock Teórico (Sistema):</span>
@@ -381,10 +395,13 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php endif; ?>
 
     <?php if($conteos): ?>
-        <div style="margin-top:30px;">
+        <div style="margin-top:30px;" id="seccion-historial">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h4 style="margin:0; color:#666;">HISTORIAL DE HOY</h4>
-                <input type="text" id="buscador-historial" placeholder="🔍 Buscar en contados..." onkeyup="filtrarHistorial()" style="padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid #ddd; width:200px; max-width:100%;">
+                <h4 style="margin:0; color:#666;">HISTORIAL DE CONTEOS DE HOY - SEDE: <?= $nombreSede ?></h4>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="text" id="buscador-historial" class="no-print" placeholder="🔍 Buscar en contados..." onkeyup="filtrarHistorial()" style="padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid #ddd; width:200px; max-width:100%;">
+                    <button type="button" class="btn-print no-print" onclick="window.print()">🖨️ Imprimir Historial</button>
+                </div>
             </div>
             <div class="table-responsive">
                 <table id="tabla-historial">
@@ -399,8 +416,8 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <th>Dif.</th>
                             <?php endif; ?>
-                            <th>Edo.</th>
-                            <?php if($AUT_BORRAR==='SI'): ?><th></th><?php endif; ?>
+                            <th class="no-print">Edo.</th>
+                            <?php if($AUT_BORRAR==='SI'): ?><th class="no-print"></th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -424,10 +441,10 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                                 </td>
                             <?php endif; ?>
 
-                            <td align="center"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
+                            <td align="center" class="no-print"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
                             
                             <?php if($AUT_BORRAR==='SI'): ?>
-                            <td>
+                            <td class="no-print">
                                 <form method="POST" onsubmit="return confirm('¿Anular registro?')">
                                     <input type="hidden" name="id_conteo" value="<?= $c['id'] ?>">
                                     <button name="borrar_conteo" style="background:none; border:none; cursor:pointer; font-size:16px;">🗑️</button>
@@ -445,7 +462,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 
 <div id="modalProductos" class="modal">
     <div class="modal-content">
-        <span class="close-modal" onclick="cerrarModal()">&times;</span>
+        <span class="close-modal no-print" onclick="cerrarModal()">&times;</span>
         <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px;">Detalle de Productos</h3>
         <div id="tabla-productos">Cargando...</div>
     </div>

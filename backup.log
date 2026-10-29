@@ -2,3 +2,5 @@
 ❌ Error de conexión a la base de datos (empresa001): Connection refused[2026-08-31 18:00:00] Respaldo automático exitoso. Total procesados: 390
 [2026-09-12 18:00:00] Respaldo automático exitoso. Total procesados: 392
 [2026-09-24 18:00:00] Respaldo automático exitoso. Total procesados: 393
+❌ Error de conexión a la base de datos (empresa001): Connection timed outPHP Warning:  mysqli::__construct(): Error while reading greeting packet. PID=14630 in /home/milo/DrinksWeb/ConnCentral.php on line 25
+❌ Error de conexión a la base de datos (empresa001): MySQL server has gone away[2026-10-28 18:00:00] Respaldo automático exitoso. Total procesados: 396

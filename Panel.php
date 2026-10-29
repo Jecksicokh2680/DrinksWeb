@@ -242,6 +242,8 @@ function abrirPopup(event, url) {
 }
 </script>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                
+                        <a class="nav-link" href="Compras_Xusuario.php" target="contentFrame">🔄 Ver Compras</a>                
+                        
                         <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                        
                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
@@ -348,6 +350,8 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="HistoricoConteoDiaaDia.php" target="contentFrame">Historico Conteos Día a Día</a>                            
                                     <a class="nav-link" href="Ver_ajustes_conteos.php" target="contentFrame">Generar Ajustes Conteos</a>
                                     <a class="nav-link" href="StockCentral.php" target="contentFrame">Ver Stock por Categorias</a> 
+                                    <a class="nav-link" href="StockBnmaHistoria.php" target="contentFrame">Ver Stock Guardado Categorias</a> 
+                                    
                                     <a class="nav-link" href="historicoConteos.php" target="contentFrame">Ver Historico de Conteos</a>                                                             
                                     <a class="nav-link" href="Busca_DuplicadosXNombre.php" target="contentFrame">Busca Duplicados X Nombre</a>
                                 </div>
@@ -384,6 +388,10 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="Estadistica_Familias.php" target="contentFrame">Lo más Vendido por Familia</a>
                                     <a class="nav-link" href="Estadistica_FamiliasXdia.php" target="contentFrame">Ventas por Familia/dia</a>
                                     <a class="nav-link" href="GraficaDiaDiaXProducto.php" target="contentFrame">Grafica Dia Dia X Producto</a>
+                                    <a class="nav-link" href="Utilidad.php" target="contentFrame">Utilidad por Producto</a>                                    
+                                    <a class="nav-link" href="Utilidad_Stock.php" target="contentFrame">Stock y su valor</a>  
+                                    <a class="nav-link" href="Utilidad_Cat.php" target="contentFrame">Analisis Dia Stock y Vta</a>  
+                                    
                                 </div>
                             </div>
                         </div>
