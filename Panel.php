@@ -242,16 +242,23 @@ function abrirPopup(event, url) {
 }
 </script>
                         <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                
-                        <a class="nav-link" href="Compras_Xusuario.php" target="contentFrame">🔄 Ver Compras</a>                
+                        <a class="nav-link" href="Compras_Xusuario.php" target="contentFrame">🔄 Ver Compras</a>   
+                         <ul class="nav flex-column">
+                            <!-- Tus otros enlaces de navegación -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>
+                            </li>
+                        </ul>
                         
-                        <a class="nav-link" href="buscaprecioventacero.php" target="contentFrame">🏷️ Busca Precio Venta Cero</a>                        
-                        <a class="nav-link" href="minequi.php"
+                        
+                         <a class="nav-link" href="minequi.php"
                         onclick="const w = 450; const h = screen.availHeight; const l = screen.availWidth - w; window.open(this.href, 'Transfers Banco', `width=${w},height=${h},top=0,left=${l},scrollbars=yes,resizable=yes`); return false;">
                         🏦 Ver Transferencias Bre-B</a>
                         <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">📧 Ver Qué llega Hoy</a>                     
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
-                        <a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a>  
-                    </div>
+                        <!-- 
+<a class="nav-link" href="PanelConteo.php" target="contentFrame">💵 Panel Conteo Inventario</a> 
+-->
                     
                     <?php if ($EsJefeBodega): ?>
                     <h6 class="text-muted ps-2 pt-2 pb-1 border-bottom" style="font-size: 0.82rem; text-transform: uppercase;">
@@ -269,7 +276,7 @@ function abrirPopup(event, url) {
                     <div class="menu-seccion ps-2">
                         <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Inv. / Grabar Conteo Web</a>
                         <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🔍 Auditoria de Pedidos</a>
-                        <a class="nav-link" href="ColaboradorFicha.php" target="contentFrame">👤 Ficha Demografica Colaborador</a>
+                        <a class="nav-link" href="ColaboradorFicha.php" target="contentFrame">👤 Ficha Colaborador</a>
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🚇 Ver Tunel</a>    
                         <a class="nav-link" href="#" onclick="window.open('Chat.php', 'ChatInterno', 'width=450,height=300,scrollbars=yes,resizable=No'); return false;">💬 Chat Interno</a>
                     </div>
