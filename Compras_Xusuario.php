@@ -177,12 +177,11 @@ function fmoneda($v) {
             white-space: nowrap;
         }
 
-        /* Contenedor de tabla con scroll fluido en móviles */
+        /* Contenedor de tabla SIN barra vertical y con scroll horizontal fluido si es necesario */
         .table-container { 
             width: 100%;
-            max-height: 48vh; 
             overflow-x: auto; 
-            overflow-y: auto;
+            overflow-y: visible; /* Eliminada la barra vertical */
             -webkit-overflow-scrolling: touch;
             background: #fff;
         }
