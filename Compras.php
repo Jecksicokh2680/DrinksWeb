@@ -55,7 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $nit = substr(trim($input['nit']), 0, 10);
         $idCompra = trim($input['idcompra']);
         
-        // El backend guarda estrictamente en negativo para el egreso
         $monto = -abs((double)$input['monto']);
         $descripcion = substr($input['nombre'] . " | Fact: " . $idCompra, 0, 100);
 
@@ -500,8 +499,17 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     $fechaAnt = '';
     
     $subCompra = 0;   
+    $subVentaCompra = 0;
+    $subUtilCompra = 0;
+
     $subProveedor = 0; 
+    $subVentaProv = 0;
+    $subUtilProv = 0;
+
     $gran = 0;         
+    $granVenta = 0;
+    $granUtil = 0;
+
     $hayRegistros = false;
 
     $resumenFacturas = [];
@@ -514,19 +522,26 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         $costoBruto = $net + ($net * $x['porciva'] / 100) + $x['ValICUIUni'];
         $totalItemBruto = $costoBruto * $cant;
 
-        // Factor de ajuste fijo en 1 para mantener el costo real original de los ítems sin alteración
         $factorAjuste = 1;
 
         $costo = $costoBruto * $factorAjuste;
         $totalItem = $totalItemBruto * $factorAjuste;
 
         $pv = ($x['sucursal'] == 'Central') ? ($pvC[$x['Barcode']] ?? 0) : ($pvD[$x['Barcode']] ?? 0);
+        $totalVentaItem = $pv * $cant;
         $util = ($pv - $costo) * $cant;
         $porc = $costo > 0 ? (($pv - $costo) / $costo) * 100 : 0;
 
         if (($idCompraAnt && $idCompraAnt != $x['idcompra']) || ($provAnt && $provAnt != $x['prov'])) {
-            echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'><td colspan='8' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td><td>".fmoneda($subCompra)."</td>";
-            echo "<td colspan='3'></td>";
+            $porcSubCompra = $subCompra > 0 ? ($subUtilCompra / $subCompra) * 100 : 0;
+            $clsPorcSub = $porcSubCompra >= 0 ? 'porc-pos' : 'porc-neg';
+
+            echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'>";
+            echo "<td colspan='8' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td>";
+            echo "<td>".fmoneda($subCompra)."</td>";
+            echo "<td style='font-weight:bold; color:#1d4ed8;'>".fmoneda($subVentaCompra)."</td>";
+            echo "<td style='font-weight:bold; color:#065f46;'>".fmoneda($subUtilCompra)."</td>";
+            echo "<td class='$clsPorcSub'>".number_format($porcSubCompra, 1)."%</td>";
             echo "</tr>";
             
             $resumenFacturas[] = [
@@ -535,21 +550,43 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
                 'sucursal' => $sucursalAnt,
                 'idcompra' => $idCompraAnt,
                 'fecha' => $fechaAnt,
-                'total' => $subCompra
+                'total' => $subCompra,
+                'venta' => $subVentaCompra,
+                'utilidad' => $subUtilCompra
             ];
             $subCompra = 0;
+            $subVentaCompra = 0;
+            $subUtilCompra = 0;
         }
 
         if ($provAnt && $provAnt != $x['prov']) {
-            echo "<tr class='subtotal row-total-prov'><td colspan='8'>TOTAL PROVEEDOR: $provAnt</td><td>".fmoneda($subProveedor)."</td>";
-            echo "<td colspan='3'></td>";
+            $porcSubProv = $subProveedor > 0 ? ($subUtilProv / $subProveedor) * 100 : 0;
+            $clsPorcProv = $porcSubProv >= 0 ? 'porc-pos' : 'porc-neg';
+
+            echo "<tr class='subtotal row-total-prov'>";
+            echo "<td colspan='8'>TOTAL PROVEEDOR: $provAnt</td>";
+            echo "<td>".fmoneda($subProveedor)."</td>";
+            echo "<td style='color:#1d4ed8;'>".fmoneda($subVentaProv)."</td>";
+            echo "<td style='color:#065f46;'>".fmoneda($subUtilProv)."</td>";
+            echo "<td class='$clsPorcProv'>".number_format($porcSubProv, 1)."%</td>";
             echo "</tr>"; 
+            
             $subProveedor = 0;
+            $subVentaProv = 0;
+            $subUtilProv = 0;
         }
 
         $subCompra += $totalItem;
+        $subVentaCompra += $totalVentaItem;
+        $subUtilCompra += $util;
+
         $subProveedor += $totalItem;
+        $subVentaProv += $totalVentaItem;
+        $subUtilProv += $util;
+
         $gran += $totalItem;
+        $granVenta += $totalVentaItem;
+        $granUtil += $util;
         
         $fechaRaw = $x['FECHA'];
         $fechaFormateada = (strlen($fechaRaw) == 8) ? substr($fechaRaw, 0, 4) . '-' . substr($fechaRaw, 4, 2) . '-' . substr($fechaRaw, 6, 2) : $fechaRaw;
@@ -580,8 +617,15 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     }
 
     if($hayRegistros){
-        echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'><td colspan='8' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td><td>".fmoneda($subCompra)."</td>";
-        echo "<td colspan='3'></td>";
+        $porcSubCompra = $subCompra > 0 ? ($subUtilCompra / $subCompra) * 100 : 0;
+        $clsPorcSub = $porcSubCompra >= 0 ? 'porc-pos' : 'porc-neg';
+
+        echo "<tr class='row-total-compra' data-compra-id='$idCompraAnt' style='background:#fdfdfe; font-style:italic;'>";
+        echo "<td colspan='8' style='text-align:right; color:#555;'>Total Compra ID $idCompraAnt</td>";
+        echo "<td>".fmoneda($subCompra)."</td>";
+        echo "<td style='font-weight:bold; color:#1d4ed8;'>".fmoneda($subVentaCompra)."</td>";
+        echo "<td style='font-weight:bold; color:#065f46;'>".fmoneda($subUtilCompra)."</td>";
+        echo "<td class='$clsPorcSub'>".number_format($porcSubCompra, 1)."%</td>";
         echo "</tr>";
         
         $resumenFacturas[] = [
@@ -590,15 +634,31 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             'sucursal' => $sucursalAnt,
             'idcompra' => $idCompraAnt,
             'fecha' => $fechaAnt,
-            'total' => $subCompra
+            'total' => $subCompra,
+            'venta' => $subVentaCompra,
+            'utilidad' => $subUtilCompra
         ];
 
-        echo "<tr class='subtotal row-total-prov'><td colspan='8'>TOTAL PROVEEDOR: $provAnt</td><td>".fmoneda($subProveedor)."</td>";
-        echo "<td colspan='3'></td>";
+        $porcSubProv = $subProveedor > 0 ? ($subUtilProv / $subProveedor) * 100 : 0;
+        $clsPorcProv = $porcSubProv >= 0 ? 'porc-pos' : 'porc-neg';
+
+        echo "<tr class='subtotal row-total-prov'>";
+        echo "<td colspan='8'>TOTAL PROVEEDOR: $provAnt</td>";
+        echo "<td>".fmoneda($subProveedor)."</td>";
+        echo "<td style='color:#1d4ed8;'>".fmoneda($subVentaProv)."</td>";
+        echo "<td style='color:#065f46;'>".fmoneda($subUtilProv)."</td>";
+        echo "<td class='$clsPorcProv'>".number_format($porcSubProv, 1)."%</td>";
         echo "</tr>";
         
-        echo "<tr class='total row-total-general'><td colspan='8'>TOTAL GENERAL DE COMPRAS</td><td>".fmoneda($gran)."</td>";
-        echo "<td colspan='3'></td>";
+        $porcGran = $gran > 0 ? ($granUtil / $gran) * 100 : 0;
+        $clsPorcGran = $porcGran >= 0 ? 'porc-pos' : 'porc-neg';
+
+        echo "<tr class='total row-total-general'>";
+        echo "<td colspan='8'>TOTAL GENERAL DE COMPRAS</td>";
+        echo "<td>".fmoneda($gran)."</td>";
+        echo "<td style='color:#1d4ed8;'>".fmoneda($granVenta)."</td>";
+        echo "<td style='color:#065f46;'>".fmoneda($granUtil)."</td>";
+        echo "<td class='$clsPorcGran'>".number_format($porcGran, 1)."%</td>";
         echo "</tr>";
         echo "</tbody></table></div>";
 
@@ -617,28 +677,39 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         echo "<th class='text-center'>Fecha</th>";
         echo "<th class='text-center'>ID Compra / Factura</th>";
         echo "<th>Total Valor</th>";
+        echo "<th>Total Venta</th>";
+        echo "<th>Utilidad</th>";
         echo "<th class='text-center' style='width:220px;'>Acciones</th>";
         echo "</tr></thead><tbody>";
 
         $provAntResumen = '';
         $subTotalProvResumen = 0;
+        $subVentaProvResumen = 0;
+        $subUtilProvResumen = 0;
 
         foreach($resumenFacturas as $rf){
             if ($provAntResumen && $provAntResumen != $rf['prov']) {
                 echo "<tr class='subtotal' style='background:#f1f3f5;'>";
                 echo "<td colspan='3' class='text-left'>Acumulado Total: $provAntResumen</td>";
                 echo "<td class='negativo'>".fmonedaNegativa($subTotalProvResumen)."</td>";
+                echo "<td style='text-align:right; color:#1d4ed8;'>".fmoneda($subVentaProvResumen)."</td>";
+                echo "<td style='text-align:right; color:#065f46;'>".fmoneda($subUtilProvResumen)."</td>";
                 echo "<td></td>";
                 echo "</tr>";
                 $subTotalProvResumen = 0;
+                $subVentaProvResumen = 0;
+                $subUtilProvResumen = 0;
             }
 
             if ($provAntResumen != $rf['prov']) {
-                echo "<tr><td colspan='5' class='bg-prov'>🏢 Proveedor: {$rf['prov']} (NIT: {$rf['nit']})</td></tr>";
+                echo "<tr><td colspan='7' class='bg-prov'>🏢 Proveedor: {$rf['prov']} (NIT: {$rf['nit']})</td></tr>";
                 $provAntResumen = $rf['prov'];
             }
 
             $subTotalProvResumen += $rf['total'];
+            $subVentaProvResumen += $rf['venta'];
+            $subUtilProvResumen += $rf['utilidad'];
+
             $cls = $rf['sucursal'] == 'Central' ? 'central' : 'drinks';
 
             echo "<tr>";
@@ -646,6 +717,8 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             echo "<td class='text-center'>{$rf['fecha']}</td>";
             echo "<td class='text-center'><strong>{$rf['idcompra']}</strong></td>";
             echo "<td class='negativo'>".fmonedaNegativa($rf['total'])."</td>";
+            echo "<td style='text-align:right; color:#1d4ed8;'>".fmoneda($rf['venta'])."</td>";
+            echo "<td style='text-align:right; color:#065f46;'>".fmoneda($rf['utilidad'])."</td>";
             echo "<td class='text-center'>
                     <button type='button' class='btn-grabar-row' onclick='grabarFactura(\"{$rf['nit']}\", \"{$rf['prov']}\", \"{$rf['idcompra']}\", {$rf['total']})'>💾 Grabar Crédito</button>
                     <button type='button' class='btn-gasto-row' onclick='grabarGasto(\"{$rf['nit']}\", \"{$rf['prov']}\", \"{$rf['idcompra']}\", {$rf['total']}, \"{$rf['sucursal']}\")'>💵 Grabar Gasto</button>
@@ -657,11 +730,19 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             echo "<tr class='subtotal' style='background:#f1f3f5;'>";
             echo "<td colspan='3' class='text-left'>Acumulado Total: $provAntResumen</td>";
             echo "<td class='negativo'>".fmonedaNegativa($subTotalProvResumen)."</td>";
+            echo "<td style='text-align:right; color:#1d4ed8;'>".fmoneda($subVentaProvResumen)."</td>";
+            echo "<td style='text-align:right; color:#065f46;'>".fmoneda($subUtilProvResumen)."</td>";
             echo "<td></td>";
             echo "</tr>";
         }
         
-        echo "<tr class='total'><td colspan='3' class='text-left'>TOTAL GENERAL DEL RESUMEN</td><td class='negativo'>".fmonedaNegativa($gran)."</td><td></td></tr>";
+        echo "<tr class='total'>";
+        echo "<td colspan='3' class='text-left'>TOTAL GENERAL DEL RESUMEN</td>";
+        echo "<td class='negativo'>".fmonedaNegativa($gran)."</td>";
+        echo "<td style='text-align:right; color:#1d4ed8;'>".fmoneda($granVenta)."</td>";
+        echo "<td style='text-align:right; color:#065f46;'>".fmoneda($granUtil)."</td>";
+        echo "<td></td>";
+        echo "</tr>";
         echo "</tbody></table></div>";
 
     } else {
@@ -701,7 +782,7 @@ function filtrarPorProductoHtml() {
     });
 
     subTotalsCompra.forEach(s => s.classList.add('hidden-row'));
-    subTotalsProv.forEach(p => p.classList.add('hidden-row'));
+    subTotalsProv.forEach(p => s.classList.add('hidden-row'));
     totalGeneral.forEach(g => g.classList.add('hidden-row'));
 }
 

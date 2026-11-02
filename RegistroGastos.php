@@ -13,16 +13,39 @@ if (isset($conn_error) && !empty($conn_error)) {
     die($conn_error);
 }
 
+// ---------------------------------------------------------
+// PROCESAMIENTO AJAX: ACTUALIZAR ESTADO DEL CHECK (CAUSADO)
+// ---------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'actualizar_causado') {
+    header('Content-Type: application/json');
+    $input = json_decode(file_get_contents('php://input'), true);
+    $id_registro = $input['id'] ?? '';
+    $causado = isset($input['causado']) ? (int)$input['causado'] : 0;
+
+    if (!empty($id_registro)) {
+        $stmt = $mysqliWeb->prepare("UPDATE RegistroGastos SET causado = ? WHERE id = ?");
+        $stmt->bind_param("ii", $causado, $id_registro);
+        if ($stmt->execute()) {
+            echo json_encode(['status' => 'success', 'message' => 'Estado actualizado']);
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'Error al actualizar']);
+        }
+        $stmt->close();
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'ID inválido']);
+    }
+    exit;
+}
+
 $mensaje = "";
 $error = "";
 $pagina_actual = basename($_SERVER['PHP_SELF']);
 
-// Capturar el mes y año seleccionados (por defecto el mes y año actual de Bogotá)
-$mes_seleccionado = $_GET['mes'] ?? date('m');
-$anio_seleccionado = $_GET['anio'] ?? date('Y');
+// Capturar la fecha destino seleccionada (por defecto la fecha actual de Bogotá: YYYY-MM-DD)
+$fecha_seleccionada = $_GET['fecha'] ?? date('Y-m-d');
 
-// 1. Procesar Acciones POST (Guardar, Actualizar, Eliminar)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// 1. Procesar Acciones POST (Guardar, Actualizar, Eliminar, Copiar validando duplicados)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['action'])) {
     $accion = $_POST['accion'] ?? '';
 
     if ($accion === 'guardar' || $accion === 'actualizar') {
@@ -43,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $stmt->close();
             } else {
-                $stmt = $mysqliWeb->prepare("INSERT INTO RegistroGastos (tipologia_id, monto, fecha, observacion) VALUES (?, ?, ?, ?)");
+                $stmt = $mysqliWeb->prepare("INSERT INTO RegistroGastos (tipologia_id, monto, fecha, observacion, causado) VALUES (?, ?, ?, ?, 1)");
                 $stmt->bind_param("idss", $tipologia_id, $monto, $fecha, $observacion);
                 if ($stmt->execute()) {
                     $mensaje = "Registro guardado correctamente.";
@@ -67,6 +90,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt->close();
         }
+    } elseif ($accion === 'copiar_desde_fecha') {
+        $fecha_origen = $_POST['fecha_origen'] ?? '';
+
+        if (!empty($fecha_origen)) {
+            // Copiar TODOS los registros (Activos, Pasivos, Fijos, Variables) de la fecha de origen
+            $sql_copiar = "SELECT r.tipologia_id, r.monto, r.observacion, r.causado, t.tipo 
+                           FROM RegistroGastos r
+                           INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id
+                           WHERE r.fecha = ?";
+            $stmt_c = $mysqliWeb->prepare($sql_copiar);
+            $stmt_c->bind_param("s", $fecha_origen);
+            $stmt_c->execute();
+            $res_c = $stmt_c->get_result();
+
+            $copiados = 0;
+            $duplicados = 0;
+
+            while ($row_c = $res_c->fetch_assoc()) {
+                $tip_id = $row_c['tipologia_id'];
+                $monto_val = $row_c['monto'];
+                $tipo_reg = $row_c['tipo'];
+                $estado_causado = isset($row_c['causado']) ? (int)$row_c['causado'] : 1;
+                $obs = "Copiado desde fecha {$fecha_origen} ({$tipo_reg}) - " . ($row_c['observacion'] ?? '');
+
+                // Verificar si ya existe este registro (misma tipología y misma fecha de destino)
+                $stmt_chk = $mysqliWeb->prepare("SELECT COUNT(*) FROM RegistroGastos WHERE tipologia_id = ? AND fecha = ?");
+                $stmt_chk->bind_param("is", $tip_id, $fecha_seleccionada);
+                $stmt_chk->execute();
+                $stmt_chk->bind_result($existe);
+                $stmt_chk->fetch();
+                $stmt_chk->close();
+
+                if ($existe == 0) {
+                    $stmt_ins = $mysqliWeb->prepare("INSERT INTO RegistroGastos (tipologia_id, monto, fecha, observacion, causado) VALUES (?, ?, ?, ?, ?)");
+                    $stmt_ins->bind_param("idssi", $tip_id, $monto_val, $fecha_seleccionada, $obs, $estado_causado);
+                    if ($stmt_ins->execute()) {
+                        $copiados++;
+                    }
+                    $stmt_ins->close();
+                } else {
+                    $duplicados++;
+                }
+            }
+            $stmt_c->close();
+
+            if ($copiados > 0 || $duplicados > 0) {
+                $mensaje = "¡Copia finalizada! Se copiaron $copiados registros nuevos ($duplicados ya existían y fueron omitidos).";
+            } else {
+                $error = "No se encontraron registros en la fecha de origen seleccionada ($fecha_origen) para copiar.";
+            }
+        } else {
+            $error = "Por favor selecciona una fecha de origen válida.";
+        }
     }
 }
 
@@ -79,17 +155,16 @@ if ($resultado_tip) {
     }
 }
 
-// 3. Obtener registros filtrados por el MES y AÑO seleccionado mediante consultas preparadas
+// 3. Obtener registros filtrados estrictamente por la FECHA exacta seleccionada
 $sql_registros = "
-    SELECT r.id, r.tipologia_id, t.nombre AS tipologia, t.tipo, t.ambito, r.monto, r.fecha, r.observacion 
+    SELECT r.id, r.tipologia_id, t.nombre AS tipologia, t.tipo, t.ambito, r.monto, r.fecha, r.observacion, r.causado 
     FROM RegistroGastos r 
     INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id 
-    WHERE MONTH(r.fecha) = ? 
-      AND YEAR(r.fecha) = ?
-    ORDER BY t.ambito ASC, t.tipo ASC, r.fecha DESC
+    WHERE r.fecha = ?
+    ORDER BY t.ambito ASC, t.tipo ASC, r.id DESC
 ";
 $stmt_regs = $mysqliWeb->prepare($sql_registros);
-$stmt_regs->bind_param("ss", $mes_seleccionado, $anio_seleccionado);
+$stmt_regs->bind_param("s", $fecha_seleccionada);
 $stmt_regs->execute();
 $resultado_regs = $stmt_regs->get_result();
 
@@ -105,35 +180,36 @@ if ($resultado_regs) {
     while ($row = $resultado_regs->fetch_assoc()) {
         $monto_val = floatval($row['monto']);
         $ambito_row = $row['ambito'] ?? 'Empresa';
+        $es_causado = !isset($row['causado']) || $row['causado'] == 1;
 
         if ($row['tipo'] === 'Activo') {
             $activos[] = $row;
-            $total_activos += $monto_val;
-        } elseif ($row['tipo'] === 'Pasivo') {
-            $pasivos_gastos[] = $row;
-            $total_pasivos += $monto_val;
-            if ($ambito_row === 'Empresa') {
-                $total_pasivos_empresa += $monto_val;
-            } else {
-                $total_pasivos_propio += $monto_val;
+            if ($es_causado) {
+                $total_activos += $monto_val;
             }
         } else {
             $pasivos_gastos[] = $row;
-            $total_gastos += $monto_val;
+            if ($es_causado) {
+                if ($row['tipo'] === 'Pasivo') {
+                    $total_pasivos += $monto_val;
+                    if ($ambito_row === 'Empresa') {
+                        $total_pasivos_empresa += $monto_val;
+                    } else {
+                        $total_pasivos_propio += $monto_val;
+                    }
+                } else {
+                    $total_gastos += $monto_val;
+                }
+            }
         }
     }
 }
 $stmt_regs->close();
 
-// Cálculo corregido del Neto Patrimonial (Activos - Pasivos Totales)
+$total_haber_activo = $total_pasivos + $total_gastos;
 $total_neto = $total_activos - $total_pasivos;
 
-// Array de meses para el filtro
-$array_meses = [
-    '01' => 'Enero', '02' => 'Febrero', '03' => 'Marzo', '04' => 'Abril',
-    '05' => 'Mayo', '06' => 'Junio', '07' => 'Julio', '08' => 'Agosto',
-    '09' => 'Septiembre', '10' => 'Octubre', '11' => 'Noviembre', '12' => 'Diciembre'
-];
+$fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'));
 ?>
 
 <!DOCTYPE html>
@@ -147,10 +223,13 @@ $array_meses = [
 <body class="bg-light">
 
 <div class="container my-4">
-    <!-- Cabecera y Botón para Abrir Modal -->
+    <!-- Cabecera y Botones -->
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Balance y Movimientos (Cuenta T)</h2>
+        <h2>Balance y Movimientos Día a Día (Cuenta T)</h2>
         <div class="d-flex gap-2">
+            <button type="button" class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalCopiar">
+                📋 Copiar desde Fecha...
+            </button>
             <button type="button" class="btn btn-primary btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalMovimiento" onclick="resetFormulario()">
                 + Nuevo Movimiento
             </button>
@@ -158,33 +237,18 @@ $array_meses = [
         </div>
     </div>
 
-    <!-- FILTRADOR DE MES Y AÑO -->
+    <!-- FILTRADOR DE FECHA EXACTA (DÍA - MES - AÑO) -->
     <div class="card shadow-sm mb-4">
         <div class="card-body py-2">
             <form method="GET" action="<?= htmlspecialchars($pagina_actual) ?>" class="row align-items-center g-2">
                 <div class="col-auto">
-                    <label for="mes" class="fw-bold col-form-label col-form-label-sm">Periodo:</label>
+                    <label for="fecha" class="fw-bold col-form-label col-form-label-sm">Fecha (Día - Mes - Año):</label>
                 </div>
                 <div class="col-md-3">
-                    <select name="mes" id="mes" class="form-select form-select-sm">
-                        <?php foreach ($array_meses as $num => $nombre_mes): ?>
-                            <option value="<?= $num ?>" <?= ($mes_seleccionado === $num) ? 'selected' : '' ?>>
-                                <?= $nombre_mes ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <select name="anio" id="anio" class="form-select form-select-sm">
-                        <?php for ($y = date('Y'); $y >= 2023; $y--): ?>
-                            <option value="<?= $y ?>" <?= ($anio_seleccionado == $y) ? 'selected' : '' ?>>
-                                <?= $y ?>
-                            </option>
-                        <?php endfor; ?>
-                    </select>
+                    <input type="date" name="fecha" id="fecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
                 </div>
                 <div class="col-auto">
-                    <button type="submit" class="btn btn-secondary btn-sm">Filtrar</button>
+                    <button type="submit" class="btn btn-secondary btn-sm">Filtrar Día</button>
                 </div>
             </form>
         </div>
@@ -209,7 +273,7 @@ $array_meses = [
         <div class="col-md-4 mb-2">
             <div class="card shadow-sm border-success">
                 <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Activos</h6>
+                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Activos (Día)</h6>
                     <h4 class="text-success mb-0">$<?= number_format($total_activos, 2, ',', '.') ?></h4>
                 </div>
             </div>
@@ -217,11 +281,12 @@ $array_meses = [
         <div class="col-md-4 mb-2">
             <div class="card shadow-sm border-dark">
                 <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Pasivos</h6>
-                    <h5 class="text-dark mb-0">$<?= number_format($total_pasivos, 2, ',', '.') ?></h5>
+                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Pasivos y Gastos Activos (Día)</h6>
+                    <h5 class="text-dark mb-0">$<?= number_format($total_haber_activo, 2, ',', '.') ?></h5>
                     <div style="font-size: 0.75rem;" class="text-muted mt-1">
-                        Empresa: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_empresa, 2, ',', '.') ?></span> | 
-                        Propio: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_propio, 2, ',', '.') ?></span>
+                        Pasivos Empresa: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_empresa, 2, ',', '.') ?></span> | 
+                        Propio: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_propio, 2, ',', '.') ?></span> |
+                        Gastos: <span class="fw-bold text-dark">$<?= number_format($total_gastos, 2, ',', '.') ?></span>
                     </div>
                 </div>
             </div>
@@ -249,6 +314,7 @@ $array_meses = [
                     <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
                         <thead class="table-light">
                             <tr>
+                                <th class="text-center" style="width: 40px;" title="Causado / Activo">Check</th>
                                 <th>Fecha</th>
                                 <th>Tipología / Ámbito</th>
                                 <th>Monto</th>
@@ -257,8 +323,13 @@ $array_meses = [
                         </thead>
                         <tbody>
                             <?php if (count($activos) > 0): ?>
-                                <?php foreach ($activos as $row): ?>
-                                    <tr>
+                                <?php foreach ($activos as $row): 
+                                    $is_checked = (!isset($row['causado']) || $row['causado'] == 1) ? 'checked' : '';
+                                ?>
+                                    <tr class="<?= ($is_checked == '') ? 'opacity-50 text-decoration-line-through' : '' ?>">
+                                        <td class="text-center">
+                                            <input type="checkbox" class="form-check-input check-causado" data-id="<?= $row['id'] ?>" <?= $is_checked ?> onchange="cambiarCausado(this)">
+                                        </td>
                                         <td><?= $row['fecha'] ?></td>
                                         <td>
                                             <strong><?= htmlspecialchars($row['tipologia']) ?></strong><br>
@@ -268,7 +339,7 @@ $array_meses = [
                                         <td class="fw-bold text-success">$<?= number_format($row['monto'], 2, ',', '.') ?></td>
                                         <td class="text-center">
                                             <button class="btn btn-sm btn-warning py-0 px-1" onclick='prepararEdicion(<?= json_encode($row) ?>)' data-bs-toggle="modal" data-bs-target="#modalMovimiento">Editar</button>
-                                            <form action="<?= htmlspecialchars($pagina_actual) ?>?mes=<?= $mes_seleccionado ?>&anio=<?= $anio_seleccionado ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
+                                            <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
                                                 <input type="hidden" name="accion" value="eliminar">
                                                 <input type="hidden" name="id_egreso" value="<?= $row['id'] ?>">
                                                 <button type="submit" class="btn btn-sm btn-danger py-0 px-1">X</button>
@@ -278,7 +349,7 @@ $array_meses = [
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-3">No hay activos registrados en este periodo.</td>
+                                    <td colspan="5" class="text-center text-muted py-3">No hay activos registrados en esta fecha.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
@@ -292,12 +363,13 @@ $array_meses = [
             <div class="card shadow-sm h-100 border-dark">
                 <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">HABER / PASIVOS Y GASTOS</h6>
-                    <span class="badge bg-light text-dark fw-bold">$<?= number_format($total_pasivos + $total_gastos, 2, ',', '.') ?></span>
+                    <span class="badge bg-light text-dark fw-bold">$<?= number_format($total_haber_activo, 2, ',', '.') ?></span>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
                         <thead class="table-light">
                             <tr>
+                                <th class="text-center" style="width: 40px;" title="Causado / Activo">Check</th>
                                 <th>Fecha</th>
                                 <th>Tipología / Tipo</th>
                                 <th>Monto</th>
@@ -311,8 +383,13 @@ $array_meses = [
                                     if ($row['tipo'] === 'Pasivo') $badge_tipo = 'bg-dark text-white';
                                     elseif ($row['tipo'] === 'Fijo') $badge_tipo = 'bg-info text-dark';
                                     elseif ($row['tipo'] === 'Variable') $badge_tipo = 'bg-warning text-dark';
+                                    
+                                    $is_checked = (!isset($row['causado']) || $row['causado'] == 1) ? 'checked' : '';
                                 ?>
-                                    <tr>
+                                    <tr class="<?= ($is_checked == '') ? 'opacity-50 text-decoration-line-through' : '' ?>">
+                                        <td class="text-center">
+                                            <input type="checkbox" class="form-check-input check-causado" data-id="<?= $row['id'] ?>" <?= $is_checked ?> onchange="cambiarCausado(this)">
+                                        </td>
                                         <td><?= $row['fecha'] ?></td>
                                         <td>
                                             <strong><?= htmlspecialchars($row['tipologia']) ?></strong><br>
@@ -322,7 +399,7 @@ $array_meses = [
                                         <td class="fw-bold text-danger">$<?= number_format($row['monto'], 2, ',', '.') ?></td>
                                         <td class="text-center">
                                             <button class="btn btn-sm btn-warning py-0 px-1" onclick='prepararEdicion(<?= json_encode($row) ?>)' data-bs-toggle="modal" data-bs-target="#modalMovimiento">Editar</button>
-                                            <form action="<?= htmlspecialchars($pagina_actual) ?>?mes=<?= $mes_seleccionado ?>&anio=<?= $anio_seleccionado ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
+                                            <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
                                                 <input type="hidden" name="accion" value="eliminar">
                                                 <input type="hidden" name="id_egreso" value="<?= $row['id'] ?>">
                                                 <button type="submit" class="btn btn-sm btn-danger py-0 px-1">X</button>
@@ -332,7 +409,7 @@ $array_meses = [
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-3">No hay pasivos o gastos registrados en este periodo.</td>
+                                    <td colspan="5" class="text-center text-muted py-3">No hay pasivos o gastos registrados en esta fecha.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
@@ -343,11 +420,43 @@ $array_meses = [
     </div>
 </div>
 
+<!-- MODAL PARA ELEGIR FECHA DE ORIGEN Y COPIAR -->
+<div class="modal fade" id="modalCopiar" tabindex="-1" aria-labelledby="modalCopiarLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST">
+                <div class="modal-header bg-warning text-dark py-2">
+                    <h5 class="modal-title fs-6 fw-bold" id="modalCopiarLabel">📋 Copiar Todos los Movimientos</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="accion" value="copiar_desde_fecha">
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-muted" style="font-size: 0.85rem;">
+                            Se copiarán **todos** los registros (Activos, Pasivos, Fijos y Variables) hacia el día destino: <strong><?= $fecha_seleccionada ?></strong>. Si ya existe un registro con la misma tipología en la fecha destino, se omitirá automáticamente para evitar duplicados.
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="fecha_origen" class="form-label fw-bold">Seleccione la Fecha de Origen:</label>
+                        <input type="date" class="form-control" id="fecha_origen" name="fecha_origen" value="<?= htmlspecialchars($fecha_sugerida_origen) ?>" required>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning btn-sm fw-bold">Ejecutar Copia</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL PARA CREAR / EDITAR MOVIMIENTO -->
 <div class="modal fade" id="modalMovimiento" tabindex="-1" aria-labelledby="modalMovimientoLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form id="form-gasto" action="<?= htmlspecialchars($pagina_actual) ?>?mes=<?= $mes_seleccionado ?>&anio=<?= $anio_seleccionado ?>" method="POST">
+            <form id="form-gasto" action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST">
                 <div class="modal-header bg-primary text-white py-2">
                     <h5 class="modal-title fs-6" id="modal-title">Registrar Nuevo Movimiento</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -375,7 +484,7 @@ $array_meses = [
 
                     <div class="mb-3">
                         <label for="fecha" class="form-label fw-bold">Fecha</label>
-                        <input type="date" class="form-control" id="fecha" name="fecha" value="<?= date('Y-m-d') ?>" required>
+                        <input type="date" class="form-control" id="fecha" name="fecha" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
                     </div>
 
                     <div class="mb-3">
@@ -393,6 +502,30 @@ $array_meses = [
 </div>
 
 <script>
+function cambiarCausado(checkbox) {
+    const id = checkbox.getAttribute('data-id');
+    const causado = checkbox.checked ? 1 : 0;
+
+    fetch('<?= htmlspecialchars($pagina_actual) ?>?action=actualizar_causado', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ id: id, causado: causado })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Error al actualizar el estado.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
 function prepararEdicion(gasto) {
     document.getElementById('accion').value = 'actualizar';
     document.getElementById('id_egreso').value = gasto.id;
@@ -409,7 +542,7 @@ function resetFormulario() {
     document.getElementById('form-gasto').reset();
     document.getElementById('accion').value = 'guardar';
     document.getElementById('id_egreso').value = '';
-    document.getElementById('fecha').value = '<?= date('Y-m-d') ?>';
+    document.getElementById('fecha').value = '<?= htmlspecialchars($fecha_seleccionada) ?>';
 
     document.getElementById('modal-title').innerText = 'Registrar Nuevo Movimiento';
     document.getElementById('btn-submit').innerText = 'Guardar Registro';
