@@ -44,7 +44,7 @@ $pagina_actual = basename($_SERVER['PHP_SELF']);
 // Capturar la fecha destino seleccionada (por defecto la fecha actual de Bogotá: YYYY-MM-DD)
 $fecha_seleccionada = $_GET['fecha'] ?? date('Y-m-d');
 
-// 1. Procesar Acciones POST (Guardar, Actualizar, Eliminar, Copiar validando duplicados)
+// 1. Procesar Acciones POST (Guardar, Actualizar, Eliminar, Copiar, Limpiar Día)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['action'])) {
     $accion = $_POST['accion'] ?? '';
 
@@ -90,11 +90,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['action'])) {
             }
             $stmt->close();
         }
+    } elseif ($accion === 'limpiar_dia') {
+        $stmt_del = $mysqliWeb->prepare("DELETE FROM RegistroGastos WHERE fecha = ?");
+        $stmt_del->bind_param("s", $fecha_seleccionada);
+        if ($stmt_del->execute()) {
+            $eliminados = $stmt_del->affected_rows;
+            $mensaje = "Se han eliminado $eliminados registros correspondientes al día $fecha_seleccionada.";
+        } else {
+            $error = "Error al limpiar los registros del día.";
+        }
+        $stmt_del->close();
     } elseif ($accion === 'copiar_desde_fecha') {
         $fecha_origen = $_POST['fecha_origen'] ?? '';
 
         if (!empty($fecha_origen)) {
-            // Copiar TODOS los registros (Activos, Pasivos, Fijos, Variables) de la fecha de origen
             $sql_copiar = "SELECT r.tipologia_id, r.monto, r.observacion, r.causado, t.tipo 
                            FROM RegistroGastos r
                            INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id
@@ -114,7 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['action'])) {
                 $estado_causado = isset($row_c['causado']) ? (int)$row_c['causado'] : 1;
                 $obs = "Copiado desde fecha {$fecha_origen} ({$tipo_reg}) - " . ($row_c['observacion'] ?? '');
 
-                // Verificar si ya existe este registro (misma tipología y misma fecha de destino)
                 $stmt_chk = $mysqliWeb->prepare("SELECT COUNT(*) FROM RegistroGastos WHERE tipologia_id = ? AND fecha = ?");
                 $stmt_chk->bind_param("is", $tip_id, $fecha_seleccionada);
                 $stmt_chk->execute();
@@ -207,7 +215,30 @@ if ($resultado_regs) {
 $stmt_regs->close();
 
 $total_haber_activo = $total_pasivos + $total_gastos;
-$total_neto = $total_activos - $total_pasivos;
+$total_neto = $total_activos - $total_haber_activo;
+
+// 5. Obtener el RESUMEN POR MES
+$sql_mensual = "
+    SELECT 
+        DATE_FORMAT(r.fecha, '%Y-%m') AS periodo,
+        SUM(CASE WHEN t.tipo = 'Activo' THEN r.monto ELSE 0 END) AS act_mes,
+        SUM(CASE WHEN t.tipo <> 'Activo' THEN r.monto ELSE 0 END) AS pas_mes
+    FROM RegistroGastos r
+    INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id
+    WHERE (r.causado = 1 OR r.causado IS NULL)
+    GROUP BY periodo
+    ORDER BY periodo ASC
+";
+$res_mensual = $mysqliWeb->query($sql_mensual);
+$resumen_mensual = [];
+
+if ($res_mensual) {
+    while ($row_m = $res_mensual->fetch_assoc()) {
+        $neto_mes = floatval($row_m['act_mes']) - floatval($row_m['pas_mes']);
+        $row_m['neto_mes'] = $neto_mes;
+        $resumen_mensual[] = $row_m;
+    }
+}
 
 $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'));
 ?>
@@ -216,17 +247,25 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cuenta T - Activos, Pasivos y Neto (P&G)</title>
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 
-<div class="container my-4">
+<!-- CONTENEDOR 100% FLUIDO -->
+<div class="container-fluid px-4 my-4">
     <!-- Cabecera y Botones -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <h2>Balance y Movimientos Día a Día (Cuenta T)</h2>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
+            <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar TODOS los registros de la fecha <?= $fecha_seleccionada ?>? Esta acción no se puede deshacer.');">
+                <input type="hidden" name="accion" value="limpiar_dia">
+                <button type="submit" class="btn btn-outline-danger btn-sm fw-bold">
+                    🗑️ Limpiar Día
+                </button>
+            </form>
             <button type="button" class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalCopiar">
                 📋 Copiar desde Fecha...
             </button>
@@ -237,14 +276,14 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     </div>
 
-    <!-- FILTRADOR DE FECHA EXACTA (DÍA - MES - AÑO) -->
+    <!-- FILTRADOR DE FECHA EXACTA -->
     <div class="card shadow-sm mb-4">
         <div class="card-body py-2">
             <form method="GET" action="<?= htmlspecialchars($pagina_actual) ?>" class="row align-items-center g-2">
                 <div class="col-auto">
                     <label for="fecha" class="fw-bold col-form-label col-form-label-sm">Fecha (Día - Mes - Año):</label>
                 </div>
-                <div class="col-md-3">
+                <div class="col-12 col-sm-auto">
                     <input type="date" name="fecha" id="fecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
                 </div>
                 <div class="col-auto">
@@ -268,43 +307,79 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     <?php endif; ?>
 
-    <!-- TARJETAS RESUMEN SUPERIORES -->
-    <div class="row text-center mb-4">
-        <div class="col-md-4 mb-2">
-            <div class="card shadow-sm border-success">
+    <!-- TARJETAS RESUMEN SUPERIORES (ADAPTADAS A 12 COLUMNAS GRID) -->
+    <div class="row text-center mb-4 g-3">
+        <div class="col-xl-4 col-md-4 col-12">
+            <div class="card shadow-sm border-success h-100">
                 <div class="card-body p-2">
                     <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Activos (Día)</h6>
                     <h4 class="text-success mb-0">$<?= number_format($total_activos, 2, ',', '.') ?></h4>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-2">
-            <div class="card shadow-sm border-dark">
+        <div class="col-xl-4 col-md-4 col-12">
+            <div class="card shadow-sm border-dark h-100">
                 <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Pasivos y Gastos Activos (Día)</h6>
+                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Pasivos y Gastos (Día)</h6>
                     <h5 class="text-dark mb-0">$<?= number_format($total_haber_activo, 2, ',', '.') ?></h5>
-                    <div style="font-size: 0.75rem;" class="text-muted mt-1">
-                        Pasivos Empresa: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_empresa, 2, ',', '.') ?></span> | 
-                        Propio: <span class="fw-bold text-dark">$<?= number_format($total_pasivos_propio, 2, ',', '.') ?></span> |
-                        Gastos: <span class="fw-bold text-dark">$<?= number_format($total_gastos, 2, ',', '.') ?></span>
+                    <div style="font-size: 0.70rem;" class="text-muted mt-1">
+                        Pasivos: <span class="fw-bold">$<?= number_format($total_pasivos, 2, ',', '.') ?></span> | 
+                        Gastos: <span class="fw-bold">$<?= number_format($total_gastos, 2, ',', '.') ?></span>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-2">
-            <div class="card shadow-sm <?= $total_neto >= 0 ? 'border-primary' : 'border-danger' ?>">
+        <div class="col-xl-4 col-md-4 col-12">
+            <div class="card shadow-sm <?= $total_neto >= 0 ? 'border-primary' : 'border-danger' ?> h-100">
                 <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Neto (Patrimonio / Diferencia)</h6>
+                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Neto del Día</h6>
                     <h4 class="<?= $total_neto >= 0 ? 'text-primary' : 'text-danger' ?> mb-0">$<?= number_format($total_neto, 2, ',', '.') ?></h4>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ESTRUCTURA TIPO CUENTA T (2 COLUMNAS: ACTIVOS IZQ / PASIVOS Y GASTOS DER) -->
-    <div class="row">
+    <!-- SECCIÓN: RESUMEN MENSUAL -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white py-2">
+            <h6 class="mb-0">📈 Resumen por Mes</h6>
+        </div>
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>Periodo (Mes)</th>
+                        <th>Total Activos (Mes)</th>
+                        <th>Total Pasivos/Gastos (Mes)</th>
+                        <th>Neto del Mes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (count($resumen_mensual) > 0): ?>
+                        <?php foreach ($resumen_mensual as $rm): ?>
+                            <tr>
+                                <td class="fw-bold"><?= $rm['periodo'] ?></td>
+                                <td class="text-success">$<?= number_format($rm['act_mes'], 2, ',', '.') ?></td>
+                                <td class="text-danger">$<?= number_format($rm['pas_mes'], 2, ',', '.') ?></td>
+                                <td class="<?= $rm['neto_mes'] >= 0 ? 'text-primary fw-bold' : 'text-danger fw-bold' ?>">
+                                    $<?= number_format($rm['neto_mes'], 2, ',', '.') ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">No hay registros suficientes para calcular el resumen mensual.</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ESTRUCTURA TIPO CUENTA T (2 COLUMNAS RESPONSIVAS) -->
+    <div class="row g-3">
         <!-- COLUMNA IZQUIERDA: ACTIVOS -->
-        <div class="col-md-6 mb-4">
+        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12 mb-4">
             <div class="card shadow-sm h-100 border-success">
                 <div class="card-header bg-success text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">DEBE / ACTIVOS (Bienes e Inversiones)</h6>
@@ -359,7 +434,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
 
         <!-- COLUMNA DERECHA: PASIVOS Y GASTOS -->
-        <div class="col-md-6 mb-4">
+        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12 mb-4">
             <div class="card shadow-sm h-100 border-dark">
                 <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">HABER / PASIVOS Y GASTOS</h6>
