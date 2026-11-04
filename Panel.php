@@ -321,7 +321,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>                                   
                                     <a class="nav-link" href="RegistroGastos.php" target="contentFrame">Registro de Gastos Diarios</a>  
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras </a>       
-                                    <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ventas BNMA</a>                                                                                
+                                    <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ver Ventas </a>                                                                                
                                     <a class="nav-link" href="LectorEmailFacturas.php" target="contentFrame">Ver Qué llega Hoy</a> 
                                     <a class="nav-link" href="CierreCajeroBnma.php" target="contentFrame">Recaudo en Efectivo dia</a>
                                     <a class="nav-link" href="Panel_Control_Obj_Caja.php" target="contentFrame">Panel Objetivos Cajeros</a>      
@@ -331,8 +331,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Cierres Cajeros Bnma</a>
                                     <a class="nav-link" href="ValorInventariox.php" target="contentFrame">Dashboard Historico</a>    
                                     <a class="nav-link" href="DashBoard3.php" target="contentFrame">DashBoard Compras Vs Ventas</a>
-                                    <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>
-                                    
+                                    <a class="nav-link" href="Promociones.php" target="contentFrame">Promociones</a>                                    
                                     <a class="nav-link" href="ComprasXProveedor.php" target="contentFrame">Compras por Proveedor</a>    
                                     <a class="nav-link" href="ComprasXProveedorXmeses.php" target="contentFrame">Compras Graficas</a>    
                                     <a class="nav-link" href="TransferDiaDia.php" target="contentFrame">Transfers Día</a>
