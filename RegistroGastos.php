@@ -43,6 +43,7 @@ $pagina_actual = basename($_SERVER['PHP_SELF']);
 
 // Capturar la fecha destino seleccionada (por defecto la fecha actual de Bogotá: YYYY-MM-DD)
 $fecha_seleccionada = $_GET['fecha'] ?? date('Y-m-d');
+$mes_seleccionado = substr($fecha_seleccionada, 0, 7); // Extraer 'YYYY-MM'
 
 // 1. Procesar Acciones POST (Guardar, Actualizar, Eliminar, Copiar, Limpiar Día)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['action'])) {
@@ -223,9 +224,8 @@ if ($resultado_regs) {
 $stmt_regs->close();
 
 $total_haber_activo = $total_pasivos + $total_gastos;
-$total_neto = $total_activos - $total_haber_activo;
 
-// 5. Obtener el RESUMEN Y DESGLOSE DÍA A DÍA (Reiniciando el cálculo el día 1 de cada mes)
+// 5. Obtener el RESUMEN Y DESGLOSE DÍA A DÍA AGRUPADO POR MES
 $sql_desglosado = "
     SELECT 
         r.fecha,
@@ -237,18 +237,21 @@ $sql_desglosado = "
     ORDER BY r.fecha ASC
 ";
 $res_desglosado = $mysqliWeb->query($sql_desglosado);
-$desglose_dias = [];
+$desglose_por_mes = [];
 
 $pasivo_acumulado = 0;
 $activo_dia_anterior = null;
 $mes_actual_control = null;
+
+// Arrays exclusivos para la gráfica del mes actual
+$fechas_grafica = [];
+$activos_grafica = [];
 
 if ($res_desglosado) {
     while ($row_d = $res_desglosado->fetch_assoc()) {
         $act_actual = floatval($row_d['act_dia']);
         $pas_actual = floatval($row_d['pas_dia']);
         
-        $row_d['neto_dia'] = $act_actual - $pas_actual;
         $row_d['suma_activo_pasivo'] = $act_actual + $pas_actual;
 
         // Extraer el mes del registro actual (YYYY-MM)
@@ -273,7 +276,14 @@ if ($res_desglosado) {
         $pasivo_acumulado += $pas_actual;
         $row_d['pasivo_acumulado'] = $pasivo_acumulado;
 
-        $desglose_dias[] = $row_d;
+        // Alimentar la gráfica SOLO con los días correspondientes al mes de la fecha seleccionada
+        if ($mes_registro === $mes_seleccionado) {
+            $fechas_grafica[] = $row_d['fecha'];
+            $activos_grafica[] = $act_actual;
+        }
+
+        // Agrupar en matriz por mes para el acordeón
+        $desglose_por_mes[$mes_registro][] = $row_d;
     }
 }
 
@@ -288,6 +298,8 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
     <title>Cuenta T - Activos, Pasivos y Neto (P&G)</title>
     <!-- Bootstrap 5 CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-light">
 
@@ -300,7 +312,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
             
             <!-- FILTRADOR DE FECHA INTEGRADO AL LADO DEL TÍTULO -->
             <form method="GET" action="<?= htmlspecialchars($pagina_actual) ?>" class="d-flex align-items-center gap-2 bg-white p-2 rounded shadow-sm border">
-                <label for="fecha" class="fw-bold col-form-label col-form-label-sm text-now0">Fecha:</label>
+                <label for="fecha" class="fw-bold col-form-label col-form-label-sm">Fecha:</label>
                 <input type="date" name="fecha" id="fecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
                 <button type="submit" class="btn btn-secondary btn-sm text-nowrap">Filtrar</button>
             </form>
@@ -337,70 +349,97 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     <?php endif; ?>
 
-    <!-- SECCIÓN: RESUMEN Y DESGLOSE ESTRICTO DÍA A DÍA -->
+    <!-- SECCIÓN: GRÁFICA DE EVOLUCIÓN DEL TOTAL DE ACTIVOS (MES ACTUAL) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white py-2">
+            <h6 class="mb-0">📊 Gráfica de Evolución: Total Activos (Mes: <?= htmlspecialchars($mes_seleccionado) ?>)</h6>
+        </div>
+        <div class="card-body bg-white p-3">
+            <div style="position: relative; height: 320px; width: 100%;">
+                <canvas id="graficoActivos"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN: DESGLOSE DÍA A DÍA EN FORMATO ACORDEÓN POR MES -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-secondary text-white py-2">
-            <h6 class="mb-0">📈 Desglose Día a Día (Evolución Diaria - Reinicia el 1 de cada Mes)</h6>
+            <h6 class="mb-0">📈 Desglose Día a Día por Mes (Acordeón)</h6>
         </div>
-        <div class="card-body p-0 table-responsive">
-            <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
-                <thead class="table-light">
-                    <tr>
-                        <th>Fecha (Día a Día)</th>
-                        <th>Total Activos (Día)</th>
-                        <th>Var. Activo (Vs Día Ant.)</th>
-                        <th>Total Pasivos/Gastos (Día)</th>
-                        <th>Pasivo Acumulado (Desde el 1ro)</th>
-                        <th>Neto del Día</th>
-                        <th>Neto Sin Gastos (Día)</th>
-                        <th class="text-center">Acción</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($desglose_dias) > 0): ?>
-                        <?php foreach ($desglose_dias as $dd): ?>
-                            <tr>
-                                <td class="fw-bold"><?= $dd['fecha'] ?></td>
-                                <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
-                                
-                                <!-- Variación Activo Vs Día Anterior -->
-                                <td>
-                                    <?php 
-                                        $var_act = $dd['variacion_activo'];
-                                        if ($var_act > 0) {
-                                            echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
-                                        } elseif ($var_act < 0) {
-                                            echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
-                                        } else {
-                                            echo '<span class="text-muted">$0,00</span>';
-                                        }
-                                    ?>
-                                </td>
+        <div class="card-body p-3">
+            <?php if (count($desglose_por_mes) > 0): ?>
+                <div class="accordion" id="accordionMeses">
+                    <?php 
+                    $i = 0;
+                    foreach ($desglose_por_mes as $mes => $registros_mes): 
+                        $i++;
+                        $is_expanded = ($mes === $mes_seleccionado) ? 'true' : 'false';
+                        $is_show = ($mes === $mes_seleccionado) ? 'show' : '';
+                        $collapsed_class = ($mes === $mes_seleccionado) ? '' : 'collapsed';
+                    ?>
+                        <div class="accordion-item mb-2 border">
+                            <h2 class="accordion-header" id="heading<?= $i ?>">
+                                <button class="accordion-button <?= $collapsed_class ?> bg-light fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse<?= $i ?>" aria-expanded="<?= $is_expanded ?>" aria-controls="collapse<?= $i ?>">
+                                    📁 Mes: <?= $mes ?> &nbsp;<span class="badge bg-secondary ms-2"><?= count($registros_mes) ?> días registrados</span>
+                                </button>
+                            </h2>
+                            <div id="collapse<?= $i ?>" class="accordion-collapse collapse <?= $is_show ?>" aria-labelledby="heading<?= $i ?>" data-bs-parent="#accordionMeses">
+                                <div class="accordion-body p-0 table-responsive">
+                                    <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Fecha (Día a Día)</th>
+                                                <th>Total Activos (Día)</th>
+                                                <th>Var. Activo (Vs Día Ant.)</th>
+                                                <th>Total Pasivos/Gastos (Día)</th>
+                                                <th>Pasivo Acumulado (Desde el 1ro)</th>
+                                                <th>Neto  (Día)</th>
+                                                <th class="text-center">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($registros_mes as $dd): ?>
+                                                <tr>
+                                                    <td class="fw-bold"><?= $dd['fecha'] ?></td>
+                                                    <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
+                                                    
+                                                    <!-- Variación Activo Vs Día Anterior -->
+                                                    <td>
+                                                        <?php 
+                                                            $var_act = $dd['variacion_activo'];
+                                                            if ($var_act > 0) {
+                                                                echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
+                                                            } elseif ($var_act < 0) {
+                                                                echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">$0,00</span>';
+                                                            }
+                                                        ?>
+                                                    </td>
 
-                                <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
-                                
-                                <!-- Pasivo Acumulado desde el 1ro del mes -->
-                                <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
+                                                    <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
+                                                    
+                                                    <!-- Pasivo Acumulado desde el 1ro del mes -->
+                                                    <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
 
-                                <td class="<?= $dd['neto_dia'] >= 0 ? 'text-primary fw-bold' : 'text-danger fw-bold' ?>">
-                                    $<?= number_format($dd['neto_dia'], 2, ',', '.') ?>
-                                </td>
+                                                    <!-- Suma Activo Diario + Pasivo Diario -->
+                                                    <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
 
-                                <!-- Suma Activo Diario + Pasivo Diario -->
-                                <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
-
-                                <td class="text-center">
-                                    <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="8" class="text-center text-muted py-3">No hay registros diarios para mostrar.</td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                                                    <td class="text-center">
+                                                        <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="text-center text-muted py-3">No hay registros diarios para mostrar.</div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -605,6 +644,54 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
 </div>
 
 <script>
+// Inicializar Gráfica de Activos (Filtrada para el mes actual)
+const ctx = document.getElementById('graficoActivos').getContext('2d');
+const graficoActivos = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: <?= json_encode($fechas_grafica) ?>,
+        datasets: [{
+            label: 'Total Activos del Mes ($)',
+            data: <?= json_encode($activos_grafica) ?>,
+            borderColor: 'rgba(25, 135, 84, 1)',
+            backgroundColor: 'rgba(25, 135, 84, 0.1)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.2,
+            pointRadius: 4,
+            pointBackgroundColor: 'rgba(25, 135, 84, 1)'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: true,
+                position: 'top'
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        let value = context.parsed.y;
+                        return ' Total Activos: $' + value.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: false,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toLocaleString('es-CO', {notation: 'compact'});
+                    }
+                }
+            }
+        }
+    }
+});
+
 function cambiarCausado(checkbox) {
     const id = checkbox.getAttribute('data-id');
     const causado = checkbox.checked ? 1 : 0;
