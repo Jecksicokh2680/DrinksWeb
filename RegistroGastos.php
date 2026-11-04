@@ -182,6 +182,8 @@ $total_activos = 0;
 $total_pasivos_empresa = 0;
 $total_pasivos_propio = 0;
 $total_pasivos = 0;
+$total_gastos_fijos = 0;
+$total_gastos_variables = 0;
 $total_gastos = 0;
 
 if ($resultado_regs) {
@@ -205,6 +207,12 @@ if ($resultado_regs) {
                     } else {
                         $total_pasivos_propio += $monto_val;
                     }
+                } elseif ($row['tipo'] === 'Fijo') {
+                    $total_gastos_fijos += $monto_val;
+                    $total_gastos += $monto_val;
+                } elseif ($row['tipo'] === 'Variable') {
+                    $total_gastos_variables += $monto_val;
+                    $total_gastos += $monto_val;
                 } else {
                     $total_gastos += $monto_val;
                 }
@@ -217,26 +225,55 @@ $stmt_regs->close();
 $total_haber_activo = $total_pasivos + $total_gastos;
 $total_neto = $total_activos - $total_haber_activo;
 
-// 5. Obtener el RESUMEN POR MES
-$sql_mensual = "
+// 5. Obtener el RESUMEN Y DESGLOSE DÍA A DÍA (Reiniciando el cálculo el día 1 de cada mes)
+$sql_desglosado = "
     SELECT 
-        DATE_FORMAT(r.fecha, '%Y-%m') AS periodo,
-        SUM(CASE WHEN t.tipo = 'Activo' THEN r.monto ELSE 0 END) AS act_mes,
-        SUM(CASE WHEN t.tipo <> 'Activo' THEN r.monto ELSE 0 END) AS pas_mes
+        r.fecha,
+        SUM(CASE WHEN t.tipo = 'Activo' AND (r.causado = 1 OR r.causado IS NULL) THEN r.monto ELSE 0 END) AS act_dia,
+        SUM(CASE WHEN t.tipo <> 'Activo' AND (r.causado = 1 OR r.causado IS NULL) THEN r.monto ELSE 0 END) AS pas_dia
     FROM RegistroGastos r
     INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id
-    WHERE (r.causado = 1 OR r.causado IS NULL)
-    GROUP BY periodo
-    ORDER BY periodo ASC
+    GROUP BY r.fecha
+    ORDER BY r.fecha ASC
 ";
-$res_mensual = $mysqliWeb->query($sql_mensual);
-$resumen_mensual = [];
+$res_desglosado = $mysqliWeb->query($sql_desglosado);
+$desglose_dias = [];
 
-if ($res_mensual) {
-    while ($row_m = $res_mensual->fetch_assoc()) {
-        $neto_mes = floatval($row_m['act_mes']) - floatval($row_m['pas_mes']);
-        $row_m['neto_mes'] = $neto_mes;
-        $resumen_mensual[] = $row_m;
+$pasivo_acumulado = 0;
+$activo_dia_anterior = null;
+$mes_actual_control = null;
+
+if ($res_desglosado) {
+    while ($row_d = $res_desglosado->fetch_assoc()) {
+        $act_actual = floatval($row_d['act_dia']);
+        $pas_actual = floatval($row_d['pas_dia']);
+        
+        $row_d['neto_dia'] = $act_actual - $pas_actual;
+        $row_d['suma_activo_pasivo'] = $act_actual + $pas_actual;
+
+        // Extraer el mes del registro actual (YYYY-MM)
+        $mes_registro = substr($row_d['fecha'], 0, 7);
+
+        // Si cambió el mes, reiniciamos los acumuladores/comparadores al día 1 del mes
+        if ($mes_actual_control !== $mes_registro) {
+            $mes_actual_control = $mes_registro;
+            $pasivo_acumulado = 0;
+            $activo_dia_anterior = null; 
+        }
+
+        // 1. Variación de Activo Vs Día Anterior (dentro del mismo mes)
+        if ($activo_dia_anterior === null) {
+            $row_d['variacion_activo'] = 0;
+        } else {
+            $row_d['variacion_activo'] = $act_actual - $activo_dia_anterior;
+        }
+        $activo_dia_anterior = $act_actual;
+
+        // 2. Pasivo Acumulado Día a Día (reiniciándose desde el 1 de cada mes)
+        $pasivo_acumulado += $pas_actual;
+        $row_d['pasivo_acumulado'] = $pasivo_acumulado;
+
+        $desglose_dias[] = $row_d;
     }
 }
 
@@ -256,9 +293,19 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
 
 <!-- CONTENEDOR 100% FLUIDO -->
 <div class="container-fluid px-4 my-4">
-    <!-- Cabecera y Botones -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-        <h2>Balance y Movimientos Día a Día (Cuenta T)</h2>
+    <!-- Cabecera con Título, Filtro de Fecha y Botones -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <h2 class="mb-0">Balance y Movimientos Día a Día (Cuenta T)</h2>
+            
+            <!-- FILTRADOR DE FECHA INTEGRADO AL LADO DEL TÍTULO -->
+            <form method="GET" action="<?= htmlspecialchars($pagina_actual) ?>" class="d-flex align-items-center gap-2 bg-white p-2 rounded shadow-sm border">
+                <label for="fecha" class="fw-bold col-form-label col-form-label-sm text-now0">Fecha:</label>
+                <input type="date" name="fecha" id="fecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
+                <button type="submit" class="btn btn-secondary btn-sm text-nowrap">Filtrar</button>
+            </form>
+        </div>
+
         <div class="d-flex flex-wrap gap-2">
             <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar TODOS los registros de la fecha <?= $fecha_seleccionada ?>? Esta acción no se puede deshacer.');">
                 <input type="hidden" name="accion" value="limpiar_dia">
@@ -276,23 +323,6 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     </div>
 
-    <!-- FILTRADOR DE FECHA EXACTA -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body py-2">
-            <form method="GET" action="<?= htmlspecialchars($pagina_actual) ?>" class="row align-items-center g-2">
-                <div class="col-auto">
-                    <label for="fecha" class="fw-bold col-form-label col-form-label-sm">Fecha (Día - Mes - Año):</label>
-                </div>
-                <div class="col-12 col-sm-auto">
-                    <input type="date" name="fecha" id="fecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fecha_seleccionada) ?>" required>
-                </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-secondary btn-sm">Filtrar Día</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <?php if (!empty($mensaje)): ?>
         <div class="alert alert-success alert-dismissible fade show py-2" role="alert">
             <?= $mensaje ?>
@@ -307,68 +337,66 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     <?php endif; ?>
 
-    <!-- TARJETAS RESUMEN SUPERIORES (ADAPTADAS A 12 COLUMNAS GRID) -->
-    <div class="row text-center mb-4 g-3">
-        <div class="col-xl-4 col-md-4 col-12">
-            <div class="card shadow-sm border-success h-100">
-                <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Activos (Día)</h6>
-                    <h4 class="text-success mb-0">$<?= number_format($total_activos, 2, ',', '.') ?></h4>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-4 col-md-4 col-12">
-            <div class="card shadow-sm border-dark h-100">
-                <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Total Pasivos y Gastos (Día)</h6>
-                    <h5 class="text-dark mb-0">$<?= number_format($total_haber_activo, 2, ',', '.') ?></h5>
-                    <div style="font-size: 0.70rem;" class="text-muted mt-1">
-                        Pasivos: <span class="fw-bold">$<?= number_format($total_pasivos, 2, ',', '.') ?></span> | 
-                        Gastos: <span class="fw-bold">$<?= number_format($total_gastos, 2, ',', '.') ?></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-4 col-md-4 col-12">
-            <div class="card shadow-sm <?= $total_neto >= 0 ? 'border-primary' : 'border-danger' ?> h-100">
-                <div class="card-body p-2">
-                    <h6 class="text-muted mb-1" style="font-size: 0.85rem;">Neto del Día</h6>
-                    <h4 class="<?= $total_neto >= 0 ? 'text-primary' : 'text-danger' ?> mb-0">$<?= number_format($total_neto, 2, ',', '.') ?></h4>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- SECCIÓN: RESUMEN MENSUAL -->
+    <!-- SECCIÓN: RESUMEN Y DESGLOSE ESTRICTO DÍA A DÍA -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-secondary text-white py-2">
-            <h6 class="mb-0">📈 Resumen por Mes</h6>
+            <h6 class="mb-0">📈 Desglose Día a Día (Evolución Diaria - Reinicia el 1 de cada Mes)</h6>
         </div>
         <div class="card-body p-0 table-responsive">
             <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
                 <thead class="table-light">
                     <tr>
-                        <th>Periodo (Mes)</th>
-                        <th>Total Activos (Mes)</th>
-                        <th>Total Pasivos/Gastos (Mes)</th>
-                        <th>Neto del Mes</th>
+                        <th>Fecha (Día a Día)</th>
+                        <th>Total Activos (Día)</th>
+                        <th>Var. Activo (Vs Día Ant.)</th>
+                        <th>Total Pasivos/Gastos (Día)</th>
+                        <th>Pasivo Acumulado (Desde el 1ro)</th>
+                        <th>Neto del Día</th>
+                        <th>Neto Sin Gastos (Día)</th>
+                        <th class="text-center">Acción</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (count($resumen_mensual) > 0): ?>
-                        <?php foreach ($resumen_mensual as $rm): ?>
+                    <?php if (count($desglose_dias) > 0): ?>
+                        <?php foreach ($desglose_dias as $dd): ?>
                             <tr>
-                                <td class="fw-bold"><?= $rm['periodo'] ?></td>
-                                <td class="text-success">$<?= number_format($rm['act_mes'], 2, ',', '.') ?></td>
-                                <td class="text-danger">$<?= number_format($rm['pas_mes'], 2, ',', '.') ?></td>
-                                <td class="<?= $rm['neto_mes'] >= 0 ? 'text-primary fw-bold' : 'text-danger fw-bold' ?>">
-                                    $<?= number_format($rm['neto_mes'], 2, ',', '.') ?>
+                                <td class="fw-bold"><?= $dd['fecha'] ?></td>
+                                <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
+                                
+                                <!-- Variación Activo Vs Día Anterior -->
+                                <td>
+                                    <?php 
+                                        $var_act = $dd['variacion_activo'];
+                                        if ($var_act > 0) {
+                                            echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
+                                        } elseif ($var_act < 0) {
+                                            echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
+                                        } else {
+                                            echo '<span class="text-muted">$0,00</span>';
+                                        }
+                                    ?>
+                                </td>
+
+                                <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
+                                
+                                <!-- Pasivo Acumulado desde el 1ro del mes -->
+                                <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
+
+                                <td class="<?= $dd['neto_dia'] >= 0 ? 'text-primary fw-bold' : 'text-danger fw-bold' ?>">
+                                    $<?= number_format($dd['neto_dia'], 2, ',', '.') ?>
+                                </td>
+
+                                <!-- Suma Activo Diario + Pasivo Diario -->
+                                <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
+
+                                <td class="text-center">
+                                    <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="4" class="text-center text-muted py-3">No hay registros suficientes para calcular el resumen mensual.</td>
+                            <td colspan="8" class="text-center text-muted py-3">No hay registros diarios para mostrar.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
