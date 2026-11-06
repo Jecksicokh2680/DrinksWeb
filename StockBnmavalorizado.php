@@ -4,65 +4,53 @@ require_once("ConnDrinks.php");    // $mysqliDrinks
 require_once("Conexion.php");      // $mysqliWeb
 
 /* ============================================================
-   FUNCIÓN DE PRECIO PROMEDIO DE COMPRA (ACTIVOS)
+   FUNCIÓN DE PRECIO DE COMPRA POR PRODUCTO (CORREGIDA Y EXACTA)
 ============================================================ */
-function precioPromCompra($mysqli_conn){
+/* ============================================================
+   FUNCIÓN DE PRECIO DE COMPRA POR PRODUCTO (CORREGIDA Y NORMALIZADA)
+============================================================ */
+function precioCompraExacto($mysqli_conn){
+    // Calcula el costo unitario real asegurando la correcta proporción entre el valor total de la compra y las unidades
     $sql = "SELECT 
                 p.barcode,
                 ROUND(
                     IFNULL(
-                        CASE 
-                            WHEN compras_sum.cantidad_periodo > 0 THEN 
-                                (compras_sum.costo_total_periodo / compras_sum.cantidad_periodo)
-                            ELSE p.ultcosto 
-                        END, 0
-                    ), 0
-                ) AS preciopromedio
-            FROM 
-                productos p
-            LEFT JOIN (
-                SELECT 
-                    d.idproducto,
-                    SUM(d.base + IFNULL(d.ivaprod, 0) + IFNULL(d.ValIco, 0) + (IFNULL(d.ValIBUAUni, 0) * d.cantidad)) AS costo_total_periodo,
-                    SUM(d.cantidad) AS cantidad_periodo
-                FROM detcompras d
-                INNER JOIN compras c ON d.idcompra = c.idcompra
-                WHERE c.estado = 1 
-                  AND STR_TO_DATE(c.fecha, '%Y%m%d') >= DATE_SUB(CURDATE(), INTERVAL 2 MONTH)
-                GROUP BY d.idproducto
-            ) compras_sum ON p.idproducto = compras_sum.idproducto
-            WHERE p.estado = '1'";
+                        (SUM(d.VALOR - IFNULL(d.descuento, 0)) * (1 + (IFNULL(MAX(d.porciva), 0) / 100)) + SUM(IFNULL(d.ValICUIUni, IFNULL(d.ValIBUAUni, 0)) * d.cantidad)) 
+                        / NULLIF(SUM(d.cantidad), 0),
+                        p.ultcosto
+                    ), 
+                    0
+                ) AS costo_unitario_real
+            FROM detcompras d
+            JOIN compras c ON c.idcompra = d.idcompra
+            JOIN productos p ON p.idproducto = d.idproducto
+            JOIN (
+                SELECT d2.idproducto, MAX(c2.idcompra) as max_idcompra
+                FROM detcompras d2
+                JOIN compras c2 ON c2.idcompra = d2.idcompra
+                WHERE c2.estado = 1
+                GROUP BY d2.idproducto
+            ) ultima ON ultima.idproducto = d.idproducto AND ultima.max_idcompra = c.idcompra
+            WHERE p.estado = '1' AND c.estado = 1
+            GROUP BY p.barcode, p.ultcosto";
     
     $out = []; 
     $r = $mysqli_conn->query($sql);
     while($r && $x = $r->fetch_assoc()) {
-        $out[$x['barcode']] = (float)$x['preciopromedio'];
+        $out[$x['barcode']] = (float)$x['costo_unitario_real'];
     }
 
-    $sqlFallback = "SELECT p.barcode, 
-                            (d.base + IFNULL(d.ivaprod, 0) + IFNULL(d.ValIco, 0) + (IFNULL(d.ValIBUAUni, 0) * d.cantidad)) / NULLIF(d.cantidad, 0) AS precio_real 
-                    FROM detcompras d 
-                    JOIN compras c ON c.idcompra = d.idcompra 
-                    JOIN productos p ON p.idproducto = d.idproducto 
-                    JOIN (
-                        SELECT d2.idproducto, MAX(c2.fecha) as max_f
-                        FROM detcompras d2
-                        JOIN compras c2 ON c2.idcompra = d2.idcompra
-                        GROUP BY d2.idproducto
-                    ) ultima ON ultima.idproducto = d.idproducto AND ultima.max_f = c.fecha
-                    WHERE p.estado = '1'";
-    
+    // Fallback: Si no hay registro en detcompras, usa ultcosto directo de la tabla de productos
+    $sqlFallback = "SELECT barcode, ROUND(IFNULL(ultcosto, 0), 0) AS ultcosto FROM productos WHERE estado = '1'";
     $rFB = $mysqli_conn->query($sqlFallback);
     while($rFB && $xFB = $rFB->fetch_assoc()) {
         if (!isset($out[$xFB['barcode']]) || $out[$xFB['barcode']] <= 0) {
-            $out[$xFB['barcode']] = (float)$xFB['precio_real'];
+            $out[$xFB['barcode']] = (float)$xFB['ultcosto'];
         }
     }
 
     return $out;
-}
-
-/* ============================================================
+}/* ============================================================
    FUNCIÓN DE PRECIO PROMEDIO DE VENTA
 ============================================================ */
 function precioPromVenta($mysqli_conn){
@@ -163,8 +151,8 @@ $filtroUtilidad  = isset($_GET['filtro_utilidad']) && $_GET['filtro_utilidad'] !
 $fHasta = $_GET['f_hasta'] ?? date("Y-m-d");
 $fDesde = $_GET['f_desde'] ?? date("Y-m-d", strtotime("-3 months"));
 
-$preciosCentral = precioPromCompra($mysqliCentral);
-$preciosDrinks  = precioPromCompra($mysqliDrinks);
+$preciosCentral = precioCompraExacto($mysqliCentral);
+$preciosDrinks  = precioCompraExacto($mysqliDrinks);
 
 $ventasCentral = precioPromVenta($mysqliCentral);
 $ventasDrinks  = precioPromVenta($mysqliDrinks);
@@ -182,11 +170,20 @@ $sqlCentralQuery = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) c
 
 $resC = $mysqliCentral->query($sqlCentralQuery);
 $central = [];
-while ($r = $resC->fetch_assoc()) { $central[$r['barcode']] = $r; }
+$nombres_prod = [];
+while ($r = $resC->fetch_assoc()) { 
+    $central[$r['barcode']] = $r; 
+    $nombres_prod[$r['barcode']] = $r['descripcion'];
+}
 
 $resD = $mysqliDrinks->query($sqlCentralQuery);
 $drinks = [];
-while ($r = $resD->fetch_assoc()) { $drinks[$r['barcode']] = $r; }
+while ($r = $resD->fetch_assoc()) { 
+    $drinks[$r['barcode']] = $r; 
+    if(!isset($nombres_prod[$r['barcode']])) {
+        $nombres_prod[$r['barcode']] = $r['descripcion'];
+    }
+}
 
 $todos_barcodes = array_unique(array_merge(array_keys($central), array_keys($drinks)));
 
@@ -199,10 +196,8 @@ foreach ($todos_barcodes as $b) {
     $barcodes_filtrados[] = $b;
 }
 
-usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
-    $catA = $prodCat[$a] ?? 'SIN';
-    $catB = $prodCat[$b] ?? 'SIN';
-    return $catA <=> $catB;
+usort($barcodes_filtrados, function($a, $b) use ($nombres_prod) {
+    return strcmp($nombres_prod[$a] ?? '', $nombres_prod[$b] ?? '');
 });
 ?>
 
@@ -210,36 +205,133 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Resumen de Inventario Activo - Ganancias y Valorización</title>
+    <title>Resumen de Inventario Activo por Producto</title>
     <style>
         body{font-family:Segoe UI,Arial;background:#eef1f4;color:#333;margin:0;padding:0}
-        .container{max-width:1600px;margin:30px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
+        .container{max-width:1650px;margin:30px auto;background:#fff;padding:25px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.08)}
         h2{color:#2c3e50;text-align:center;margin-bottom:20px}
+        
+        /* Tarjeta de Resumen en la Cabecera */
+        .header-summary {
+            background: #2c3e50;
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 15px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .summary-item .title { font-size: 11px; text-transform: uppercase; color: #adb5bd; margin-bottom: 5px; font-weight: bold; }
+        .summary-item .value { font-size: 15px; font-weight: bold; color: #fff; }
+        .summary-item .value.green { color: #28a745; }
+
         form{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;justify-content:center;align-items:center}
         select,input,button{padding:8px 12px;border-radius:6px;border:1px solid #ccc;font-size:14px}
         button{background:#007bff;color:#fff;border:none;cursor:pointer}
         .table-container{overflow-x:auto;border-radius:12px;background:#fff}
-        table{width:100%;border-collapse:collapse;min-width:1200px}
-        th,td{padding:12px 8px;text-align:center;border-bottom:1px solid #e1e1e1;font-size: 13px;}
+        table{width:100%;border-collapse:collapse;min-width:1300px}
+        th,td{padding:10px 8px;text-align:center;border-bottom:1px solid #e1e1e1;font-size: 13px;}
         th{background:#007bff;color:#fff}
-        tr.subtotal{background:#f8f9fa;font-weight:700;color:#007bff;border-top: 1px solid #ddd;}
+        tr.item-row{background:#fff;}
+        tr.item-row:hover{background:#f1f5f9;}
         
-        /* Estilo para resaltar filas con utilidad por debajo de la referencia (por defecto < 6%) */
         tr.alerta-utilidad { background-color: #f8d7da !important; color: #721c24; }
         tr.alerta-utilidad td { color: #721c24; }
 
-        tr.total-general{background:#2c3e50;color:#fff;font-weight:700;font-size:1.05em}
         .alert { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; border: 1px solid #bee5eb; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>📦 Resumen de Inventario Activo (Subtotales, Ganancias y Valor de Venta)</h2>
+    <h2>📦 Resumen de Inventario Activo por Producto (Costo de Compra Gerencial y Valorización)</h2>
 
     <?php if(isset($msg_backup)): ?>
         <div class="alert"><?= $msg_backup ?></div>
     <?php endif; ?>
+
+    <?php
+    // Pre-procesamiento global para la cabecera
+    $accCompra = 0; $accVenta = 0; $gD = 0; $gC = 0; $gT = 0;
+    $gSumaC = 0; $gCountC = 0; $gSumaV = 0; $gCountV = 0;
+
+    foreach ($barcodes_filtrados as $b) {
+        $cantD = $drinks[$b]['cantidad'] ?? 0;
+        $cantC = $central[$b]['cantidad'] ?? 0;
+        $totalUnit = $cantC + $cantD;
+
+        $pvC = $preciosCentral[$b] ?? 0;
+        $pvD = $preciosDrinks[$b] ?? 0;
+        $pCompra = ($pvC > 0) ? $pvC : $pvD;
+
+        $vtC = $ventasCentral[$b] ?? 0;
+        $vtD = $ventasDrinks[$b] ?? 0;
+        $pVenta = ($vtC > 0) ? $vtC : $vtD;
+
+        $gPrc = ($pCompra > 0) ? (($pVenta - $pCompra) / $pCompra) * 100 : 0;
+        if ($filtroUtilidad !== '' && $gPrc >= $filtroUtilidad) { continue; }
+
+        $vComp = $pCompra * $totalUnit;
+        $vVent = $pVenta * $totalUnit;
+
+        $accCompra += $vComp;
+        $accVenta += $vVent;
+        $gD += $cantD;
+        $gC += $cantC;
+        $gT += $totalUnit;
+
+        if ($pCompra > 0) { $gSumaC += $pCompra; $gCountC++; }
+        if ($pVenta > 0) { $gSumaV += $pVenta; $gCountV++; }
+    }
+
+    $promGenCompra = ($gCountC > 0) ? ($gSumaC / $gCountC) : 0;
+    $promGenVenta  = ($gCountV > 0) ? ($gSumaV / $gCountV) : 0;
+    $difGenDinero  = $promGenVenta - $promGenCompra;
+    $gananciaGenPrc = ($accCompra > 0) ? (($accVenta - $accCompra) / $accCompra) * 100 : 0;
+    ?>
+
+    <!-- TARJETA RESUMEN EN LA CABECERA -->
+    <div class="header-summary">
+        <div class="summary-item">
+            <div class="title">Drinks Stock</div>
+            <div class="value"><?= number_format($gD, 0) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Central Stock</div>
+            <div class="value"><?= number_format($gC, 0) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Total Stock</div>
+            <div class="value"><?= number_format($gT, 0) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">P. Compra Prom.</div>
+            <div class="value">$<?= number_format($promGenCompra, 2) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">P. Venta Prom.</div>
+            <div class="value">$<?= number_format($promGenVenta, 2) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Diferencia ($)</div>
+            <div class="value green">$<?= number_format($difGenDinero, 2) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Ganancia (%)</div>
+            <div class="value green"><?= number_format($gananciaGenPrc, 2) ?>%</div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Val. Inv. Compra</div>
+            <div class="value">$<?= number_format($accCompra, 2) ?></div>
+        </div>
+        <div class="summary-item">
+            <div class="title">Val. Inv. Venta</div>
+            <div class="value">$<?= number_format($accVenta, 2) ?></div>
+        </div>
+    </div>
 
     <form method="GET" id="filterForm">
         <label>Desde: <input type="date" name="f_desde" value="<?= htmlspecialchars($fDesde) ?>"></label>
@@ -262,12 +354,13 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
         <table>
             <thead>
                 <tr>
-                    <th>CodCat</th>
+                    <th>Código</th>
+                    <th>Producto</th>
                     <th>Categoría</th>
                     <th>Drinks</th>
                     <th>Central</th>
                     <th>Total Stock</th>
-                    <th>P. Compra Prom.</th>
+                    <th>Costo Compra</th>
                     <th>P. Venta Prom.</th>
                     <th>Diferencia ($)</th>
                     <th>Ganancia (%)</th>
@@ -278,23 +371,13 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
             <tbody>
             <?php
             if (empty($barcodes_filtrados)):
-                echo '<tr><td colspan="11" style="padding:20px; color:#777;">No se encontraron productos activos con los filtros seleccionados.</td></tr>';
+                echo '<tr><td colspan="12" style="padding:20px; color:#777;">No se encontraron productos activos con los filtros seleccionados.</td></tr>';
             else:
-                $categoriasAgrupadas = [];
-
+                $filasProcesadas = [];
                 foreach ($barcodes_filtrados as $b) {
-                    $cat = $prodCat[$b] ?? 'SIN';
-                    if (!isset($categoriasAgrupadas[$cat])) {
-                        $categoriasAgrupadas[$cat] = [
-                            'cantD'         => 0,
-                            'cantC'         => 0,
-                            'totalUnit'     => 0,
-                            'sumaCompra'    => 0,
-                            'countCompra'   => 0,
-                            'sumaVenta'     => 0,
-                            'countVenta'    => 0
-                        ];
-                    }
+                    $catCode = $prodCat[$b] ?? 'SIN';
+                    $nombreCat = $cats[$catCode] ?? 'SIN CATEGORÍA';
+                    $nombreProducto = $nombres_prod[$b] ?? 'DESCONOCIDO';
 
                     $cantD = $drinks[$b]['cantidad'] ?? 0;
                     $cantC = $central[$b]['cantidad'] ?? 0;
@@ -302,80 +385,37 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
 
                     $pvC = $preciosCentral[$b] ?? 0;
                     $pvD = $preciosDrinks[$b] ?? 0;
-                    $precioCompra = ($pvC > 0) ? $pvC : $pvD;
+                    $precioCompraExacto = ($pvC > 0) ? $pvC : $pvD;
 
                     $vtC = $ventasCentral[$b] ?? 0;
                     $vtD = $ventasDrinks[$b] ?? 0;
                     $precioVenta = ($vtC > 0) ? $vtC : $vtD;
 
-                    $categoriasAgrupadas[$cat]['cantD'] += $cantD;
-                    $categoriasAgrupadas[$cat]['cantC'] += $cantC;
-                    $categoriasAgrupadas[$cat]['totalUnit'] += $totalUnit;
-
-                    if ($precioCompra > 0) {
-                        $categoriasAgrupadas[$cat]['sumaCompra'] += $precioCompra;
-                        $categoriasAgrupadas[$cat]['countCompra']++;
-                    }
-
-                    if ($precioVenta > 0) {
-                        $categoriasAgrupadas[$cat]['sumaVenta'] += $precioVenta;
-                        $categoriasAgrupadas[$cat]['countVenta']++;
-                    }
-                }
-
-                $filasProcesadas = [];
-                $acumuladoGeneralCompra = 0;
-                $acumuladoGeneralVenta  = 0;
-                $genD = $genC = $genT = 0;
-                $genSumaCompra = $genCountCompra = 0;
-                $genSumaVenta  = $genCountVenta  = 0;
-
-                foreach ($categoriasAgrupadas as $cat => $datos) {
-                    $nombreCat = $cats[$cat] ?? 'SIN CATEGORÍA';
+                    $valInvCompra = $precioCompraExacto * $totalUnit;
+                    $valInvVenta  = $precioVenta * $totalUnit;
                     
-                    $promedioCompra = ($datos['countCompra'] > 0) ? ($datos['sumaCompra'] / $datos['countCompra']) : 0;
-                    $promedioVenta  = ($datos['countVenta'] > 0) ? ($datos['sumaVenta'] / $datos['countVenta']) : 0;
-
-                    $valInvCompra = $promedioCompra * $datos['totalUnit'];
-                    $valInvVenta  = $promedioVenta * $datos['totalUnit'];
-                    
-                    $diferenciaDinero = $promedioVenta - $promedioCompra;
-                    $gananciaPorcentaje = ($promedioCompra > 0) ? (($promedioVenta - $promedioCompra) / $promedioCompra) * 100 : 0;
+                    $diferenciaDinero = $precioVenta - $precioCompraExacto;
+                    $gananciaPorcentaje = ($precioCompraExacto > 0) ? (($precioVenta - $precioCompraExacto) / $precioCompraExacto) * 100 : 0;
 
                     if ($filtroUtilidad !== '' && $gananciaPorcentaje >= $filtroUtilidad) {
                         continue;
                     }
 
-                    $acumuladoGeneralCompra += $valInvCompra;
-                    $acumuladoGeneralVenta  += $valInvVenta;
-
-                    $genD += $datos['cantD'];
-                    $genC += $datos['cantC'];
-                    $genT += $datos['totalUnit'];
-
-                    if ($promedioCompra > 0) {
-                        $genSumaCompra += $promedioCompra;
-                        $genCountCompra++;
-                    }
-                    if ($promedioVenta > 0) {
-                        $genSumaVenta += $promedioVenta;
-                        $genCountVenta++;
-                    }
-
                     $referenciaAlerta = $filtroUtilidad !== '' ? $filtroUtilidad : 6;
-                    $claseFila = 'subtotal';
+                    $claseFila = 'item-row';
                     if ($gananciaPorcentaje < $referenciaAlerta) {
                         $claseFila .= ' alerta-utilidad';
                     }
 
                     $filasProcesadas[] = "<tr class='$claseFila'>
-                            <td>" . htmlspecialchars($cat) . "</td>
-                            <td style='text-align:left;'>" . htmlspecialchars($nombreCat) . "</td>
-                            <td>" . number_format($datos['cantD'], 0) . "</td>
-                            <td>" . number_format($datos['cantC'], 0) . "</td>
-                            <td>" . number_format($datos['totalUnit'], 0) . "</td>
-                            <td>$" . number_format($promedioCompra, 2) . "</td>
-                            <td>$" . number_format($promedioVenta, 2) . "</td>
+                            <td>" . htmlspecialchars($b) . "</td>
+                            <td style='text-align:left; font-weight:600;'>" . htmlspecialchars($nombreProducto) . "</td>
+                            <td style='text-align:left;'>" . htmlspecialchars($catCode . ' - ' . $nombreCat) . "</td>
+                            <td>" . number_format($cantD, 0) . "</td>
+                            <td>" . number_format($cantC, 0) . "</td>
+                            <td>" . number_format($totalUnit, 0) . "</td>
+                            <td>$" . number_format($precioCompraExacto, 2) . "</td>
+                            <td>$" . number_format($precioVenta, 2) . "</td>
                             <td style='color:#28a745;'>$" . number_format($diferenciaDinero, 2) . "</td>
                             <td style='color:#28a745;'>" . number_format($gananciaPorcentaje, 2) . "%</td>
                             <td>$" . number_format($valInvCompra, 2) . "</td>
@@ -384,38 +424,13 @@ usort($barcodes_filtrados, function($a, $b) use ($prodCat) {
                 }
 
                 if (empty($filasProcesadas)) {
-                    echo '<tr><td colspan="11" style="padding:20px; color:#777;">No se encontraron categorías con un % de utilidad por debajo del valor especificado.</td></tr>';
+                    echo '<tr><td colspan="12" style="padding:20px; color:#777;">No se encontraron productos con un % de utilidad por debajo del valor especificado.</td></tr>';
                 } else {
                     echo implode('', $filasProcesadas);
                 }
             endif;
             ?>
             </tbody>
-            <tfoot>
-                <?php 
-                    $promedioGeneralCompra = ($genCountCompra > 0) ? ($genSumaCompra / $genCountCompra) : 0; 
-                    $promedioGeneralVenta  = ($genCountVenta > 0) ? ($genSumaVenta / $genCountVenta) : 0; 
-                    
-                    $valorInvCompraGen = $acumuladoGeneralCompra;
-                    $valorInvVentaGen  = $acumuladoGeneralVenta; 
-                    $diferenciaGenDinero = $promedioGeneralVenta - $promedioGeneralCompra; 
-                    
-                    // Cálculo actualizado de la ganancia general (%) basado en el valor total de inventario de compra vs venta
-                    $gananciaGenPorc = ($valorInvCompraGen > 0) ? (($valorInvVentaGen - $valorInvCompraGen) / $valorInvCompraGen) * 100 : 0;
-                ?>
-                <tr class="total-general">
-                    <td colspan="2" style="text-align:right;">TOTAL GENERAL:</td>
-                    <td><?= number_format($genD, 0) ?></td>
-                    <td><?= number_format($genC, 0) ?></td>
-                    <td><?= number_format($genT, 0) ?></td>
-                    <td>$<?= number_format($promedioGeneralCompra, 2) ?></td>
-                    <td>$<?= number_format($promedioGeneralVenta, 2) ?></td>
-                    <td>$<?= number_format($diferenciaGenDinero, 2) ?></td>
-                    <td><?= number_format($gananciaGenPorc, 2) ?>%</td>
-                    <td>$<?= number_format($valorInvCompraGen, 2) ?></td>
-                    <td>$<?= number_format($valorInvVentaGen, 2) ?></td>
-                </tr>
-            </tfoot>
         </table>
     </div>
 </div>

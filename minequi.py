@@ -23,8 +23,8 @@ try:
     # Obtener la fecha de hoy en Bogotá en formato IMAP
     fecha_hoy = datetime.now(TZ_BOGOTA).strftime("%d-%b-%Y")
 
-    # Buscar correos del día incluyendo el asunto de venta exitosa
-    criterio_busqueda = f'(UNSEEN ON {fecha_hoy} (OR OR SUBJECT "Bre-B" SUBJECT "Detalle de tu venta" SUBJECT "Venta exitosa"))'
+    # Búsqueda optimizada por remitente y fecha para capturar todos los comprobantes de Nequi de hoy
+    criterio_busqueda = f'(ON {fecha_hoy} FROM "notificaciones@nequi.com.co")'
     
     status, messages = mail.uid('search', None, criterio_busqueda)
     mail_ids = messages[0].split()
@@ -76,13 +76,13 @@ try:
             #      EXTRACCIÓN DE TODOS LOS DATOS
             # ==========================================
             
-            # 1. MONTO (Actualizado para soportar Venta exitosa, Tabla y Texto)
+            # 1. MONTO
             monto = 0.00
-            match_monto = re.search(r'Monto\s*:\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            match_monto = re.search(r'Monto\s*:\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
             if not match_monto:
-                match_monto = re.search(r'Venta\s+exitosa\s+por\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Asunto/Encabezado
+                match_monto = re.search(r'Venta\s+exitosa\s+por\s*\$?\s*([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
             if not match_monto:
-                match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE) # Formato Texto tradicional
+                match_monto = re.search(r'Recibiste\s+([\d.,]+)', texto_plano_limpio, re.IGNORECASE)
             if not match_monto:
                 match_monto = re.search(r'\$[\s\d.,]+', texto_plano_limpio)
                 
@@ -94,9 +94,9 @@ try:
 
             # 2. PAGADOR / REMITENTE
             pagador = "No detectado"
-            match_pagador = re.search(r'Pagador\s*:\s*([\s\S]*?)(?:Banco|Referencia|$)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            match_pagador = re.search(r'Pagador\s*:\s*([\s\S]*?)(?:Banco|Referencia|Estado|Fecha|$)', texto_plano_limpio, re.IGNORECASE)
             if not match_pagador:
-                match_pagador = re.search(r'\bde\b\s+([\s\S]*?)\s+\bel\b', texto_plano_limpio, re.IGNORECASE) # Formato Texto
+                match_pagador = re.search(r'\bde\b\s+([\s\S]*?)\s+\bel\b', texto_plano_limpio, re.IGNORECASE)
                 
             if match_pagador:
                 pagador = " ".join(match_pagador.group(1).strip().split())
@@ -110,7 +110,7 @@ try:
             match_transaccion = re.search(r'N[uú]mero\s+de\s+transacci[oó]n\s*:\s*([A-Z0-9]{10,})', texto_plano_limpio, re.IGNORECASE)
             if match_transaccion:
                 num_transaccion = match_transaccion.group(1).strip()
-                if len(num_transaccion) >= 10 and num_transaccion[-10].startswith('3'):
+                if len(num_transaccion) >= 10 and num_transaccion[-10] == '3':
                     celular = num_transaccion[-10:]
             
             if celular == "No detectado":
@@ -119,10 +119,10 @@ try:
                     celular = match_cel_comun.group(0)
 
             # 4. BANCO ORIGEN
-            banco = "Nequi"  # Por defecto
-            match_banco = re.search(r'Banco\s*:\s*([\w\s]+?)(?:Referencia|N[uú]mero|$)', texto_plano_limpio, re.IGNORECASE) # Formato Tabla
+            banco = "Nequi"
+            match_banco = re.search(r'Banco\s*:\s*([\w\s]+?)(?:Referencia|N[uú]mero|$)', texto_plano_limpio, re.IGNORECASE)
             if not match_banco:
-                match_banco = re.search(r'desde\s+el\s+banco\s+([\w\s]+?)\.', texto_plano_limpio, re.IGNORECASE) # Formato Texto
+                match_banco = re.search(r'desde\s+el\s+banco\s+([\w\s]+?)\.', texto_plano_limpio, re.IGNORECASE)
             if match_banco:
                 banco = match_banco.group(1).strip()
 
@@ -141,24 +141,17 @@ try:
             ya_existe = False
             
             for t in lista_transferencias:
-                # 1. Comprobar si tienen el mismo monto y banco origen
                 if t['monto'] == monto and t['banco_origen'].lower() == banco.lower():
-                    
-                    # 2. Normalizar datos previos para comparar
                     t_asunto_normalizado = t['asunto'].upper().replace("RV:", "").replace("RV :", "").strip()
                     t_pagador_normalizado = t['pagador'].upper().strip()
                     
-                    # 3. Si ambos tienen pagadores detectados válidos y los nombres NO coinciden, NO es un duplicado
                     if pagador_normalizado != "NO DETECTADO" and t_pagador_normalizado != "NO DETECTADO":
                         if pagador_normalizado != t_pagador_normalizado:
-                            continue # Salta este registro en la lista, son personas diferentes.
+                            continue 
                     
-                    # 4. Si el asunto coincide y ocurrieron en el mismo minuto (mismo tiempo_llave), es duplicado
                     if asunto_normalizado == t_asunto_normalizado:
                         if t['id_unico'].split('_')[1] == tiempo_llave:
                             ya_existe = True
-                            
-                            # Si el correo guardado originalmente no leyó el pagador pero este reenvío sí, lo actualiza
                             if t_pagador_normalizado == "NO DETECTADO" or "PARA:" in t_pagador_normalizado:
                                 if pagador_normalizado != "NO DETECTADO" and "PARA:" not in pagador_normalizado:
                                     t['pagador'] = pagador

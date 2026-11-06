@@ -69,7 +69,7 @@ function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
     
     $nit = $nitSedes[$nombreSede];
 
-    // 2. INVENTARIOS (COSTO Y VENTA DIRECTA)
+    // 2. INVENTARIOS (COSTO Y VENTA DIRECTA CON RESPALDO A PRECIO DE COMPRA)
     $invCosto = 0;
     $invVenta = 0;
     $resInv = $mysqli_conn->query("SELECT I.idproducto, I.cantidad, P.costo, P.precioventa, P.Barcode FROM inventario I INNER JOIN productos P ON P.idproducto = I.idproducto WHERE I.estado='0'");
@@ -79,7 +79,8 @@ function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
             $costoReal = $pcData[$i['Barcode']] ?? $i['costo'];
             $invCosto += ($i['cantidad'] * $costoReal);
             
-            $p_venta = $i['precioventa'] ?? $costoReal;
+            // Si el precio de venta no existe o es menor/igual a 0, usamos el costo real de compra
+            $p_venta = (!empty($i['precioventa']) && $i['precioventa'] > 0) ? $i['precioventa'] : $costoReal;
             $invVenta += ($i['cantidad'] * $p_venta);
         }
     }
@@ -154,19 +155,18 @@ foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $s => $db){
     if (!$db) continue;
     $res = $db->query("SELECT C.idcompra, CONCAT(T.nombres, ' ', T.apellidos) AS prov, SUM(D.CANTIDAD * (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0)) + ( (D.VALOR - (D.descuento / NULLIF(D.CANTIDAD, 0))) * D.porciva / 100) + D.ValICUIUni)) AS total FROM compras C INNER JOIN TERCEROS T ON T.IDTERCERO = C.IDTERCERO INNER JOIN DETCOMPRAS D ON D.idcompra = C.idcompra WHERE C.FECHA = '$fechaSinGuion' AND C.ESTADO = '0' GROUP BY C.idcompra");
     if($res) {
-        while($row = $res->fetch_assoc()){ $row['sede'] = $s; $todasLasCompras[] = $row; }
+        while($row =$res->fetch_assoc()){ $row['sede'] =$s; $todasLasCompras[] =$row; }
     }
 }
 
-$deudaProv = $mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
+$deudaProv =$mysqli->query("SELECT SUM(Saldo) AS total FROM (SELECT SUM(p.Monto) AS Saldo FROM terceros t INNER JOIN pagosproveedores p ON p.Nit = t.CedulaNit WHERE t.Estado = 1 AND p.Estado = '1' GROUP BY t.CedulaNit HAVING SUM(p.Monto) <> 0) X")->fetch_assoc()['total'] ?? 0;
 
 // ============================================================
 // RENDIMIENTO DE VENTAS POR CAJERO
 // ============================================================
-$rankingCajeros = [];
-$ventaGlobalConsolidada = $central['venta_dia'] + $drinks['venta_dia'];
+$rankingCajeros = [];$ventaGlobalConsolidada = $central['venta_dia'] +$drinks['venta_dia'];
 
-foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre => $dbActiva){
+foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' =>$mysqliDrinks] as $sedeNombre =>$dbActiva){
     if (!$dbActiva) continue;
     
     $sqlCajeros = "SELECT NIT, NOMBRE FROM (
@@ -180,11 +180,7 @@ foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre 
     
     $resCajeros = $dbActiva->query($sqlCajeros);
     if($resCajeros){
-        while($caj = $resCajeros->fetch_assoc()){
-            $nitCajero = $caj['NIT'];
-            $nombreCajero = $caj['NOMBRE'];
-            
-            $sqlVentaCajero = "SELECT SUM(T) AS TOTAL FROM (
+        while($caj = $resCajeros->fetch_assoc()){$nitCajero = $caj['NIT'];$nombreCajero = $caj['NOMBRE'];$sqlVentaCajero = "SELECT SUM(T) AS TOTAL FROM (
                 SELECT (DF.CANTIDAD*DF.VALORPROD) AS T FROM FACTURAS F 
                 INNER JOIN DETFACTURAS DF ON DF.IDFACTURA=F.IDFACTURA INNER JOIN TERCEROS T1 ON T1.IDTERCERO=F.IDVENDEDOR 
                 LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA WHERE F.ESTADO='0' AND DV.IDFACTURA IS NULL AND F.FECHA='$fechaSinGuion' AND T1.NIT='$nitCajero'
@@ -195,8 +191,7 @@ foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre 
             ) AS X";
             
             $vtaNeto = (float)($dbActiva->query($sqlVentaCajero)->fetch_assoc()['TOTAL'] ?? 0);
-            if($vtaNeto > 0){
-                $rankingCajeros[] = [
+            if($vtaNeto > 0){$rankingCajeros[] = [
                     'nombre' => $nombreCajero,
                     'sede' => $sedeNombre,
                     'total' => $vtaNeto
@@ -205,7 +200,7 @@ foreach(['CENTRAL' => $mysqliCentral, 'DRINKS' => $mysqliDrinks] as $sedeNombre 
         }
     }
 }
-usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; });
+usort($rankingCajeros, function($a,$b) { return $b['total'] <=>$a['total']; });
 ?>
 
 <!DOCTYPE html>
@@ -294,15 +289,15 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <span class="main-value"><?= moneda($central['venta_dia']) ?></span>
                 <div class="details">
                     Trans. Manual: <?= moneda($central['trans_dia']) ?><br>
-                    Trans. Automática: <?= moneda($central['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia'] - ($central['trans_dia'] + $central['trans_auto_val'])) ?></b>
+                    Trans. Automática: <?= moneda($central['trans_auto_val']) ?> <small>(<?=$central['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($central['venta_dia'] - ($central['trans_dia'] +$central['trans_auto_val'])) ?></b>
                 </div>
             </div>
             <div>
                 <div class="separator"></div>
                 <div class="details">
                     Venta Mes: <span style="color:#f97316"><?= moneda($central['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad'], $central['venta_mes']) ?>)</b><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($central['utilidad']) ?></span> <b>(<?= porcentaje($central['utilidad'],$central['venta_mes']) ?>)</b><br>
                     Bodega Costo: <?= moneda($central['inventario']) ?><br>
                     <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($central['inv_venta']) ?></span>
                 </div>
@@ -315,15 +310,15 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <span class="main-value"><?= moneda($drinks['venta_dia']) ?></span>
                 <div class="details">
                     Trans. Manual: <?= moneda($drinks['trans_dia']) ?><br>
-                    Trans. Automática: <?= moneda($drinks['trans_auto_val']) ?> <small>(<?= $drinks['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia'] - ($drinks['trans_dia'] + $drinks['trans_auto_val'])) ?></b>
+                    Trans. Automática: <?= moneda($drinks['trans_auto_val']) ?> <small>(<?=$drinks['trans_auto_cant'] ?>)</small><br>
+                    Neto: <b style="color:#2563eb"><?= moneda($drinks['venta_dia'] - ($drinks['trans_dia'] +$drinks['trans_auto_val'])) ?></b>
                 </div>
             </div>
             <div>
                 <div class="separator"></div>
                 <div class="details">
                     Venta Mes: <span style="color:#f97316"><?= moneda($drinks['venta_mes']) ?></span><br>
-                    Utilidad Mes: <span style="color:#10b981"><?= moneda($drinks['utilidad']) ?></span> <b>(<?= porcentaje($drinks['utilidad'], $drinks['venta_mes']) ?>)</b><br>
+                    Utilidad Mes: <span style="color:#10b981"><?= moneda($drinks['utilidad']) ?></span> <b>(<?= porcentaje($drinks['utilidad'],$drinks['venta_mes']) ?>)</b><br>
                     Bodega Costo: <?= moneda($drinks['inventario']) ?><br>
                     <b>Bodega Venta:</b> <span style="color:#8b5cf6"><?= moneda($drinks['inv_venta']) ?></span>
                 </div>
@@ -382,8 +377,8 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <?php if(empty($rankingCajeros)): ?>
                     <div style="text-align:center; color:#9ca3af; padding: 10px; font-size: 0.85rem;">No se registran ventas de cajeros el día de hoy</div>
                 <?php else: ?>
-                    <?php foreach($rankingCajeros as $index => $caj): 
-                        $porcentaje = $ventaGlobalConsolidada > 0 ? ($caj['total'] / $ventaGlobalConsolidada) * 100 : 0;
+                    <?php foreach($rankingCajeros as $index =>$caj): 
+                        $porcentaje =$ventaGlobalConsolidada > 0 ? ($caj['total'] /$ventaGlobalConsolidada) * 100 : 0;
                     ?>
                     <div class="ranking-item">
                         <div class="ranking-user">
@@ -409,7 +404,7 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
                 <table>
                     <thead><tr><th>Sede</th><th>Proveedor</th><th style="text-align:right">Valor Compra</th></tr></thead>
                     <tbody>
-                        <?php foreach($todasLasCompras as $c): ?>
+                        <?php foreach($todasLasCompras as$c): ?>
                         <tr>
                             <td><small style="background:#f3f4f6; color:#4b5563; padding:4px 8px; border-radius:6px; font-weight:bold;"><?= $c['sede'] ?></small></td>
                             <td><?= $c['prov'] ?></td>
@@ -444,13 +439,13 @@ usort($rankingCajeros, function($a, $b) { return $b['total'] <=> $a['total']; })
     
     new Chart(document.getElementById('chartInv'), { 
         type: 'bar', 
-        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['inventario'] ?>, <?= $drinks['inventario'] ?>], backgroundColor: ['#2563eb', '#10b981'], borderRadius: 6 }] }, 
+        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['inventario'] ?>, <?=$drinks['inventario'] ?>], backgroundColor: ['#2563eb', '#10b981'], borderRadius: 6 }] }, 
         options: chartOptions 
     });
 
     new Chart(document.getElementById('chartVenta'), { 
         type: 'pie', 
-        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?= $drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
+        data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?=$drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
         options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } 
     });
 
