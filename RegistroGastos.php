@@ -349,104 +349,10 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     <?php endif; ?>
 
-    <!-- SECCIÓN: GRÁFICA DE EVOLUCIÓN DEL TOTAL DE ACTIVOS (MES ACTUAL) -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-success text-white py-2">
-            <h6 class="mb-0">📊 Gráfica de Evolución: Total Activos (Mes: <?= htmlspecialchars($mes_seleccionado) ?>)</h6>
-        </div>
-        <div class="card-body bg-white p-3">
-            <div style="position: relative; height: 320px; width: 100%;">
-                <canvas id="graficoActivos"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- SECCIÓN: DESGLOSE DÍA A DÍA EN FORMATO ACORDEÓN POR MES -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-secondary text-white py-2">
-            <h6 class="mb-0">📈 Desglose Día a Día por Mes (Acordeón)</h6>
-        </div>
-        <div class="card-body p-3">
-            <?php if (count($desglose_por_mes) > 0): ?>
-                <div class="accordion" id="accordionMeses">
-                    <?php 
-                    $i = 0;
-                    foreach ($desglose_por_mes as $mes => $registros_mes): 
-                        $i++;
-                        $is_expanded = ($mes === $mes_seleccionado) ? 'true' : 'false';
-                        $is_show = ($mes === $mes_seleccionado) ? 'show' : '';
-                        $collapsed_class = ($mes === $mes_seleccionado) ? '' : 'collapsed';
-                    ?>
-                        <div class="accordion-item mb-2 border">
-                            <h2 class="accordion-header" id="heading<?= $i ?>">
-                                <button class="accordion-button <?= $collapsed_class ?> bg-light fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse<?= $i ?>" aria-expanded="<?= $is_expanded ?>" aria-controls="collapse<?= $i ?>">
-                                    📁 Mes: <?= $mes ?> &nbsp;<span class="badge bg-secondary ms-2"><?= count($registros_mes) ?> días registrados</span>
-                                </button>
-                            </h2>
-                            <div id="collapse<?= $i ?>" class="accordion-collapse collapse <?= $is_show ?>" aria-labelledby="heading<?= $i ?>" data-bs-parent="#accordionMeses">
-                                <div class="accordion-body p-0 table-responsive">
-                                    <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Fecha (Día a Día)</th>
-                                                <th>Total Activos (Día)</th>
-                                                <th>Var. Activo (Vs Día Ant.)</th>
-                                                <th>Total Pasivos/Gastos (Día)</th>
-                                                <th>Pasivo Acumulado (Desde el 1ro)</th>
-                                                <th>Neto  (Día)</th>
-                                                <th class="text-center">Acción</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($registros_mes as $dd): ?>
-                                                <tr>
-                                                    <td class="fw-bold"><?= $dd['fecha'] ?></td>
-                                                    <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
-                                                    
-                                                    <!-- Variación Activo Vs Día Anterior -->
-                                                    <td>
-                                                        <?php 
-                                                            $var_act = $dd['variacion_activo'];
-                                                            if ($var_act > 0) {
-                                                                echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
-                                                            } elseif ($var_act < 0) {
-                                                                echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
-                                                            } else {
-                                                                echo '<span class="text-muted">$0,00</span>';
-                                                            }
-                                                        ?>
-                                                    </td>
-
-                                                    <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
-                                                    
-                                                    <!-- Pasivo Acumulado desde el 1ro del mes -->
-                                                    <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
-
-                                                    <!-- Suma Activo Diario + Pasivo Diario -->
-                                                    <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
-
-                                                    <td class="text-center">
-                                                        <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
-                                                    </td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <div class="text-center text-muted py-3">No hay registros diarios para mostrar.</div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- ESTRUCTURA TIPO CUENTA T (2 COLUMNAS RESPONSIVAS) -->
-    <div class="row g-3">
+    <!-- 1. ESTRUCTURA TIPO CUENTA T (2 COLUMNAS: DEBE Y HABER) -->
+    <div class="row g-3 mb-4">
         <!-- COLUMNA IZQUIERDA: ACTIVOS -->
-        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12 mb-4">
+        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12 mb-4 mb-lg-0">
             <div class="card shadow-sm h-100 border-success">
                 <div class="card-header bg-success text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">DEBE / ACTIVOS (Bienes e Inversiones)</h6>
@@ -501,7 +407,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
 
         <!-- COLUMNA DERECHA: PASIVOS Y GASTOS -->
-        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12 mb-4">
+        <div class="col-xxl-6 col-xl-6 col-lg-6 col-12">
             <div class="card shadow-sm h-100 border-dark">
                 <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">HABER / PASIVOS Y GASTOS</h6>
@@ -558,6 +464,100 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 2. SECCIÓN: GRÁFICA DE EVOLUCIÓN DEL TOTAL DE ACTIVOS (MES ACTUAL) - UBICADA ABAJO -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white py-2">
+            <h6 class="mb-0">📊 Gráfica de Evolución: Total Activos (Mes: <?= htmlspecialchars($mes_seleccionado) ?>)</h6>
+        </div>
+        <div class="card-body bg-white p-3">
+            <div style="position: relative; height: 320px; width: 100%;">
+                <canvas id="graficoActivos"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. SECCIÓN: DESGLOSE DÍA A DÍA EN FORMATO ACORDEÓN POR MES - UBICADO ABAJO -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white py-2">
+            <h6 class="mb-0">📈 Desglose Día a Día por Mes (Acordeón)</h6>
+        </div>
+        <div class="card-body p-3">
+            <?php if (count($desglose_por_mes) > 0): ?>
+                <div class="accordion" id="accordionMeses">
+                    <?php 
+                    $i = 0;
+                    foreach ($desglose_por_mes as $mes => $registros_mes): 
+                        $i++;
+                        $is_expanded = ($mes === $mes_seleccionado) ? 'true' : 'false';
+                        $is_show = ($mes === $mes_seleccionado) ? 'show' : '';
+                        $collapsed_class = ($mes === $mes_seleccionado) ? '' : 'collapsed';
+                    ?>
+                        <div class="accordion-item mb-2 border">
+                            <h2 class="accordion-header" id="heading<?= $i ?>">
+                                <button class="accordion-button <?= $collapsed_class ?> bg-light fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse<?= $i ?>" aria-expanded="<?= $is_expanded ?>" aria-controls="collapse<?= $i ?>">
+                                    📁 Mes: <?= $mes ?> &nbsp;<span class="badge bg-secondary ms-2"><?= count($registros_mes) ?> días registrados</span>
+                                </button>
+                            </h2>
+                            <div id="collapse<?= $i ?>" class="accordion-collapse collapse <?= $is_show ?>" aria-labelledby="heading<?= $i ?>" data-bs-parent="#accordionMeses">
+                                <div class="accordion-body p-0 table-responsive">
+                                    <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Fecha (Día a Día)</th>
+                                                <th>Total Activos (Día)</th>
+                                                <th>Var. Activo (Vs Día Ant.)</th>
+                                                <th>Total Pasivos/Gastos (Día)</th>
+                                                <th>Pasivo Acumulado (Desde el 1ro)</th>
+                                                <th>Suma Activo + Pasivo (Día)</th>
+                                                <th class="text-center">Acción</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($registros_mes as $dd): ?>
+                                                <tr>
+                                                    <td class="fw-bold"><?= $dd['fecha'] ?></td>
+                                                    <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
+                                                    
+                                                    <!-- Variación Activo Vs Día Anterior -->
+                                                    <td>
+                                                        <?php 
+                                                            $var_act = $dd['variacion_activo'];
+                                                            if ($var_act > 0) {
+                                                                echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
+                                                            } elseif ($var_act < 0) {
+                                                                echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
+                                                            } else {
+                                                                echo '<span class="text-muted">$0,00</span>';
+                                                            }
+                                                        ?>
+                                                    </td>
+
+                                                    <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
+                                                    
+                                                    <!-- Pasivo Acumulado desde el 1ro del mes -->
+                                                    <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
+
+                                                    <!-- Suma Activo Diario + Pasivo Diario -->
+                                                    <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
+
+                                                    <td class="text-center">
+                                                        <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="text-center text-muted py-3">No hay registros diarios para mostrar.</div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
