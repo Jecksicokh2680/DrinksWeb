@@ -59,6 +59,17 @@ function Autorizacion($User, $Solicitud) {
 
 $esAdminStock = ($usuario_actual !== '01' && $usuario_actual !== '') ? (Autorizacion($usuario_actual, '9999') === 'SI') : false;
 
+// --- GESTIÓN DE FECHA SELECCIONADA ---
+$hoy = date('Y-m-d');
+$fecha_filtro = $hoy;
+
+if ($esAdminStock && isset($_GET['fecha_filtro']) && !empty($_GET['fecha_filtro'])) {
+    $d = DateTime::createFromFormat('Y-m-d', $_GET['fecha_filtro']);
+    if ($d && $d->format('Y-m-d') === $_GET['fecha_filtro']) {
+        $fecha_filtro = $_GET['fecha_filtro'];
+    }
+}
+
 // --- PROCESAR ACCIÓN AJAX (GUARDAR / ELIMINAR CHECK) ---
 if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
     header('Content-Type: application/json');
@@ -247,8 +258,6 @@ if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)
     $stmt_insert->close();
 }
 
-$hoy = date('Y-m-d');
-
 // --- FILTRADO PARA RESUMEN ACUMULADO ---
 $filtro_resumen = "";
 if (!$esAdminStock) {
@@ -261,7 +270,7 @@ $sql_totales = "SELECT c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre
                 FROM control_checks_nequi c
                 INNER JOIN notificaciones_nequi n ON c.id_transferencia = n.id
                 LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
-                WHERE DATE(n.fecha_correo) = '$hoy' $filtro_resumen
+                WHERE DATE(n.fecha_correo) = '$fecha_filtro' $filtro_resumen
                 GROUP BY c.nit_empresa, c.nro_sucursal, c.usuario_cedula, t.Nombre
                 ORDER BY c.nit_empresa ASC, c.nro_sucursal ASC, total_monto DESC";
 $res_totales = $mysqliWeb->query($sql_totales);
@@ -272,14 +281,14 @@ if ($res_totales && $res_totales->num_rows > 0) {
     }
 }
 
-// 4. CONSULTA GENERAL DE TRANSFERENCIAS DEL DÍA
+// 4. CONSULTA GENERAL DE TRANSFERENCIAS
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
                      c.usuario_cedula, c.nit_empresa, c.nro_sucursal, c.gerencia_verificado, c.gerencia_usuario_cedula, c.gerencia_fecha_hora, t.Nombre AS nombre_dueno, tg.Nombre AS nombre_gerencia_dueno
                FROM notificaciones_nequi n
                LEFT JOIN control_checks_nequi c ON n.id = c.id_transferencia
                LEFT JOIN terceros t ON (c.usuario_cedula COLLATE utf8mb4_general_ci) = (t.CedulaNit COLLATE utf8mb4_general_ci)
                LEFT JOIN terceros tg ON (c.gerencia_usuario_cedula COLLATE utf8mb4_general_ci) = (tg.CedulaNit COLLATE utf8mb4_general_ci)
-               WHERE DATE(n.fecha_correo) = '$hoy' 
+               WHERE DATE(n.fecha_correo) = '$fecha_filtro' 
                ORDER BY n.fecha_correo DESC";
 
 $resultado = $mysqliWeb->query($sql_select);
@@ -367,6 +376,35 @@ if ($resultado && $resultado->num_rows > 0) {
             box-shadow: 0 0 8px rgba(13, 110, 253, 0.25);
             outline: none;
         }
+
+        /* --- ESTILOS PARA IMPRESIÓN --- */
+        @media print {
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+            }
+            #pagina-fondo {
+                background: none !important;
+            }
+            .container-main-wrapper {
+                background-color: #fff !important;
+                box-shadow: none !important;
+                margin-top: 0 !important;
+                padding: 0 !important;
+            }
+            /* Ocultar elementos que no deben salir en papel */
+            button, .busqueda-container, .alert, .container-fluid.container-xl.pt-3.mb-3:first-of-type, small {
+                display: none !important;
+            }
+            .table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+            }
+            .table th, .table td {
+                border: 1px solid #dee2e6 !important;
+                color: #000 !important;
+            }
+        }
     </style>
 </head>
 <body id="pagina-fondo" class="p-2 p-md-4">
@@ -390,13 +428,27 @@ if ($resultado && $resultado->num_rows > 0) {
 <!-- Contenedor principal unificado -->
 <div class="container-fluid container-xl rounded container-main-wrapper p-3 p-md-4">    
     
-    <!-- Botón de sincronización y temporizador -->
+    <!-- Botones de acción, selector de fecha e impresión -->
     <div class="row align-items-center justify-content-between g-2 pt-2 mb-3">        
         <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
             <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
+            <button onclick="window.print();" class="btn btn-outline-dark btn-sm text-nowrap px-3 py-2 py-md-1">🖨️ Imprimir Listado</button>
+
             <?php if ($esAdminStock): ?>
                 <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
             <?php endif; ?>
+            
+            <!-- Selector de Fecha exclusivo para autorización 9999 -->
+            <?php if ($esAdminStock): ?>
+                <div class="input-group input-group-sm w-auto">
+                    <span class="input-group-text bg-light text-secondary">📅 Fecha:</span>
+                    <input type="date" id="selectorFecha" class="form-control form-control-sm" value="<?php echo htmlspecialchars($fecha_filtro); ?>" onchange="cambiarFecha(this.value)">
+                    <?php if ($fecha_filtro !== $hoy): ?>
+                        <button class="btn btn-outline-danger" type="button" onclick="cambiarFecha('<?php echo $hoy; ?>')" title="Volver a Hoy">🔄</button>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
             <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
                 ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
             </small>
@@ -412,7 +464,7 @@ if ($resultado && $resultado->num_rows > 0) {
     <!-- Resumen Acumulado -->
     <div class="card mb-4 shadow-sm border-0">
         <div class="card-header bg-secondary text-white p-2 px-3 fw-bold small">
-            📊 Resumen Acumulado <?php echo $esAdminStock ? "por Sede y Usuario" : "de tu Usuario"; ?> (Checks de Hoy)
+            📊 Resumen Acumulado <?php echo $esAdminStock ? "por Sede y Usuario" : "de tu Usuario"; ?> (Checks del día: <?php echo $fecha_filtro; ?>)
         </div>
         <div class="card-body p-0">
             <div class="table-responsive w-100">
@@ -442,7 +494,7 @@ if ($resultado && $resultado->num_rows > 0) {
                         <?php else: ?>
                             <tr>
                                 <td colspan="6" class="text-center text-muted py-3">
-                                    No tienes asignaciones registradas el día de hoy para esta empresa.
+                                    No hay asignaciones registradas en la fecha <?php echo $fecha_filtro; ?> para esta empresa.
                                 </td>
                             </tr>
                         <?php endif; ?>
@@ -458,7 +510,7 @@ if ($resultado && $resultado->num_rows > 0) {
             <div class="card-body p-2 p-md-3">
                 <div class="row g-1 text-center align-items-center">
                     <div class="col-4 border-end border-secondary">
-                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Recibido Hoy</h6>
+                        <h6 class="text-uppercase opacity-75 mb-1 text-truncate" style="font-size: 0.65rem; letter-spacing: 0.5px;">Recibido el <?php echo $fecha_filtro; ?></h6>
                         <span class="fw-bold fs-5 fs-md-4">$<?php echo number_format($monto_total, 0, ',', '.'); ?></span>
                     </div>
                     <div class="col-4 border-end border-secondary">
@@ -582,7 +634,7 @@ if ($resultado && $resultado->num_rows > 0) {
                 <?php else: ?>
                     <tr>
                         <td colspan="6" class="text-center text-muted py-4" style="font-size:0.85rem;">
-                            No hay transferencias registradas hoy.
+                            No hay transferencias registradas para la fecha <?php echo $fecha_filtro; ?>.
                         </td>
                     </tr>
                 <?php endif; ?>
@@ -595,6 +647,16 @@ if ($resultado && $resultado->num_rows > 0) {
     function forzarRefresco() {
         const urlActual = new URL(window.location.href);
         urlActual.searchParams.set('v', new Date().getTime());
+        window.location.href = urlActual.toString();
+    }
+
+    function cambiarFecha(nuevaFecha) {
+        const urlActual = new URL(window.location.href);
+        if (nuevaFecha) {
+            urlActual.searchParams.set('fecha_filtro', nuevaFecha);
+        } else {
+            urlActual.searchParams.delete('fecha_filtro');
+        }
         window.location.href = urlActual.toString();
     }
 
