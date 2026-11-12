@@ -275,6 +275,8 @@ $esBodega  = (Autorizacion($Usuario, '0004') === 'SI');
 $nombreSedeActual = ($NroSucursal == NIT_DRINKS) ? 'DRINKS' : 'CENTRAL';
 
 $docsArray = [];
+$docsAnuladosDevueltos = [];
+
 if ($dbSede) {
     $queryDocs = "SELECT 'FACTURA' AS TIPO, NUMERO, VALORTOTAL FROM facturas WHERE (estado = '0' OR estado = '1') AND fecha = '$fPosFormat' AND (fechaanul IS NULL OR fechaanul = '') 
                   UNION ALL 
@@ -284,6 +286,46 @@ if ($dbSede) {
     if($listaDocs) {
         while($row = $listaDocs->fetch_assoc()) { 
             $docsArray[] = $row; 
+        }
+    }
+}
+
+// Consulta de facturas anuladas, devueltas y pedidos anulados unificando ambas sedes (Central y Drinks)
+$sedesAProcesar = [
+    ['db' => conectarPOS(NIT_CENTRAL), 'nit' => NIT_CENTRAL, 'nombre' => 'CENTRAL'],
+    ['db' => conectarPOS(NIT_DRINKS), 'nit' => NIT_DRINKS, 'nombre' => 'DRINKS']
+];
+
+foreach ($sedesAProcesar as $sInfo) {
+    $dbSedeCheck = $sInfo['db'];
+    if ($dbSedeCheck) {
+        $sqlAnulDev = "
+            SELECT 'FACTURA ANULADA' AS TIPO_MOV, 'F' AS TIPO_CODE, f.numero AS NUMERO, f.fecha AS FECHA, f.valortotal AS VALORTOTAL, f.fechaanul AS FECHA_REF, cli.nombres AS CLIENTE, '{$sInfo['nit']}' AS NIT_SEDE, '{$sInfo['nombre']}' AS NOMBRE_SEDE 
+            FROM facturas f 
+            LEFT JOIN terceros cli ON f.idtercero = cli.idtercero 
+            WHERE f.fecha = '$fPosFormat' AND (f.estado = '1' OR (f.fechaanul IS NOT NULL AND f.fechaanul != ''))
+            
+            UNION ALL
+            
+            SELECT 'FACTURA DEVUELTA' AS TIPO_MOV, 'F' AS TIPO_CODE, f.numero AS NUMERO, f.fecha AS FECHA, f.valortotal AS VALORTOTAL, dv.fecha AS FECHA_REF, cli.nombres AS CLIENTE, '{$sInfo['nit']}' AS NIT_SEDE, '{$sInfo['nombre']}' AS NOMBRE_SEDE 
+            FROM devventas dv
+            INNER JOIN facturas f ON dv.idfactura = f.idfactura
+            LEFT JOIN terceros cli ON f.idtercero = cli.idtercero 
+            WHERE f.fecha = '$fPosFormat'
+            
+            UNION ALL
+            
+            SELECT 'PEDIDO ANULADO' AS TIPO_MOV, 'P' AS TIPO_CODE, p.numero AS NUMERO, p.fecha AS FECHA, p.valortotal AS VALORTOTAL, p.fechaanul AS FECHA_REF, cli.nombres AS CLIENTE, '{$sInfo['nit']}' AS NIT_SEDE, '{$sInfo['nombre']}' AS NOMBRE_SEDE 
+            FROM pedidos p 
+            LEFT JOIN terceros cli ON p.idtercero = cli.idtercero 
+            WHERE p.fecha = '$fPosFormat' AND (p.estado = '1' OR p.idusuarioanul IS NOT NULL OR (p.fechaanul IS NOT NULL AND p.fechaanul != ''))
+        ";
+        
+        $resAnulDev = $dbSedeCheck->query($sqlAnulDev);
+        if ($resAnulDev) {
+            while ($rowAD = $resAnulDev->fetch_assoc()) {
+                $docsAnuladosDevueltos[] = $rowAD;
+            }
         }
     }
 }
@@ -359,14 +401,14 @@ if ($dbSede) {
                 <?php endif; ?>
             </div>
             <div class="d-flex align-items-center">
-    <div>
-        <small class="text-secondary d-block">ACTUALIZACIÓN</small>
-        <div class="d-flex align-items-center gap-2">
-            <span id="timer-box" class="text-warning">180s</span>
-            <button class="btn btn-outline-light btn-sm py-0 px-2" onclick="window.location.reload();" title="Refrescar ahora">🔄</button>
-        </div>
-    </div>
-</div>
+                <div>
+                    <small class="text-secondary d-block">ACTUALIZACIÓN</small>
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="timer-box" class="text-warning">180s</span>
+                        <button class="btn btn-outline-light btn-sm py-0 px-2" onclick="window.location.reload();" title="Refrescar ahora">🔄</button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="text-end">
             <small class="text-secondary d-block">CAMBIAR SEDE</small>
@@ -415,6 +457,7 @@ if ($dbSede) {
         </form>
     </div>
 
+    <!-- TABLA PRINCIPAL DE SOLICITUDES -->
     <div class="card shadow-sm border-0">
         <div class="table-responsive">
             <table class="table table-hover table-xs align-middle text-center mb-0">
@@ -506,6 +549,59 @@ if ($dbSede) {
             </table>
         </div>
     </div>
+
+    <!-- ============================================================
+        SECCIÓN INFERIOR: FACTURAS ANULADAS Y DEVUELTAS DEL DÍA (AMBAS SEDES)
+    ============================================================ -->
+    <div class="card shadow-sm border-0 mt-4">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center py-2">
+            <span class="fw-bold small">🚫 FACTURAS ANULADAS, DEVUELTAS Y PEDIDOS ANULADOS DEL DÍA EN POS (AMBAS SEDES - <?= $fechaConsulta ?>)</span>
+            <span class="badge bg-dark"><?= count($docsAnuladosDevueltos) ?> Registros</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-xs align-middle text-center mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>SEDE</th>
+                        <th>TIPO MOVIMIENTO</th>
+                        <th>DOCUMENTO</th>
+                        <th class="text-start">CLIENTE</th>
+                        <th>VALOR TOTAL</th>
+                        <th>FECHA / REF ANULACIÓN</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    <?php if (!empty($docsAnuladosDevueltos)): ?>
+                        <?php foreach ($docsAnuladosDevueltos as $dad): 
+                            $badgeMovColor = 'bg-danger';
+                            if ($dad['TIPO_MOV'] === 'FACTURA DEVUELTA') $badgeMovColor = 'bg-warning text-dark';
+                            if ($dad['TIPO_MOV'] === 'PEDIDO ANULADO') $badgeMovColor = 'bg-dark';
+                        ?>
+                            <tr>
+                                <td><span class="badge bg-secondary"><?= $dad['NOMBRE_SEDE'] ?></span></td>
+                                <td><span class="badge <?= $badgeMovColor ?>"><?= $dad['TIPO_MOV'] ?></span></td>
+                                <td>
+                                    <span class="doc-link" onclick="abrirVentanaFlotante('<?= $dad['NUMERO'] ?>', '<?= $dad['NIT_SEDE'] ?>', '<?= $dad['TIPO_CODE'] ?>', '<?= $dad['TIPO_MOV'] ?>')">
+                                        <?= $dad['NUMERO'] ?>
+                                    </span>
+                                </td>
+                                <td class="text-start"><?= htmlspecialchars($dad['CLIENTE'] ?: 'CLIENTE MOSTRADOR') ?></td>
+                                <td class="fw-bold">$<?= number_format($dad['VALORTOTAL'], 0) ?></td>
+                                <td><small class="text-muted"><?= !empty($dad['FECHA_REF']) ? $dad['FECHA_REF'] : 'Registrado en POS' ?></small></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-3">
+                                No se encontraron facturas anuladas, devueltas o pedidos anulados para la fecha seleccionada en ninguna de las sedes.
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 
 <!-- Contenedor Dinámico para Ventanas Flotantes Múltiples -->
@@ -533,7 +629,7 @@ if ($dbSede) {
             timeLeft--;
 
             if (timeLeft <= 0) {
-                clearInterval(timerInterval); // Detenemos el intervalo inmediatamente
+                clearInterval(timerInterval);
                 timerDisplay.textContent = "0s";
                 window.location.reload();
                 return;
@@ -584,7 +680,7 @@ if ($dbSede) {
         const offsetX = 50 + ((contadorVentanas % 5) * 30);
         const offsetY = 80 + ((contadorVentanas % 5) * 30);
 
-        const badgeRolClass = (rolDoc === 'DOCUMENTO A ANULAR') ? 'bg-danger' : 'bg-success';
+        const badgeRolClass = (rolDoc === 'DOCUMENTO DE REEMPLAZO') ? 'bg-success' : 'bg-danger';
 
         const winHtml = `
             <div id="${windowId}" class="floating-window shadow" style="display: block; top: ${offsetY}px; left: ${offsetX}px;">

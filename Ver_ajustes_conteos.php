@@ -126,13 +126,19 @@ if (isset($_POST['accion'])) {
             $filtroNit = ($nombreSede == 'DRINKS') ? "= '901724534-7'" : "!= '901724534-7'";
         ?>
         <div class="tab-pane fade <?= $isActive ?>" id="<?= $tabId ?>">
+            <!-- Barra de Filtro Dinámico -->
+            <div class="input-group mb-3 shadow-sm">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por código o nombre de categoría en <?= $nombreSede ?>..." data-table-id="tabla_<?= $tabId ?>">
+            </div>
             <div class="card">
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table align-middle mb-0">
+                        <table class="table align-middle mb-0" id="tabla_<?= $tabId ?>">
                             <thead class="table-light text-uppercase" style="font-size: 11px;">
                                 <tr>
-                                    <th class="ps-4">PRODUCTO / HISTORIAL</th>
+                                    <th class="ps-4">CÓD. CAT.</th>
+                                    <th>PRODUCTO / HISTORIAL</th>
                                     <th class="text-center">HORA</th>
                                     <th class="text-end">SISTEMA</th>
                                     <th class="text-end">FÍSICO</th>
@@ -154,7 +160,8 @@ if (isset($_POST['accion'])) {
                                                              ORDER BY fecha_ajuste DESC LIMIT 3");
                                 ?>
                                 <tr>
-                                    <td class="ps-4 py-3">
+                                    <td class="ps-4 font-monospace fw-bold text-secondary small"><?= $r['CodCat'] ?></td>
+                                    <td class="py-3">
                                         <div class="fw-bold text-dark"><?= $r['Nombre'] ?></div>
                                         <?php if($subHist->num_rows > 0): ?>
                                             <table class="table table-sm table-historial-interno mb-0 shadow-sm">
@@ -200,16 +207,22 @@ if (isset($_POST['accion'])) {
 
         <!-- PESTAÑA: CRUCE DE BODEGAS -->
         <div class="tab-pane fade" id="tabCruce">
+            <!-- Barra de Filtro Dinámico para Cruce -->
+            <div class="input-group mb-3 shadow-sm">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por código o nombre de categoría en Cruce de Bodegas..." data-table-id="tabla_cruce">
+            </div>
             <div class="card">
                 <div class="card-header bg-warning bg-opacity-10 py-3">
                     <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones: Lo que falta en una bodega frente a lo que sobra en la otra (Hoy)</h6>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table align-middle mb-0">
+                        <table class="table align-middle mb-0" id="tabla_cruce">
                             <thead class="table-light text-uppercase" style="font-size: 11px;">
                                 <tr>
-                                    <th class="ps-4">CATEGORÍA / PRODUCTO</th>
+                                    <th class="ps-4">CÓD. CAT.</th>
+                                    <th>CATEGORÍA / PRODUCTO</th>
                                     <th class="text-center">DIF. DRINKS</th>
                                     <th class="text-center">DIF. CENTRAL</th>
                                     <th class="text-center">ANÁLISIS DE CRUCE</th>
@@ -259,7 +272,8 @@ if (isset($_POST['accion'])) {
                                         }
                                 ?>
                                 <tr>
-                                    <td class="ps-4 py-3 fw-bold text-dark"><?= $cr['Nombre'] ?> <small class="text-muted font-monospace">(<?= $cr['CodCat'] ?>)</small></td>
+                                    <td class="ps-4 font-monospace fw-bold text-secondary small"><?= $cr['CodCat'] ?></td>
+                                    <td class="py-3 fw-bold text-dark"><?= $cr['Nombre'] ?></td>
                                     <td class="text-center">
                                         <span class="badge <?= $dDrinks < 0 ? 'bg-danger' : ($dDrinks > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
                                             <?= ($dDrinks > 0 ? '+' : '') . number_format($dDrinks, 2) ?>
@@ -297,7 +311,7 @@ if (isset($_POST['accion'])) {
                                     <?php endwhile; 
                                 else: ?>
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
+                                    <td colspan="7" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
                                 </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -325,6 +339,24 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(button => {
         button.addEventListener('shown.bs.tab', e => {
             sessionStorage.setItem('activeTab', e.target.getAttribute('data-bs-target'));
+        });
+    });
+
+    // Lógica del filtro dinámico en tiempo real
+    document.querySelectorAll('.filtro-tabla').forEach(input => {
+        input.addEventListener('keyup', function() {
+            let filtro = this.value.toLowerCase();
+            let tableId = this.getAttribute('data-table-id');
+            let filas = document.querySelectorAll(`#${tableId} tbody tr`);
+
+            filas.forEach(fila => {
+                let textoFila = fila.textContent.toLowerCase();
+                if (textoFila.includes(filtro)) {
+                    fila.style.display = "";
+                } else {
+                    fila.style.display = "none";
+                }
+            });
         });
     });
 });
