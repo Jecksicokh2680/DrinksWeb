@@ -33,7 +33,6 @@ function obtenerPrecioVentaCategoria($codCat, $nitEmpresa, $mysqliWeb, $dbCentra
 
     if (empty($skus)) return 0;
 
-    // Ajusta 'precioventa' si en tu tabla productos del POS se llama distinto (ej. precio1, valorventa)
     $ph = implode(",", array_fill(0, count($skus), '?'));
     $sql = "SELECT AVG(precioventa) AS precio FROM productos WHERE barcode IN ($ph) AND precioventa > 0";
     $stmtPos = $dbPos->prepare($sql);
@@ -161,7 +160,6 @@ if (isset($_POST['accion'])) {
             $filtroNit = ($nombreSede == 'DRINKS') ? "= '901724534-7'" : "!= '901724534-7'";
         ?>
         <div class="tab-pane fade <?= $isActive ?>" id="<?= $tabId ?>">
-            <!-- Barra de Filtro Dinámico -->
             <div class="input-group mb-3 shadow-sm">
                 <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
                 <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por código o nombre de categoría en <?= $nombreSede ?>..." data-table-id="tabla_<?= $tabId ?>">
@@ -248,7 +246,7 @@ if (isset($_POST['accion'])) {
             </div>
             <div class="card">
                 <div class="card-header bg-warning bg-opacity-10 py-3">
-                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones: Lo que falta en una bodega frente a lo que sobra en la otra (Hoy)</h6>
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones y Stock Contado: Lo que falta en una bodega frente a lo que sobra en la otra (Hoy)</h6>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -257,8 +255,8 @@ if (isset($_POST['accion'])) {
                                 <tr>
                                     <th class="ps-4">CÓD. CAT.</th>
                                     <th>CATEGORÍA / PRODUCTO</th>
-                                    <th class="text-center">DIF. DRINKS</th>
-                                    <th class="text-center">DIF. CENTRAL</th>
+                                    <th class="text-center">DIF. DRINKS (FÍSICO)</th>
+                                    <th class="text-center">DIF. CENTRAL (FÍSICO)</th>
                                     <th class="text-center">ANÁLISIS DE CRUCE</th>
                                     <th class="text-center">GESTIÓN DRINKS</th>
                                     <th class="text-center">GESTIÓN CENTRAL</th>
@@ -270,7 +268,9 @@ if (isset($_POST['accion'])) {
                                                     MAX(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.id ELSE NULL END) as id_drinks,
                                                     MAX(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.id ELSE NULL END) as id_central,
                                                     SUM(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.diferencia ELSE 0 END) as dif_drinks,
-                                                    SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.diferencia ELSE 0 END) as dif_central
+                                                    SUM(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.stock_fisico ELSE 0 END) as fisico_drinks,
+                                                    SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.diferencia ELSE 0 END) as dif_central,
+                                                    SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.stock_fisico ELSE 0 END) as fisico_central
                                              FROM conteoweb c
                                              INNER JOIN categorias cat ON cat.CodCat = c.CodCat
                                              WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$hoy'
@@ -282,7 +282,9 @@ if (isset($_POST['accion'])) {
                                 if ($resCruce->num_rows > 0):
                                     while($cr = $resCruce->fetch_assoc()):
                                         $dDrinks = (float)$cr['dif_drinks'];
+                                        $fDrinks = (float)$cr['fisico_drinks'];
                                         $dCentral = (float)$cr['dif_central'];
+                                        $fCentral = (float)$cr['fisico_central'];
                                         $idDrinks = $cr['id_drinks'];
                                         $idCentral = $cr['id_central'];
 
@@ -309,14 +311,20 @@ if (isset($_POST['accion'])) {
                                     <td class="ps-4 font-monospace fw-bold text-secondary small"><?= $cr['CodCat'] ?></td>
                                     <td class="py-3 fw-bold text-dark"><?= $cr['Nombre'] ?></td>
                                     <td class="text-center">
-                                        <span class="badge <?= $dDrinks < 0 ? 'bg-danger' : ($dDrinks > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
-                                            <?= ($dDrinks > 0 ? '+' : '') . number_format($dDrinks, 2) ?>
-                                        </span>
+                                        <div>
+                                            <span class="badge <?= $dDrinks < 0 ? 'bg-danger' : ($dDrinks > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
+                                                Dif: <?= ($dDrinks > 0 ? '+' : '') . number_format($dDrinks, 2) ?>
+                                            </span>
+                                        </div>
+                                        <small class="text-muted fw-bold">Contado: <?= number_format($fDrinks, 2) ?></small>
                                     </td>
                                     <td class="text-center">
-                                        <span class="badge <?= $dCentral < 0 ? 'bg-danger' : ($dCentral > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
-                                            <?= ($dCentral > 0 ? '+' : '') . number_format($dCentral, 2) ?>
-                                        </span>
+                                        <div>
+                                            <span class="badge <?= $dCentral < 0 ? 'bg-danger' : ($dCentral > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
+                                                Dif: <?= ($dCentral > 0 ? '+' : '') . number_format($dCentral, 2) ?>
+                                            </span>
+                                        </div>
+                                        <small class="text-muted fw-bold">Contado: <?= number_format($fCentral, 2) ?></small>
                                     </td>
                                     <td class="text-center"><?= $analisisHtml ?></td>
                                     <td class="text-center">
@@ -356,7 +364,6 @@ if (isset($_POST['accion'])) {
         <!-- PESTAÑA: VALORIZACIÓN DE AJUSTES A PRECIO DE VENTA -->
         <div class="tab-pane fade" id="tabValorizacion">
             <?php
-            // Recopilamos conteos pendientes ('A') y aplicados hoy ('C') para valorizarlos
             $sqlVal = "SELECT c.id, c.CodCat, c.NitEmpresa, c.diferencia, c.estado, c.fecha_conteo, cat.Nombre 
                        FROM conteoweb c 
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
@@ -389,7 +396,6 @@ if (isset($_POST['accion'])) {
             $balanceNeto = $totalSobrante + $totalFaltante;
             ?>
 
-            <!-- Tarjetas de Resumen Financiero -->
             <div class="row g-3 mb-3">
                 <div class="col-md-4">
                     <div class="card border-start border-danger border-4 p-3">
@@ -413,7 +419,6 @@ if (isset($_POST['accion'])) {
                 </div>
             </div>
 
-            <!-- Barra de Filtro -->
             <div class="input-group mb-3 shadow-sm">
                 <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
                 <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por sede, código o categoría en Valorización..." data-table-id="tabla_valorizacion">
@@ -480,7 +485,6 @@ if (isset($_POST['accion'])) {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Mantener pestaña activa tras recargar
 document.addEventListener('DOMContentLoaded', function() {
     const activeTab = sessionStorage.getItem('activeTab');
     if (activeTab) {
@@ -496,7 +500,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Lógica del filtro dinámico en tiempo real
     document.querySelectorAll('.filtro-tabla').forEach(input => {
         input.addEventListener('keyup', function() {
             let filtro = this.value.toLowerCase();
