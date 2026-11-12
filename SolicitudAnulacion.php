@@ -21,9 +21,6 @@ if ($Usuario == 'INVITADO' || $NitEmpresa == 'SIN_NIT') {
     die("Error: No se detectó una sesión activa válida.");
 }
 
-// Permiso administrativo para borrar cualquier solicitud
-$puedeBorrarGlobal = ($Usuario == '9999' || $Usuario == '0003'); 
-
 /* ============================================================
     FUNCIONES DE AUTORIZACIÓN Y CONEXIÓN
 ============================================================ */
@@ -36,8 +33,12 @@ function Autorizacion($User, $Solicitud) {
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
+// Permiso administrativo global para cambiar el estado de cualquier solicitud
+$puedeBorrarGlobal = ($Usuario == '9999' || $Usuario == '0003' || Autorizacion($Usuario, '9999') === 'SI'); 
+
 function conectarPOS($nitSede) {
-    if ($nitSede == NIT_DRINKS) {
+    $nitSede = trim($nitSede);
+    if ($nitSede == NIT_DRINKS || strpos($nitSede, '901724534') !== false) {
         include_once 'ConnDrinks.php'; 
         return $GLOBALS['mysqliDrinks'] ?? null; 
     } else {
@@ -51,36 +52,54 @@ function VerificarAnulacion($NroDoc, $nitSede) {
     if (empty($NroDoc)) return 0;
 
     $db = conectarPOS($nitSede);
-    if (!$db) return 0;
+    
+    $chequearEnDB = function($conexionDB, $documento) {
+        if (!$conexionDB) return false;
 
-    $stmtP = $db->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
-    if ($stmtP) {
-        $stmtP->bind_param("s", $NroDoc);
-        $stmtP->execute();
-        $resP = $stmtP->get_result();
-        if ($rowP = $resP->fetch_assoc()) {
-            if ($rowP['estado'] == 1 || !empty($rowP['idusuarioanul']) || !empty($rowP['fechaanul'])) {
-                return 1; 
+        $stmtP = $conexionDB->prepare("SELECT estado, idusuarioanul, fechaanul FROM pedidos WHERE numero = ? LIMIT 1");
+        if ($stmtP) {
+            $stmtP->bind_param("s", $documento);
+            $stmtP->execute();
+            $resP = $stmtP->get_result();
+            if ($rowP = $resP->fetch_assoc()) {
+                if ($rowP['estado'] == 1 || $rowP['estado'] == '1' || !empty($rowP['idusuarioanul']) || (!empty($rowP['fechaanul']) && $rowP['fechaanul'] != '0000-00-00 00:00:00')) {
+                    return true; 
+                }
             }
         }
-    }
 
-    $stmtF = $db->prepare("SELECT idfactura, estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1");
-    if ($stmtF) {
-        $stmtF->bind_param("s", $NroDoc);
-        $stmtF->execute();
-        $resF = $stmtF->get_result();
-        if ($rowF = $resF->fetch_assoc()) {
-            if ($rowF['estado'] == 1 || !empty($rowF['fechaanul'])) return 1;
+        $stmtF = $conexionDB->prepare("SELECT idfactura, estado, fechaanul FROM facturas WHERE numero = ? LIMIT 1");
+        if ($stmtF) {
+            $stmtF->bind_param("s", $documento);
+            $stmtF->execute();
+            $resF = $stmtF->get_result();
+            if ($rowF = $resF->fetch_assoc()) {
+                if ($rowF['estado'] == 1 || $rowF['estado'] == '1' || (!empty($rowF['fechaanul']) && $rowF['fechaanul'] != '0000-00-00 00:00:00')) {
+                    return true;
+                }
 
-            $stmtD = $db->prepare("SELECT idfactura FROM devventas WHERE idfactura = ? LIMIT 1");
-            if ($stmtD) {
-                $stmtD->bind_param("i", $rowF['idfactura']);
-                $stmtD->execute();
-                if ($stmtD->get_result()->num_rows > 0) return 1;
+                $stmtD = $conexionDB->prepare("SELECT dv.idfactura FROM devventas dv WHERE dv.idfactura = ? LIMIT 1");
+                if ($stmtD) {
+                    $stmtD->bind_param("i", $rowF['idfactura']);
+                    $stmtD->execute();
+                    if ($stmtD->get_result()->num_rows > 0) {
+                        return true;
+                    }
+                }
             }
         }
+        return false;
+    };
+
+    if ($chequearEnDB($db, $NroDoc)) {
+        return 1;
     }
+
+    $dbAlterna = conectarPOS(($nitSede == NIT_DRINKS) ? NIT_CENTRAL : NIT_DRINKS);
+    if ($dbAlterna && $chequearEnDB($dbAlterna, $NroDoc)) {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -218,11 +237,12 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar') {
         $anuladoEnPOS = VerificarAnulacion($facturaAEliminar, $sedeAEliminar);
 
         if (!$resCheck || $resCheck['NitCajero'] !== $Usuario || $resCheck['JefeBodCheck'] == '1' || $resCheck['GerenteCheck'] == '1' || $anuladoEnPOS == 1) {
-            die("Error: No tienes permisos para eliminar esta solicitud o ya ha sido procesada.");
+            die("Error: No tienes permisos para anular esta solicitud o ya ha sido procesada.");
         }
     }
 
-    $stmt = $mysqli->prepare("DELETE FROM solicitud_anulacion WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
+    // CORRECCIÓN: En lugar de DELETE, cambiamos el Estado a '0'
+    $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET Estado = '0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
     $stmt->bind_param("sss", $facturaAEliminar, $fechaAEliminar, $sedeAEliminar);
     $stmt->execute();
     header("Location: ?fConsulta=" . $fechaConsulta); exit;
@@ -290,7 +310,7 @@ if ($dbSede) {
     }
 }
 
-// Consulta de facturas anuladas, devueltas y pedidos anulados unificando ambas sedes (Central y Drinks)
+// Consulta de facturas anuladas, devueltas y pedidos anulados unificando ambas sedes
 $sedesAProcesar = [
     ['db' => conectarPOS(NIT_CENTRAL), 'nit' => NIT_CENTRAL, 'nombre' => 'CENTRAL'],
     ['db' => conectarPOS(NIT_DRINKS), 'nit' => NIT_DRINKS, 'nombre' => 'DRINKS']
@@ -465,7 +485,7 @@ foreach ($sedesAProcesar as $sInfo) {
                     <tr>
                         <th>HORA</th><th>SEDE</th><th>CAJERO</th><th>TIPO</th><th>DOC. ANULAR</th><th>VALOR</th><th>REEMPLAZO</th>
                         <th style="width: 20%;">MOTIVO</th><th>BODEGA</th><th>GERENCIA</th><th>ESTADO POS</th>
-                        <th></th>
+                        <th>ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white">
@@ -537,7 +557,7 @@ foreach ($sedesAProcesar as $sInfo) {
                             
                             <td>
                                 <?php if($puedeBorrarGlobal || $puedeBorrarPropio): ?>
-                                    <button class="btn-delete" title="Eliminar Solicitud" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
+                                    <button class="btn-delete" title="Anular Solicitud" onclick="borrarSolicitud('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['F_Creacion'] ?>')">🗑️</button>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -666,7 +686,7 @@ foreach ($sedesAProcesar as $sInfo) {
     }
 
     function borrarSolicitud(fact, nitSede, fecha) {
-        if (confirm(`¿Eliminar permanentemente la solicitud?`)) {
+        if (confirm(`¿Estás seguro de anular esta solicitud?`)) {
             window.location.href = `?accion=borrar&factura=${fact}&s=${nitSede}&f=${fecha}`;
         }
     }
