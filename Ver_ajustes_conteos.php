@@ -114,6 +114,7 @@ if (isset($_POST['accion'])) {
     <ul class="nav nav-tabs" id="sedeTabs" role="tablist">
         <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabDrinks">DRINKS</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCentral">CENTRAL</button></li>
+        <li class="nav-item"><button class="nav-link text-warning fw-bold" data-bs-toggle="tab" data-bs-target="#tabCruce"><i class="bi bi-arrow-left-right me-1"></i> CRUCE DE BODEGAS</button></li>
     </ul>
 
     <div class="tab-content pt-3">
@@ -146,7 +147,7 @@ if (isset($_POST['accion'])) {
                                                       WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2
                                                       AND DATE(c.fecha_conteo) = '$hoy' 
                                                       AND c.NitEmpresa $filtroNit 
-                                                      ORDER BY c.fecha_conteo DESC"); // ORDENADO POR HORA DESCENDENTE
+                                                      ORDER BY c.fecha_conteo DESC");
                                 while($r = $res->fetch_assoc()): 
                                     $subHist = $mysqli->query("SELECT diferencia_aplicada, fecha_ajuste, usuario FROM historial_ajustes 
                                                              WHERE categoria = '{$r['CodCat']}' AND nit_empresa = '{$r['NitEmpresa']}' 
@@ -196,6 +197,89 @@ if (isset($_POST['accion'])) {
             </div>
         </div>
         <?php endforeach; ?>
+
+        <!-- NUEVA PESTAÑA: CRUCE DE BODEGAS -->
+        <div class="tab-pane fade" id="tabCruce">
+            <div class="card">
+                <div class="card-header bg-warning bg-opacity-10 py-3">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones: Lo que falta en una bodega frente a lo que sobra en la otra (Hoy)</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="table-light text-uppercase" style="font-size: 11px;">
+                                <tr>
+                                    <th class="ps-4">CATEGORÍA / PRODUCTO</th>
+                                    <th class="text-center">DIF. DRINKS</th>
+                                    <th class="text-center">DIF. CENTRAL</th>
+                                    <th class="text-center">ANÁLISIS DE CRUCE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $sqlCruce = "SELECT cat.CodCat, cat.Nombre, 
+                                                    SUM(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.diferencia ELSE 0 END) as dif_drinks,
+                                                    SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.diferencia ELSE 0 END) as dif_central
+                                             FROM conteoweb c
+                                             INNER JOIN categorias cat ON cat.CodCat = c.CodCat
+                                             WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$hoy'
+                                             GROUP BY cat.CodCat, cat.Nombre
+                                             HAVING ABS(dif_drinks) > 0.2 OR ABS(dif_central) > 0.2
+                                             ORDER BY cat.Nombre ASC";
+                                $resCruce = $mysqli->query($sqlCruce);
+
+                                if ($resCruce->num_rows > 0):
+                                    while($cr = $resCruce->fetch_assoc()):
+                                        $dDrinks = (float)$cr['dif_drinks'];
+                                        $dCentral = (float)$cr['dif_central'];
+
+                                        // Determinar el análisis del cruce
+                                        $analisisHtml = "";
+                                        if ($dDrinks < 0 && $dCentral > 0) {
+                                            $analisisHtml = "<span class='badge bg-danger'>Falta en Drinks</span> <i class='bi bi-arrow-right mx-1'></i> <span class='badge bg-success'>Sobra en Central</span>";
+                                            if (abs(abs($dDrinks) - abs($dCentral)) < 0.5) {
+                                                $analisisHtml .= " <span class='badge bg-info text-dark'>¡Posible Desplazamiento Cruzado!</span>";
+                                            }
+                                        } elseif ($dDrinks > 0 && $dCentral < 0) {
+                                            $analisisHtml = "<span class='badge bg-success'>Sobra en Drinks</span> <i class='bi bi-arrow-right mx-1'></i> <span class='badge bg-danger'>Falta en Central</span>";
+                                            if (abs(abs($dDrinks) - abs($dCentral)) < 0.5) {
+                                                $analisisHtml .= " <span class='badge bg-info text-dark'>¡Posible Desplazamiento Cruzado!</span>";
+                                            }
+                                        } elseif ($dDrinks < 0 && $dCentral < 0) {
+                                            $analisisHtml = "<span class='badge bg-dark'>Faltante en Ambas Sedes</span>";
+                                        } elseif ($dDrinks > 0 && $dCentral > 0) {
+                                            $analisisHtml = "<span class='badge bg-primary'>Sobrante en Ambas Sedes</span>";
+                                        } else {
+                                            $analisisHtml = "<span class='text-muted'>Sin desviación cruzada relevante</span>";
+                                        }
+                                ?>
+                                <tr>
+                                    <td class="ps-4 py-3 fw-bold text-dark"><?= $cr['Nombre'] ?> <small class="text-muted font-monospace">(<?= $cr['CodCat'] ?>)</small></td>
+                                    <td class="text-center">
+                                        <span class="badge <?= $dDrinks < 0 ? 'bg-danger' : ($dDrinks > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
+                                            <?= ($dDrinks > 0 ? '+' : '') . number_format($dDrinks, 2) ?>
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge <?= $dCentral < 0 ? 'bg-danger' : ($dCentral > 0 ? 'bg-success' : 'bg-secondary') ?> rounded-pill">
+                                            <?= ($dCentral > 0 ? '+' : '') . number_format($dCentral, 2) ?>
+                                        </span>
+                                    </td>
+                                    <td class="text-center"><?= $analisisHtml ?></td>
+                                </tr>
+                                    <?php endwhile; 
+                                else: ?>
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
+                                </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 

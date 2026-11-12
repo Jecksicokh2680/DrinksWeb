@@ -8,4 +8,4 @@
 ❌ Error de conexión a la base de datos (empresa001): Connection refused[2026-11-02 18:00:00] Respaldo automático exitoso. Total procesados: 396
 [2026-11-03 18:00:00] Respaldo automático exitoso. Total procesados: 396
 PHP Warning:  mysqli::__construct(): Error while reading greeting packet. PID=1129 in /home/milo/DrinksWeb/ConnCentral.php on line 25
-❌ Error de conexión a la base de datos (empresa001): MySQL server has gone away
+❌ Error de conexión a la base de datos (empresa001): MySQL server has gone away❌ Error de conexión a la base de datos (empresa001): Connection refused
