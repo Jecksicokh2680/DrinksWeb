@@ -15,6 +15,40 @@ $hoy = date("Y-m-d");
 $ahoraBogota = date("Y-m-d H:i:s");
 
 /* ============================================================
+   FUNCIÓN AUXILIAR: OBTENER PRECIO DE VENTA DESDE EL POS
+   ============================================================ */
+function obtenerPrecioVentaCategoria($codCat, $nitEmpresa, $mysqliWeb, $dbCentral, $dbDrinks) {
+    $dbPos = (trim($nitEmpresa) === '901724534-7') ? $dbDrinks : $dbCentral;
+    if (!$dbPos) return 0;
+
+    $st = $mysqliWeb->prepare("SELECT Sku FROM catproductos WHERE CodCat = ? AND estado = 1");
+    $st->bind_param("s", $codCat);
+    $st->execute();
+    $res = $st->get_result();
+    $skus = [];
+    while ($row = $res->fetch_assoc()) {
+        $skus[] = $row['Sku'];
+    }
+    $st->close();
+
+    if (empty($skus)) return 0;
+
+    // Ajusta 'precioventa' si en tu tabla productos del POS se llama distinto (ej. precio1, valorventa)
+    $ph = implode(",", array_fill(0, count($skus), '?'));
+    $sql = "SELECT AVG(precioventa) AS precio FROM productos WHERE barcode IN ($ph) AND precioventa > 0";
+    $stmtPos = $dbPos->prepare($sql);
+    if (!$stmtPos) return 0;
+
+    $types = str_repeat("s", count($skus));
+    $stmtPos->bind_param($types, ...$skus);
+    $stmtPos->execute();
+    $rowPos = $stmtPos->get_result()->fetch_assoc();
+    $stmtPos->close();
+
+    return (float)($rowPos['precio'] ?? 0);
+}
+
+/* ============================================================
    LÓGICA AJAX: PROCESAMIENTO Y REFRESCO
    ============================================================ */
 if (isset($_POST['accion'])) {
@@ -115,6 +149,7 @@ if (isset($_POST['accion'])) {
         <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabDrinks">DRINKS</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCentral">CENTRAL</button></li>
         <li class="nav-item"><button class="nav-link text-warning fw-bold" data-bs-toggle="tab" data-bs-target="#tabCruce"><i class="bi bi-arrow-left-right me-1"></i> CRUCE DE BODEGAS</button></li>
+        <li class="nav-item"><button class="nav-link text-success fw-bold" data-bs-toggle="tab" data-bs-target="#tabValorizacion"><i class="bi bi-currency-dollar me-1"></i> VALORIZACIÓN DE AJUSTES</button></li>
     </ul>
 
     <div class="tab-content pt-3">
@@ -207,7 +242,6 @@ if (isset($_POST['accion'])) {
 
         <!-- PESTAÑA: CRUCE DE BODEGAS -->
         <div class="tab-pane fade" id="tabCruce">
-            <!-- Barra de Filtro Dinámico para Cruce -->
             <div class="input-group mb-3 shadow-sm">
                 <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
                 <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por código o nombre de categoría en Cruce de Bodegas..." data-table-id="tabla_cruce">
@@ -285,7 +319,6 @@ if (isset($_POST['accion'])) {
                                         </span>
                                     </td>
                                     <td class="text-center"><?= $analisisHtml ?></td>
-                                    <!-- Botones para Drinks -->
                                     <td class="text-center">
                                         <?php if ($idDrinks): ?>
                                             <div class="btn-group" role="group">
@@ -296,7 +329,6 @@ if (isset($_POST['accion'])) {
                                             <span class="text-muted small">N/A</span>
                                         <?php endif; ?>
                                     </td>
-                                    <!-- Botones para Central -->
                                     <td class="text-center">
                                         <?php if ($idCentral): ?>
                                             <div class="btn-group" role="group">
@@ -313,6 +345,128 @@ if (isset($_POST['accion'])) {
                                 <tr>
                                     <td colspan="7" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
                                 </tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PESTAÑA: VALORIZACIÓN DE AJUSTES A PRECIO DE VENTA -->
+        <div class="tab-pane fade" id="tabValorizacion">
+            <?php
+            // Recopilamos conteos pendientes ('A') y aplicados hoy ('C') para valorizarlos
+            $sqlVal = "SELECT c.id, c.CodCat, c.NitEmpresa, c.diferencia, c.estado, c.fecha_conteo, cat.Nombre 
+                       FROM conteoweb c 
+                       INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
+                       WHERE c.estado IN ('A', 'C') AND ABS(c.diferencia) > 0.2 
+                       AND DATE(c.fecha_conteo) = '$hoy' 
+                       ORDER BY c.NitEmpresa ASC, c.fecha_conteo DESC";
+            $resVal = $mysqli->query($sqlVal);
+
+            $filasValorizadas = [];
+            $totalFaltante = 0;
+            $totalSobrante = 0;
+
+            if ($resVal) {
+                while ($rv = $resVal->fetch_assoc()) {
+                    $precioVenta = obtenerPrecioVentaCategoria($rv['CodCat'], $rv['NitEmpresa'], $mysqli, $mysqliCentral ?? null, $mysqliDrinks ?? null);
+                    $dif = (float)$rv['diferencia'];
+                    $valorAjuste = $dif * $precioVenta;
+
+                    if ($valorAjuste < 0) {
+                        $totalFaltante += $valorAjuste;
+                    } else {
+                        $totalSobrante += $valorAjuste;
+                    }
+
+                    $rv['precio_venta'] = $precioVenta;
+                    $rv['valor_ajuste'] = $valorAjuste;
+                    $filasValorizadas[] = $rv;
+                }
+            }
+            $balanceNeto = $totalSobrante + $totalFaltante;
+            ?>
+
+            <!-- Tarjetas de Resumen Financiero -->
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="card border-start border-danger border-4 p-3">
+                        <small class="text-muted text-uppercase fw-bold">Total Faltantes (Precio Venta)</small>
+                        <h4 class="text-danger fw-bold mb-0">$<?= number_format($totalFaltante, 0, ',', '.') ?></h4>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-start border-success border-4 p-3">
+                        <small class="text-muted text-uppercase fw-bold">Total Sobrantes (Precio Venta)</small>
+                        <h4 class="text-success fw-bold mb-0">$<?= number_format($totalSobrante, 0, ',', '.') ?></h4>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-start border-primary border-4 p-3">
+                        <small class="text-muted text-uppercase fw-bold">Balance Neto del Día</small>
+                        <h4 class="<?= $balanceNeto < 0 ? 'text-danger' : 'text-primary' ?> fw-bold mb-0">
+                            <?= ($balanceNeto > 0 ? '+' : '') ?>$<?= number_format($balanceNeto, 0, ',', '.') ?>
+                        </h4>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Barra de Filtro -->
+            <div class="input-group mb-3 shadow-sm">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por sede, código o categoría en Valorización..." data-table-id="tabla_valorizacion">
+            </div>
+
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0" id="tabla_valorizacion">
+                            <thead class="table-light text-uppercase" style="font-size: 11px;">
+                                <tr>
+                                    <th class="ps-4">SEDE</th>
+                                    <th>CÓD. CAT.</th>
+                                    <th>CATEGORÍA / PRODUCTO</th>
+                                    <th class="text-center">ESTADO</th>
+                                    <th class="text-center">DIF. UNIDADES</th>
+                                    <th class="text-end">PRECIO VENTA UNIT.</th>
+                                    <th class="text-end pe-4">VALOR AJUSTE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (!empty($filasValorizadas)): ?>
+                                    <?php foreach ($filasValorizadas as $fv): 
+                                        $sedeLabel = (trim($fv['NitEmpresa']) === '901724534-7') ? 'DRINKS' : 'CENTRAL';
+                                        $badgeSede = ($sedeLabel === 'DRINKS') ? 'bg-info text-dark' : 'bg-secondary';
+                                        $esAplicado = ($fv['estado'] === 'C');
+                                    ?>
+                                    <tr>
+                                        <td class="ps-4"><span class="badge <?= $badgeSede ?>"><?= $sedeLabel ?></span></td>
+                                        <td class="font-monospace fw-bold text-secondary small"><?= $fv['CodCat'] ?></td>
+                                        <td class="fw-bold text-dark"><?= $fv['Nombre'] ?></td>
+                                        <td class="text-center">
+                                            <?php if ($esAplicado): ?>
+                                                <span class="badge bg-success">APLICADO</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-warning text-dark">PENDIENTE</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge <?= $fv['diferencia'] < 0 ? 'bg-danger' : 'bg-success' ?> rounded-pill">
+                                                <?= ($fv['diferencia'] > 0 ? '+' : '') . number_format($fv['diferencia'], 2) ?>
+                                            </span>
+                                        </td>
+                                        <td class="text-end text-muted">$<?= number_format($fv['precio_venta'], 0, ',', '.') ?></td>
+                                        <td class="text-end pe-4 fw-bold <?= $fv['valor_ajuste'] < 0 ? 'text-danger' : 'text-success' ?>">
+                                            <?= ($fv['valor_ajuste'] > 0 ? '+' : '') ?>$<?= number_format($fv['valor_ajuste'], 0, ',', '.') ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">No hay ajustes pendientes ni aplicados registrados para hoy.</td>
+                                    </tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>
