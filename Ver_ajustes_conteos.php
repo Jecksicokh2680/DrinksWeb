@@ -183,9 +183,9 @@ if (isset($_POST['accion'])) {
                                         </span>
                                     </td>
                                     <td class="text-center">
-                                        <div class="btn-group">
+                                        <div class="btn-group" role="group">
                                             <button onclick="ejecutar(<?= $r['id'] ?>, 'ajustar_ajax')" class="btn btn-primary btn-sm">AJUSTAR</button>
-                                            <button onclick="ejecutar(<?= $r['id'] ?>, 'eliminar_ajax')" class="btn btn-outline-secondary btn-sm"><i class="bi bi-trash"></i></button>
+                                            <button onclick="ejecutar(<?= $r['id'] ?>, 'eliminar_ajax')" class="btn btn-outline-danger btn-sm" title="Borrar Conteo"><i class="bi bi-trash"></i> Borrar</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -198,7 +198,7 @@ if (isset($_POST['accion'])) {
         </div>
         <?php endforeach; ?>
 
-        <!-- NUEVA PESTAÑA: CRUCE DE BODEGAS -->
+        <!-- PESTAÑA: CRUCE DE BODEGAS -->
         <div class="tab-pane fade" id="tabCruce">
             <div class="card">
                 <div class="card-header bg-warning bg-opacity-10 py-3">
@@ -213,11 +213,15 @@ if (isset($_POST['accion'])) {
                                     <th class="text-center">DIF. DRINKS</th>
                                     <th class="text-center">DIF. CENTRAL</th>
                                     <th class="text-center">ANÁLISIS DE CRUCE</th>
+                                    <th class="text-center">ACCIONES (BORRAR)</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php 
+                                // Modificamos la consulta para recuperar también los IDs de conteoweb de ambas sedes para poder borrarlos si es necesario
                                 $sqlCruce = "SELECT cat.CodCat, cat.Nombre, 
+                                                    MAX(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.id ELSE NULL END) as id_drinks,
+                                                    MAX(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.id ELSE NULL END) as id_central,
                                                     SUM(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.diferencia ELSE 0 END) as dif_drinks,
                                                     SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.diferencia ELSE 0 END) as dif_central
                                              FROM conteoweb c
@@ -232,8 +236,9 @@ if (isset($_POST['accion'])) {
                                     while($cr = $resCruce->fetch_assoc()):
                                         $dDrinks = (float)$cr['dif_drinks'];
                                         $dCentral = (float)$cr['dif_central'];
+                                        $idDrinks = $cr['id_drinks'];
+                                        $idCentral = $cr['id_central'];
 
-                                        // Determinar el análisis del cruce
                                         $analisisHtml = "";
                                         if ($dDrinks < 0 && $dCentral > 0) {
                                             $analisisHtml = "<span class='badge bg-danger'>Falta en Drinks</span> <i class='bi bi-arrow-right mx-1'></i> <span class='badge bg-success'>Sobra en Central</span>";
@@ -266,11 +271,21 @@ if (isset($_POST['accion'])) {
                                         </span>
                                     </td>
                                     <td class="text-center"><?= $analisisHtml ?></td>
+                                    <td class="text-center">
+                                        <div class="btn-group" role="group">
+                                            <?php if ($idDrinks): ?>
+                                                <button onclick="ejecutar(<?= $idDrinks ?>, 'eliminar_ajax')" class="btn btn-outline-danger btn-sm" title="Borrar Conteo Drinks">Borrar Drinks</button>
+                                            <?php endif; ?>
+                                            <?php if ($idCentral): ?>
+                                                <button onclick="ejecutar(<?= $idCentral ?>, 'eliminar_ajax')" class="btn btn-outline-secondary btn-sm" title="Borrar Conteo Central">Borrar Central</button>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
                                 </tr>
                                     <?php endwhile; 
                                 else: ?>
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
+                                    <td colspan="5" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
                                 </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -303,7 +318,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function ejecutar(id, acc) {
-    if(!confirm("¿Confirmar acción?")) return;
+    let mensaje = (acc === 'eliminar_ajax') ? "¿Estás seguro de borrar este conteo?" : "¿Confirmar acción?";
+    if(!confirm(mensaje)) return;
     document.getElementById('loader').style.display = 'flex';
     
     const fd = new FormData();
