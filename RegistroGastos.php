@@ -225,6 +225,38 @@ $stmt_regs->close();
 
 $total_haber_activo = $total_pasivos + $total_gastos;
 
+// 4. Obtener el ACUMULADO DE GASTOS Y PASIVOS DE TODO EL MES SELECCIONADO (Agrupado por tipología)
+$sql_acumulado_mes = "
+    SELECT 
+        t.nombre AS tipologia,
+        t.tipo,
+        t.ambito,
+        SUM(r.monto) AS total_monto,
+        GROUP_CONCAT(DISTINCT r.observacion SEPARATOR '; ') AS observaciones
+    FROM RegistroGastos r 
+    INNER JOIN TipologiaGastos t ON r.tipologia_id = t.id 
+    WHERE t.tipo <> 'Activo' 
+      AND r.fecha LIKE ? 
+      AND (r.causado = 1 OR r.causado IS NULL)
+    GROUP BY t.id, t.nombre, t.tipo, t.ambito
+    ORDER BY t.ambito ASC, t.tipo ASC, t.nombre ASC
+";
+$stmt_ac_mes = $mysqliWeb->prepare($sql_acumulado_mes);
+$mes_like = $mes_seleccionado . '%';
+$stmt_ac_mes->bind_param("s", $mes_like);
+$stmt_ac_mes->execute();
+$res_ac_mes = $stmt_ac_mes->get_result();
+$gastos_acumulados_mes = [];
+$total_general_mes_acumulado = 0;
+
+if ($res_ac_mes) {
+    while ($row_am = $res_ac_mes->fetch_assoc()) {
+        $gastos_acumulados_mes[] = $row_am;
+        $total_general_mes_acumulado += floatval($row_am['total_monto']);
+    }
+}
+$stmt_ac_mes->close();
+
 // 5. Obtener el RESUMEN Y DESGLOSE DÍA A DÍA AGRUPADO POR MES
 $sql_desglosado = "
     SELECT 
@@ -333,6 +365,10 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
 
         <div class="d-flex flex-wrap gap-2">
+            <!-- BOTÓN PARA ABRIR MODAL DE ACUMULADO DE GASTOS -->
+            <button type="button" class="btn btn-info btn-sm fw-bold text-white" data-bs-toggle="modal" data-bs-target="#modalAcumuladoGastos">
+                📊 Ver Acumulado de Gastos
+            </button>
             <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar TODOS los registros de la fecha <?= $fecha_seleccionada ?>? Esta acción no se puede deshacer.');">
                 <input type="hidden" name="accion" value="limpiar_dia">
                 <button type="submit" class="btn btn-outline-danger btn-sm fw-bold">
@@ -587,6 +623,134 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
             <?php else: ?>
                 <div class="text-center text-muted py-3">No hay registros diarios para mostrar.</div>
             <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: ACUMULADO DE GASTOS Y PASIVOS (CON PESTAÑAS DÍA / MES) -->
+<div class="modal fade" id="modalAcumuladoGastos" tabindex="-1" aria-labelledby="modalAcumuladoGastosLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title fs-6 fw-bold" id="modalAcumuladoGastosLabel">📋 Resumen y Acumulado de Gastos y Pasivos</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Pestañas para alternar entre el Día Seleccionado y el Mes Completo -->
+                <ul class="nav nav-pills mb-3 justify-content-center" id="pills-tab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active btn-sm fw-bold" id="pills-dia-tab" data-bs-toggle="pill" data-bs-target="#pills-dia" type="button" role="tab" aria-controls="pills-dia" aria-selected="true">
+                            📅 Día: <?= htmlspecialchars($fecha_seleccionada) ?>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link btn-sm fw-bold" id="pills-mes-tab" data-bs-toggle="pill" data-bs-target="#pills-mes" type="button" role="tab" aria-controls="pills-mes" aria-selected="false">
+                            📁 Mes Completo: <?= htmlspecialchars($mes_seleccionado) ?>
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="pills-tabContent">
+                    <!-- PESTAÑA 1: VISTA DEL DÍA -->
+                    <div class="tab-pane fade show active" id="pills-dia" role="tabpanel" aria-labelledby="pills-dia-tab">
+                        <h6 class="text-muted fw-bold mb-2">Gastos y Pasivos del Día <?= htmlspecialchars($fecha_seleccionada) ?></h6>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped align-middle" style="font-size: 0.9rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tipología</th>
+                                        <th>Tipo / Ámbito</th>
+                                        <th>Observación / Descripción</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php 
+                                    $acumulado_total_modal = 0;
+                                    if (count($pasivos_gastos) > 0): 
+                                        foreach ($pasivos_gastos as $pg): 
+                                            $monto_pg = floatval($pg['monto']);
+                                            if (!isset($pg['causado']) || $pg['causado'] == 1) {
+                                                $acumulado_total_modal += $monto_pg;
+                                            }
+                                    ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($pg['tipologia']) ?></strong></td>
+                                            <td>
+                                                <span class="badge bg-secondary"><?= $pg['tipo'] ?></span>
+                                                <span class="badge bg-primary"><?= $pg['ambito'] ?? 'Empresa' ?></span>
+                                            </td>
+                                            <td><?= htmlspecialchars($pg['observacion'] ?: 'Sin descripción') ?></td>
+                                            <td class="text-end fw-bold text-danger">$<?= number_format($monto_pg, 0, ',', '.') ?></td>
+                                        </tr>
+                                    <?php 
+                                        endforeach; 
+                                    else: 
+                                    ?>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-3">No hay gastos o pasivos registrados para esta fecha.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                                <tfoot class="table-dark">
+                                    <tr>
+                                        <th colspan="3" class="text-end">TOTAL DÍA:</th>
+                                        <th class="text-end">$<?= number_format($acumulado_total_modal, 0, ',', '.') ?></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- PESTAÑA 2: VISTA DEL MES ACUMULADO -->
+                    <div class="tab-pane fade" id="pills-mes" role="tabpanel" aria-labelledby="pills-mes-tab">
+                        <h6 class="text-muted fw-bold mb-2">Acumulado General de Gastos y Pasivos del Mes: <?= htmlspecialchars($mes_seleccionado) ?></h6>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped align-middle" style="font-size: 0.9rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Tipología</th>
+                                        <th>Tipo / Ámbito</th>
+                                        <th>Observaciones / Descripciones Consolidadas</th>
+                                        <th class="text-end">Total Acumulado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (count($gastos_acumulados_mes) > 0): 
+                                        foreach ($gastos_acumulados_mes as $gam): 
+                                    ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($gam['tipologia']) ?></strong></td>
+                                            <td>
+                                                <span class="badge bg-secondary"><?= $gam['tipo'] ?></span>
+                                                <span class="badge bg-primary"><?= $gam['ambito'] ?? 'Empresa' ?></span>
+                                            </td>
+                                            <td><?= htmlspecialchars($gam['observaciones'] ?: 'Sin descripciones') ?></td>
+                                            <td class="text-end fw-bold text-danger">$<?= number_format($gam['total_monto'], 0, ',', '.') ?></td>
+                                        </tr>
+                                    <?php 
+                                        endforeach; 
+                                    else: 
+                                    ?>
+                                        <tr>
+                                            <td colspan="4" class="text-center text-muted py-3">No hay gastos acumulados registrados en este mes.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                                <tfoot class="table-dark">
+                                    <tr>
+                                        <th colspan="3" class="text-end">TOTAL ACUMULADO MES:</th>
+                                        <th class="text-end">$<?= number_format($total_general_mes_acumulado, 0, ',', '.') ?></th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+            </div>
         </div>
     </div>
 </div>
