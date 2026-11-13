@@ -143,7 +143,7 @@ function fmoneda($v) {
             align-items: flex-end; 
         }
 
-        /* Paneles por Sede y Proveedor más compactos */
+        /* Paneles por Sede, Proveedor e ID de Compra */
         .proveedor-panel {
             background: #fff;
             border: 1px solid var(--border-color);
@@ -177,7 +177,7 @@ function fmoneda($v) {
             white-space: nowrap;
         }
 
-        /* Contenedor de tabla compacto y sin saltos de línea en datos clave */
+        /* Contenedor de tabla compacto */
         .table-container { 
             width: 100%;
             overflow-x: auto; 
@@ -219,10 +219,9 @@ function fmoneda($v) {
             border: 1px solid #e9ecef; 
             padding: 4px 10px; 
             text-align: right;
-            white-space: nowrap; /* Evita que las fechas o códigos se partan en dos líneas */
+            white-space: nowrap;
         }
 
-        /* Permitir que solo el nombre del producto haga salto si es extremadamente largo en pantallas muy pequeñas */
         td.col-producto {
             white-space: normal;
             min-width: 180px;
@@ -407,7 +406,7 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             JOIN DETCOMPRAS D ON D.idcompra=C.idcompra
             JOIN PRODUCTOS P ON P.IDPRODUCTO=D.IDPRODUCTO
             $cond
-            ORDER BY prov, C.idcompra
+            ORDER BY prov, C.idcompra DESC
         ");
     }
 
@@ -426,38 +425,34 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
         echo "<div style='text-align:center;padding:12px;background:#fff;border-radius:5px;'>No se encontraron registros para la consulta actual.</div>";
     } else {
         $panelesAgrupados = [];
-        $totalesFacturasPorPanel = [];
 
+        // Agrupar filas separando por Sede, Proveedor Y por ID de Compra (Factura individual)
         foreach($filasCrudas as $x){
-            $panelKey = $x['sucursal'] . ' | ' . $x['prov'] . ' (NIT: ' . $x['NIT'] . ')';
+            $panelKey = $x['sucursal'] . ' | ' . $x['prov'] . ' (NIT: ' . $x['NIT'] . ') | Compra ID: ' . $x['idcompra'];
             $panelesAgrupados[$panelKey][] = $x;
-            
-            $facturaKey = $x['idcompra'];
-            if (!isset($totalesFacturasPorPanel[$panelKey][$facturaKey])) {
-                $totalesFacturasPorPanel[$panelKey][$facturaKey] = (double)$x['VALORTOTAL'];
-            }
         }
 
         foreach($panelesAgrupados as $panelKey => $filasPanel){
-            $totalPanel = array_sum($totalesFacturasPorPanel[$panelKey]);
             $primeraFila = $filasPanel[0];
+            $totalCompra = (double)$primeraFila['VALORTOTAL'];
             $clsBadge = $primeraFila['sucursal'] == 'Central' ? 'central' : 'drinks';
+            
+            $fechaRaw = $primeraFila['FECHA'];
+            $fechaFormateada = (strlen($fechaRaw) == 8) ? substr($fechaRaw, 0, 4) . '-' . substr($fechaRaw, 4, 2) . '-' . substr($fechaRaw, 6, 2) : $fechaRaw;
 
             echo "<div class='proveedor-panel' data-proveedor-name='".htmlspecialchars(strtolower($panelKey))."'>";
             echo "<div class='proveedor-header'>
                     <div>
                         <span class='badge {$clsBadge}'>{$primeraFila['sucursal']}</span>
-                        <span style='margin-left: 5px;'>Proveedor: {$primeraFila['prov']} (NIT: {$primeraFila['NIT']})</span>
+                        <span style='margin-left: 5px;'>Proveedor: {$primeraFila['prov']} (NIT: {$primeraFila['NIT']}) | <b>Compra ID: {$primeraFila['idcompra']}</b> ({$fechaFormateada})</span>
                     </div>
-                    <span class='proveedor-total'>Total: $ " . fmoneda($totalPanel) . "</span>
+                    <span class='proveedor-total'>Total: $ " . fmoneda($totalCompra) . "</span>
                   </div>";
             echo "<div class='table-container'><table><thead><tr>";
             echo "<th>Suc</th><th>Fecha</th><th>ID</th><th class='text-left'>Sku</th><th class='text-left sortable' onclick='ordenarTablaProducto(this, 4)' title='Haz clic para ordenar'>Producto ↕</th><th>Cant</th>";
             echo "</tr></thead><tbody>";
 
             foreach($filasPanel as $x){
-                $fechaRaw = $x['FECHA'];
-                $fechaFormateada = (strlen($fechaRaw) == 8) ? substr($fechaRaw, 0, 4) . '-' . substr($fechaRaw, 4, 2) . '-' . substr($fechaRaw, 6, 2) : $fechaRaw;
                 $cls = $x['sucursal'] == 'Central' ? 'central' : 'drinks';
 
                 echo "<tr class='data-row' data-rowtext='".htmlspecialchars(strtolower($x['idcompra'].' '.$fechaFormateada.' '.$x['sucursal'].' '.$x['Barcode'].' '.$x['descripcion']))."'>
