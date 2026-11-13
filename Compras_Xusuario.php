@@ -32,7 +32,7 @@ require('ConnDrinks.php');
 
 function Autorizacion($User, $Solicitud) {
     global $mysqliWeb;
-    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? Nro_Auto=? LIMIT 1");
+    $stmt = $mysqliWeb->prepare("SELECT Swich FROM autorizacion_tercero WHERE CedulaNit=? AND Nro_Auto=? LIMIT 1");
     $stmt->bind_param("ss", $User, $Solicitud);
     $stmt->execute();
     $r = $stmt->get_result();
@@ -68,34 +68,34 @@ function fmoneda($v) {
         body { 
             font-family: 'Segoe UI', Arial, sans-serif; 
             margin: 0; 
-            padding: 8px; 
+            padding: 6px; 
             background: var(--gray-bg); 
-            font-size: 13.5px; 
+            font-size: 12.5px; 
             color: #333;
         }
 
         .card { 
             background: #fff; 
-            padding: 12px; 
-            border-radius: 10px; 
-            box-shadow: 0 3px 10px rgba(0,0,0,.06); 
-            margin-bottom: 15px; 
+            padding: 10px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,.05); 
+            margin-bottom: 10px; 
             width: 100%;
         }
 
         h2 { 
             margin-top: 0; 
-            margin-bottom: 12px; 
+            margin-bottom: 10px; 
             color: #111; 
-            font-size: 1.25rem; 
+            font-size: 1.15rem; 
         }
 
-        /* Filtros 100% responsivos */
+        /* Filtros 100% responsivos y compactos */
         .filters { 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
-            gap: 8px; 
-            margin-bottom: 12px; 
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); 
+            gap: 6px; 
+            margin-bottom: 10px; 
         }
 
         @media (min-width: 1200px) {
@@ -103,27 +103,27 @@ function fmoneda($v) {
         }
 
         label { 
-            font-size: 11.5px; 
+            font-size: 11px; 
             font-weight: 700; 
             display: block; 
-            margin-bottom: 3px; 
+            margin-bottom: 2px; 
             color: #555; 
         }
 
         select, input, button { 
             width: 100%; 
-            padding: 7px 9px; 
-            border-radius: 6px; 
+            padding: 5px 7px; 
+            border-radius: 5px; 
             border: 1px solid #ced4da; 
-            font-size: 13.5px; 
+            font-size: 12.5px; 
             background: #fff;
-            height: 36px;
+            height: 32px;
         }
         
         select:focus, input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.15);
+            box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
         }
 
         button { 
@@ -143,21 +143,21 @@ function fmoneda($v) {
             align-items: flex-end; 
         }
 
-        /* Paneles por Sede y Proveedor */
+        /* Paneles por Sede y Proveedor más compactos */
         .proveedor-panel {
             background: #fff;
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,.03);
-            margin-bottom: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.02);
+            margin-bottom: 10px;
             width: 100%;
             overflow: hidden;
         }
 
         .proveedor-header {
             background: #eef2f7;
-            padding: 10px 12px;
-            font-size: 0.95rem;
+            padding: 6px 10px;
+            font-size: 0.88rem;
             font-weight: 800;
             color: #1e3a8a;
             border-bottom: 1px solid var(--border-color);
@@ -165,32 +165,32 @@ function fmoneda($v) {
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 6px;
         }
 
         .proveedor-total {
             background: #065f46;
             color: #fff;
-            padding: 3px 8px;
-            border-radius: 5px;
-            font-size: 0.85rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
             white-space: nowrap;
         }
 
-        /* Contenedor de tabla SIN barra vertical y con scroll horizontal fluido si es necesario */
+        /* Contenedor de tabla compacto y sin saltos de línea en datos clave */
         .table-container { 
             width: 100%;
             overflow-x: auto; 
-            overflow-y: visible; /* Eliminada la barra vertical */
+            overflow-y: visible;
             -webkit-overflow-scrolling: touch;
             background: #fff;
         }
         
         table { 
             border-collapse: collapse; 
-            width: 100%; 
-            min-width: 650px; 
-            font-size: 12.5px; 
+            width: auto; 
+            max-width: 100%;
+            font-size: 11.5px; 
         }
 
         thead th { 
@@ -200,12 +200,11 @@ function fmoneda($v) {
             background: #f8f9fa; 
             font-weight: 800; 
             text-align: center;
-            padding: 8px 6px;
-            border-bottom: 2px solid var(--border-color);
+            padding: 5px 10px;
+            border-bottom: 1.5px solid var(--border-color);
             white-space: nowrap;
         }
 
-        /* Estilo interactivo para ordenar al hacer clic en el nombre del producto */
         th.sortable {
             cursor: pointer;
             user-select: none;
@@ -217,19 +216,26 @@ function fmoneda($v) {
         }
         
         th, td { 
-            border: 1px solid #eee; 
-            padding: 7px 8px; 
-            text-align: right; 
+            border: 1px solid #e9ecef; 
+            padding: 4px 10px; 
+            text-align: right;
+            white-space: nowrap; /* Evita que las fechas o códigos se partan en dos líneas */
+        }
+
+        /* Permitir que solo el nombre del producto haga salto si es extremadamente largo en pantallas muy pequeñas */
+        td.col-producto {
+            white-space: normal;
+            min-width: 180px;
         }
 
         .text-left { text-align: left; }
         .text-center { text-align: center; }
         
         .badge { 
-            padding: 2px 6px; 
-            border-radius: 10px; 
+            padding: 1px 6px; 
+            border-radius: 8px; 
             color: #fff; 
-            font-size: 10.5px; 
+            font-size: 9.5px; 
             font-weight: 700; 
             display: inline-block; 
             white-space: nowrap;
@@ -241,17 +247,18 @@ function fmoneda($v) {
         .hidden-panel { display: none !important; }
 
         .search-box {
-            margin-bottom: 12px; 
+            margin-bottom: 10px; 
             background: #eef2f7; 
-            padding: 10px; 
-            border-radius: 8px;
+            padding: 8px; 
+            border-radius: 6px;
         }
 
         @media (max-width: 576px) {
-            body { padding: 4px; font-size: 13px; }
-            .card { padding: 8px; border-radius: 6px; }
-            h2 { font-size: 1.1rem; }
-            .proveedor-header { font-size: 0.9rem; padding: 8px 10px; }
+            body { padding: 3px; font-size: 12px; }
+            .card { padding: 6px; }
+            h2 { font-size: 1rem; }
+            .proveedor-header { font-size: 0.85rem; padding: 6px 8px; }
+            th, td { padding: 4px 6px; }
         }
     </style>
 </head>
@@ -332,7 +339,7 @@ function fmoneda($v) {
 
         <div>
             <label>Producto Específico</label>
-            <input type="text" name="ProductoFiltro" id="ProductoFiltroInput" value="<?=htmlspecialchars($ProdGet)?>" placeholder="Escribe o selecciona producto...">
+            <input type="text" name="ProductoFiltro" id="ProductoFiltroInput" value="<?=htmlspecialchars($ProdGet)?>" placeholder="Escribe o selecciona...">
             <datalist id="listaProductosFiltro">
                 <?php
                 if (!empty($FechaDesdeSQL) && !empty($FechaHastaSQL)) {
@@ -373,14 +380,13 @@ function fmoneda($v) {
     </form>
 
     <div class="search-box">
-        <label style="color: #0b5ed7;">🔍 Filtrar sobre el resultado actual (Búsqueda rápida en pantalla)</label>
-        <input type="text" id="filtroProductoInput" placeholder="Escribe para buscar al instante..." onkeyup="filtrarPorProductoHtml()">
+        <label style="color: #0b5ed7;">🔍 Búsqueda rápida instantánea en pantalla</label>
+        <input type="text" id="filtroProductoInput" placeholder="Escribe para filtrar filas al instante..." onkeyup="filtrarPorProductoHtml()">
     </div>
 
 <?php
 if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) {
 
-    /* --- CONSULTA DE COMPRAS EN RANGO --- */
     function consultarCompras($mysqli, $suc, $fDesde, $fHasta, $p, $id, $prodFiltro){
         $cond = " WHERE C.ESTADO='0' ";
         if(!empty($id)){
@@ -417,9 +423,8 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
     }
 
     if(empty($filasCrudas)){
-        echo "<div style='text-align:center;padding:15px;background:#fff;border-radius:6px;'>No se encontraron registros para la consulta actual.</div>";
+        echo "<div style='text-align:center;padding:12px;background:#fff;border-radius:5px;'>No se encontraron registros para la consulta actual.</div>";
     } else {
-        // Agrupar filas separando por Sede y Proveedor
         $panelesAgrupados = [];
         $totalesFacturasPorPanel = [];
 
@@ -433,7 +438,6 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             }
         }
 
-        // Renderizar un panel independiente por cada combinación de Sede y Proveedor
         foreach($panelesAgrupados as $panelKey => $filasPanel){
             $totalPanel = array_sum($totalesFacturasPorPanel[$panelKey]);
             $primeraFila = $filasPanel[0];
@@ -443,12 +447,12 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
             echo "<div class='proveedor-header'>
                     <div>
                         <span class='badge {$clsBadge}'>{$primeraFila['sucursal']}</span>
-                        <span style='margin-left: 6px;'>Proveedor: {$primeraFila['prov']} (NIT: {$primeraFila['NIT']})</span>
+                        <span style='margin-left: 5px;'>Proveedor: {$primeraFila['prov']} (NIT: {$primeraFila['NIT']})</span>
                     </div>
                     <span class='proveedor-total'>Total: $ " . fmoneda($totalPanel) . "</span>
                   </div>";
             echo "<div class='table-container'><table><thead><tr>";
-            echo "<th style='width: 60px;'>Suc</th><th style='width: 90px;'>Fecha</th><th style='width: 70px;'>ID</th><th class='text-left' style='width: 110px;'>Sku</th><th class='text-left sortable' onclick='ordenarTablaProducto(this, 4)' title='Haz clic para ordenar'>Producto ↕</th><th style='width: 70px;'>Cant</th>";
+            echo "<th>Suc</th><th>Fecha</th><th>ID</th><th class='text-left'>Sku</th><th class='text-left sortable' onclick='ordenarTablaProducto(this, 4)' title='Haz clic para ordenar'>Producto ↕</th><th>Cant</th>";
             echo "</tr></thead><tbody>";
 
             foreach($filasPanel as $x){
@@ -457,11 +461,11 @@ if ((!empty($FechaDesdeGet) && !empty($FechaHastaGet)) || !empty($IDCompraGet)) 
                 $cls = $x['sucursal'] == 'Central' ? 'central' : 'drinks';
 
                 echo "<tr class='data-row' data-rowtext='".htmlspecialchars(strtolower($x['idcompra'].' '.$fechaFormateada.' '.$x['sucursal'].' '.$x['Barcode'].' '.$x['descripcion']))."'>
-                    <td><span class='badge $cls'>{$x['sucursal']}</span></td>
+                    <td class='text-center'><span class='badge $cls'>{$x['sucursal']}</span></td>
                     <td class='text-center'>{$fechaFormateada}</td>
                     <td class='text-center'>{$x['idcompra']}</td>
                     <td class='text-left'>{$x['Barcode']}</td>
-                    <td class='text-left'>{$x['descripcion']}</td>
+                    <td class='text-left col-producto'>{$x['descripcion']}</td>
                     <td>".number_format($x['CANTIDAD'], 0)."</td>
                 </tr>";
             }
@@ -507,18 +511,15 @@ function filtrarPorProductoHtml() {
     });
 }
 
-// Función para ordenar los productos al hacer clic en el encabezado de la columna Producto de cada panel
 function ordenarTablaProducto(thElement, colIndex) {
     const table = thElement.closest('table');
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr.data-row'));
     
-    // Determinar dirección del ordenamiento (alternar ascendente/descendente)
     const currentDirection = thElement.getAttribute('data-sort') || 'asc';
     const newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
     thElement.setAttribute('data-sort', newDirection);
     
-    // Actualizar indicador visual en la flecha
     thElement.innerText = newDirection === 'asc' ? 'Producto ▲' : 'Producto ▼';
 
     rows.sort((a, b) => {
@@ -530,7 +531,6 @@ function ordenarTablaProducto(thElement, colIndex) {
         return 0;
     });
 
-    // Reordenar las filas en el tbody de esta tabla en específico
     rows.forEach(row => tbody.appendChild(row));
 }
 </script>
