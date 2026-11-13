@@ -243,9 +243,12 @@ $pasivo_acumulado = 0;
 $activo_dia_anterior = null;
 $mes_actual_control = null;
 
-// Arrays exclusivos para la gráfica del mes actual
+// Arrays exclusivos para la gráfica del mes actual y cálculo de utilidad promedio día basada en variaciones
 $fechas_grafica = [];
 $activos_grafica = [];
+
+$suma_variaciones_mes = 0;
+$conteo_variaciones_mes = 0;
 
 if ($res_desglosado) {
     while ($row_d = $res_desglosado->fetch_assoc()) {
@@ -269,6 +272,12 @@ if ($res_desglosado) {
             $row_d['variacion_activo'] = 0;
         } else {
             $row_d['variacion_activo'] = $act_actual - $activo_dia_anterior;
+            
+            // Si pertenece al mes seleccionado, acumulamos para la utilidad promedio día en base a las variaciones
+            if ($mes_registro === $mes_seleccionado) {
+                $suma_variaciones_mes += $row_d['variacion_activo'];
+                $conteo_variaciones_mes++;
+            }
         }
         $activo_dia_anterior = $act_actual;
 
@@ -287,6 +296,9 @@ if ($res_desglosado) {
     }
 }
 
+// Cálculo de la Utilidad Promedio Día basada estrictamente en la Var. Activo (Vs Día Ant.) de los días mostrados del mes
+$utilidad_promedio_dia = ($conteo_variaciones_mes > 0) ? ($suma_variaciones_mes / $conteo_variaciones_mes) : 0;
+
 $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'));
 ?>
 
@@ -300,6 +312,8 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js Plugin Datalabels CDN para pintar los valores en cada punto -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 </head>
 <body class="bg-light">
 
@@ -349,6 +363,21 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         </div>
     <?php endif; ?>
 
+    <!-- TARJETA INFORMATIVA DE UTILIDAD PROMEDIO DÍA -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-info py-2 px-3 d-flex justify-content-between align-items-center shadow-sm">
+                <div>
+                    <span class="fw-bold">💡 Utilidad Promedio Día (Mes <?= htmlspecialchars($mes_seleccionado) ?>):</span> 
+                    Calculado a partir del promedio de la columna <em>Var. Activo (Vs Día Ant.)</em> de los <?= $conteo_variaciones_mes ?> días evaluados del mes.
+                </div>
+                <div class="fs-5 fw-bold text-dark">
+                    $<?= number_format($utilidad_promedio_dia, 0, ',', '.') ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 1. ESTRUCTURA TIPO CUENTA T (2 COLUMNAS: DEBE Y HABER) -->
     <div class="row g-3 mb-4">
         <!-- COLUMNA IZQUIERDA: ACTIVOS -->
@@ -356,7 +385,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
             <div class="card shadow-sm h-100 border-success">
                 <div class="card-header bg-success text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">DEBE / ACTIVOS (Bienes e Inversiones)</h6>
-                    <span class="badge bg-light text-success fw-bold">$<?= number_format($total_activos, 2, ',', '.') ?></span>
+                    <span class="badge bg-light text-success fw-bold">$<?= number_format($total_activos, 0, ',', '.') ?></span>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
@@ -384,7 +413,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
                                             <span class="badge bg-primary" style="font-size: 0.65rem;"><?= $row['ambito'] ?? 'Empresa' ?></span>
                                             <span class="badge bg-success" style="font-size: 0.65rem;">Activo</span>
                                         </td>
-                                        <td class="fw-bold text-success">$<?= number_format($row['monto'], 2, ',', '.') ?></td>
+                                        <td class="fw-bold text-success">$<?= number_format($row['monto'], 0, ',', '.') ?></td>
                                         <td class="text-center">
                                             <button class="btn btn-sm btn-warning py-0 px-1" onclick='prepararEdicion(<?= json_encode($row) ?>)' data-bs-toggle="modal" data-bs-target="#modalMovimiento">Editar</button>
                                             <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
@@ -411,7 +440,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
             <div class="card shadow-sm h-100 border-dark">
                 <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">HABER / PASIVOS Y GASTOS</h6>
-                    <span class="badge bg-light text-dark fw-bold">$<?= number_format($total_haber_activo, 2, ',', '.') ?></span>
+                    <span class="badge bg-light text-dark fw-bold">$<?= number_format($total_haber_activo, 0, ',', '.') ?></span>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
@@ -444,7 +473,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
                                             <span class="badge bg-primary" style="font-size: 0.65rem;"><?= $row['ambito'] ?? 'Empresa' ?></span>
                                             <span class="badge <?= $badge_tipo ?>" style="font-size: 0.65rem;"><?= $row['tipo'] ?></span>
                                         </td>
-                                        <td class="fw-bold text-danger">$<?= number_format($row['monto'], 2, ',', '.') ?></td>
+                                        <td class="fw-bold text-danger">$<?= number_format($row['monto'], 0, ',', '.') ?></td>
                                         <td class="text-center">
                                             <button class="btn btn-sm btn-warning py-0 px-1" onclick='prepararEdicion(<?= json_encode($row) ?>)' data-bs-toggle="modal" data-bs-target="#modalMovimiento">Editar</button>
                                             <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar registro?');">
@@ -473,7 +502,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
             <h6 class="mb-0">📊 Gráfica de Evolución: Total Activos (Mes: <?= htmlspecialchars($mes_seleccionado) ?>)</h6>
         </div>
         <div class="card-body bg-white p-3">
-            <div style="position: relative; height: 320px; width: 100%;">
+            <div style="position: relative; height: 360px; width: 100%;">
                 <canvas id="graficoActivos"></canvas>
             </div>
         </div>
@@ -519,29 +548,29 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
                                             <?php foreach ($registros_mes as $dd): ?>
                                                 <tr>
                                                     <td class="fw-bold"><?= $dd['fecha'] ?></td>
-                                                    <td class="text-success">$<?= number_format($dd['act_dia'], 2, ',', '.') ?></td>
+                                                    <td class="text-success">$<?= number_format($dd['act_dia'], 0, ',', '.') ?></td>
                                                     
                                                     <!-- Variación Activo Vs Día Anterior -->
                                                     <td>
                                                         <?php 
                                                             $var_act = $dd['variacion_activo'];
                                                             if ($var_act > 0) {
-                                                                echo '<span class="text-success fw-bold">+$' . number_format($var_act, 2, ',', '.') . '</span>';
+                                                                echo '<span class="text-success fw-bold">+$' . number_format($var_act, 0, ',', '.') . '</span>';
                                                             } elseif ($var_act < 0) {
-                                                                echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 2, ',', '.') . '</span>';
+                                                                echo '<span class="text-danger fw-bold">-$' . number_format(abs($var_act), 0, ',', '.') . '</span>';
                                                             } else {
-                                                                echo '<span class="text-muted">$0,00</span>';
+                                                                echo '<span class="text-muted">$0</span>';
                                                             }
                                                         ?>
                                                     </td>
 
-                                                    <td class="text-danger">$<?= number_format($dd['pas_dia'], 2, ',', '.') ?></td>
+                                                    <td class="text-danger">$<?= number_format($dd['pas_dia'], 0, ',', '.') ?></td>
                                                     
                                                     <!-- Pasivo Acumulado desde el 1ro del mes -->
-                                                    <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 2, ',', '.') ?></td>
+                                                    <td class="fw-bold text-dark">$<?= number_format($dd['pasivo_acumulado'], 0, ',', '.') ?></td>
 
                                                     <!-- Suma Activo Diario + Pasivo Diario -->
-                                                    <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 2, ',', '.') ?></td>
+                                                    <td class="fw-bold text-secondary">$<?= number_format($dd['suma_activo_pasivo'], 0, ',', '.') ?></td>
 
                                                     <td class="text-center">
                                                         <a href="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $dd['fecha'] ?>" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">Ver Día</a>
@@ -621,7 +650,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
 
                     <div class="mb-3">
                         <label for="monto" class="form-label fw-bold">Monto ($)</label>
-                        <input type="number" step="0.01" class="form-control" id="monto" name="monto" required>
+                        <input type="number" step="1" class="form-control" id="monto" name="monto" required>
                     </div>
 
                     <div class="mb-3">
@@ -644,7 +673,10 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
 </div>
 
 <script>
-// Inicializar Gráfica de Activos (Filtrada para el mes actual)
+// Registrar plugin Datalabels en Chart.js
+Chart.register(ChartDataLabels);
+
+// Inicializar Gráfica de Activos (Filtrada para el mes actual con etiquetas en los puntos)
 const ctx = document.getElementById('graficoActivos').getContext('2d');
 const graficoActivos = new Chart(ctx, {
     type: 'line',
@@ -658,7 +690,7 @@ const graficoActivos = new Chart(ctx, {
             borderWidth: 2.5,
             fill: true,
             tension: 0.2,
-            pointRadius: 4,
+            pointRadius: 5,
             pointBackgroundColor: 'rgba(25, 135, 84, 1)'
         }]
     },
@@ -670,11 +702,24 @@ const graficoActivos = new Chart(ctx, {
                 display: true,
                 position: 'top'
             },
+            // Configuración para pintar los valores numéricos directamente encima de cada punto
+            datalabels: {
+                align: 'top',
+                anchor: 'end',
+                formatter: function(value) {
+                    return '$' + Number(value).toLocaleString('es-CO');
+                },
+                font: {
+                    weight: 'bold',
+                    size: 11
+                },
+                color: '#333'
+            },
             tooltip: {
                 callbacks: {
                     label: function(context) {
                         let value = context.parsed.y;
-                        return ' Total Activos: $' + value.toLocaleString('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                        return ' Total Activos: $' + Number(value).toLocaleString('es-CO');
                     }
                 }
             }
@@ -720,7 +765,7 @@ function prepararEdicion(gasto) {
     document.getElementById('accion').value = 'actualizar';
     document.getElementById('id_egreso').value = gasto.id;
     document.getElementById('tipologia_id').value = gasto.tipologia_id;
-    document.getElementById('monto').value = gasto.monto;
+    document.getElementById('monto').value = Math.round(gasto.monto);
     document.getElementById('fecha').value = gasto.fecha;
     document.getElementById('observacion').value = gasto.observacion || '';
 
