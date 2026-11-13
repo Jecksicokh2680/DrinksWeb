@@ -220,10 +220,11 @@ body {
                         💰 Módulo Cajeros
                     </h6>            
                     <div class="menu-seccion ps-2 mb-3">
-                        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transferencia</a>
-                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">❌ Solicitud Anulación</a>
+                        <a class="nav-link" href="Transfers.php" target="contentFrame">➕ Grabar Transfer manuales</a>
+                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados Merca</a>         
+                        <a class="nav-link" href="SolicitudAnulacion.php" target="contentFrame">❌ Grabar Solicitud Anulación</a>
                         <a class="nav-link" href="ListaFactDia.php" target="contentFrame">📋 Listado Facturas del Día</a>
-                        <a class="nav-link" href="Calculadora.php" onclick="abrirPopup(event, this.href);">🧮 Calculadora</a>
+                        
 
 <script>
 var ventanaPopup = null;
@@ -241,7 +242,7 @@ function abrirPopup(event, url) {
     ventanaPopup = window.open(url, "CalculadoraPopup", opciones);
 }
 </script>
-                        <a class="nav-link" href="TrasladosMercancia.php" target="contentFrame">🔄 Grabar Traslados</a>                
+                               
                         <a class="nav-link" href="Compras_Xusuario.php" target="contentFrame">🔄 Ver Compras</a>   
                          
                         
@@ -251,7 +252,7 @@ function abrirPopup(event, url) {
                         🏦 Ver Transferencias Bre-B</a>
                                             
                         <a class="nav-link" href="CierreDef.php" target="contentFrame">💵 Cierre Diario Cajero</a>   
-                          
+                        <a class="nav-link" href="Calculadora.php" onclick="abrirPopup(event, this.href);">🧮 Calculadora</a>
                     </div>
                     
                     <?php if ($EsJefeBodega): ?>
@@ -259,6 +260,7 @@ function abrirPopup(event, url) {
                         📦 Jefes de Bodega (JB)
                     </h6>
                     <div class="menu-seccion ps-2 mb-3">
+                        
                         <a class="nav-link" href="aprobacionanulacionJb.php" target="contentFrame">✅ Aprobación Anulación JB</a>
                         <a class="nav-link" href="TrasladosparaVerificar.php" target="contentFrame">✅ Aprobar Traslados JB</a>
                     </div>
@@ -268,7 +270,7 @@ function abrirPopup(event, url) {
                         ⚙️ General / Compartido
                     </h6>
                     <div class="menu-seccion ps-2">
-                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Inv. / Grabar Conteo Web</a>
+                        <a class="nav-link" href="Conteo.php" target="contentFrame">📝 Realizar Conteo Web</a>
                         <a class="nav-link" href="AuditoriaPedido.php" target="contentFrame">🔍 Auditoria de Pedidos</a>
                         <a class="nav-link" href="ColaboradorFicha.php" target="contentFrame">👤 Ficha Colaborador</a>
                         <a class="nav-link" href="vertunel.php" target="contentFrame">🚇 Ver Tunel</a>    
@@ -283,7 +285,7 @@ function abrirPopup(event, url) {
         <div class="accordion-item">
             <h2 class="accordion-header">
                 <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#acordeonNominaBasica">
-                    💼 Nómina
+                    💼 Jefe Personal
                 </button>
             </h2>
             <div id="acordeonNominaBasica" class="accordion-collapse collapse" data-bs-parent="#menuPrincipal">
@@ -413,7 +415,6 @@ function abrirPopup(event, url) {
                                 </div>
                             </div>
                         </div>
-
                         <div class="accordion-item">
                             <button class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#adminConf">
                                 ⚙️ Configuración

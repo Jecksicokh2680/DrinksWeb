@@ -1,8 +1,7 @@
 <?php
-
-require_once("ConnCentral.php");  
+require_once("ConnCentral.php");   
 require_once("ConnDrinks.php");    
-require_once("Conexion.php");    
+require_once("Conexion.php");      
 
 date_default_timezone_set('America/Bogota');
 session_start();
@@ -89,7 +88,6 @@ $busquedaPorTexto = false;
 
 if(!empty($buscar)){
     $busquedaPorTexto = true;
-    // Buscamos en productos tanto por barcode como por descripción
     $buscarEscaped = $mysqliCentral->real_escape_string($buscar);
     $rFiltroProd = $mysqliCentral->query("SELECT barcode FROM productos WHERE descripcion LIKE '%$buscarEscaped%' OR barcode LIKE '%$buscarEscaped%'");
     while($rf = $rFiltroProd->fetch_assoc()){
@@ -110,7 +108,6 @@ if($busquedaPorTexto){
         $listaFiltroCodes = implode(",", $barcodesFiltrados);
         $whereProducto = " AND barcode IN ($listaFiltroCodes) ";
     } else {
-        // Si buscó algo que no existe, forzamos a que no traiga resultados erróneos
         $whereProducto = " AND barcode = 'X-X-NO-MATCH-X-X' ";
     }
 }
@@ -140,6 +137,21 @@ if(!empty($barcodesInPage)){
     while($rn = $rNom->fetch_assoc()) $nombresGlobales[$rn['barcode']] = $rn['descripcion'];
 }
 
+// Mapeo dinámico de nombres de usuarios (Terceros) desde Central y Drinks
+$nombresUsuarios = ['SISTEMA' => 'SISTEMA'];
+$resUsr = $mysqliCentral->query("SELECT nit, nombres FROM terceros");
+if($resUsr) {
+    while($u = $resUsr->fetch_assoc()) {
+        $nombresUsuarios[trim($u['nit'])] = trim($u['nombres']);
+    }
+}
+$resUsrD = $mysqliDrinks->query("SELECT nit, nombres FROM terceros");
+if($resUsrD) {
+    while($u = $resUsrD->fetch_assoc()) {
+        $nombresUsuarios[trim($u['nit'])] = trim($u['nombres']);
+    }
+}
+
 // Función para traducir NIT a Nombre amigable
 function nombreSede($nit) {
     if ($nit == '86057267-8') return 'CENTRAL';
@@ -166,10 +178,9 @@ function nombreSede($nit) {
         .btn-filter { background: #0d6efd; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; flex: 1 1 auto; height: 40px; }
         .btn-filter:hover { background: #0b5ed7; }
 
-        /* Contenedor responsivo para la tabla */
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-        table { width: 100%; border-collapse: collapse; background: white; min-width: 800px; }
+        table { width: 100%; border-collapse: collapse; background: white; min-width: 900px; }
         th { background: #212529; color: #fff; padding: 14px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         td { padding: 14px; border-bottom: 1px solid #e9ecef; text-align: center; vertical-align: middle; }
         tr:hover { background-color: #fcfcfc; }
@@ -186,7 +197,6 @@ function nombreSede($nit) {
         .badge-central { background: #cfe2ff; color: #084298; border-color: #b6d4fe; }
         .badge-drinks { background: #f8d7da; color: #842029; border-color: #f5c2c7; }
 
-        /* Media Queries para pantallas pequeñas */
         @media (max-width: 768px) {
             body { padding: 10px; }
             .card { padding: 15px; }
@@ -231,6 +241,7 @@ function nombreSede($nit) {
             <thead>
                 <tr>
                     <th>Fecha / Hora</th>
+                    <th>Usuario</th>
                     <th>Producto / Barcode</th>
                     <th>Cant.</th>
                     <th>Flujo (Origen ➔ Destino)</th>
@@ -240,7 +251,7 @@ function nombreSede($nit) {
             </thead>
             <tbody>
                 <?php if(empty($movimientos)): ?>
-                    <tr><td colspan="6" style="padding: 40px; color: #6c757d;">No hay registros activos para este filtro.</td></tr>
+                    <tr><td colspan="7" style="padding: 40px; color: #6c757d;">No hay registros activos para este filtro.</td></tr>
                 <?php else: ?>
                     <?php foreach($movimientos as $r): 
                         $nom = $nombresGlobales[$r['barcode']] ?? 'Producto Desconocido';
@@ -251,9 +262,13 @@ function nombreSede($nit) {
                         
                         $classOrig = ($sedeOrigNombre == 'CENTRAL') ? 'badge-central' : 'badge-drinks';
                         $classDest = ($sedeDestNombre == 'CENTRAL') ? 'badge-central' : 'badge-drinks';
+
+                        // Resolver el nombre del usuario a partir del NIT/Cédula guardado en usuario_Orig
+                        $nombreUsuario = $nombresUsuarios[$r['usuario_Orig']] ?? $r['usuario_Orig'];
                     ?>
                     <tr>
                         <td style="font-size: 13px; color: #6c757d; white-space: nowrap;"><?= date("d/m/Y H:i", strtotime($r['fecha'])) ?></td>
+                        <td style="font-weight: 600; text-align: left;"><?= htmlspecialchars($nombreUsuario) ?></td>
                         <td style="text-align: left;">
                             <div style="font-weight: bold;"><?= $nom ?></div>
                             <small style="color: #dc3545; font-family: monospace;"><?= $r['barcode'] ?></small>

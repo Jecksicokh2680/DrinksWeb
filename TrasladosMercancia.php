@@ -1,7 +1,7 @@
 <?php
-require_once("ConnCentral.php");   // $mysqliCentral
-require_once("ConnDrinks.php");    // $mysqliDrinks
-require_once("Conexion.php");      // $mysqliWeb
+require_once("ConnCentral.php");   // $mysqliCentral[cite: 6]
+require_once("ConnDrinks.php");    // $mysqliDrinks[cite: 6]
+require_once("Conexion.php");      // $mysqliWeb[cite: 6]
 
 date_default_timezone_set('America/Bogota'); 
 session_start();
@@ -36,9 +36,9 @@ function Autorizacion($User, $Solicitud) {
     return $permiso;
 }
 
-$aut_0015 = Autorizacion($UsuarioSesion, '0015'); // Para Reversar
-$aut_0016 = Autorizacion($UsuarioSesion, '0016'); // Para Grabar Traslados
-$aut_9999 = Autorizacion($UsuarioSesion, '9999'); // Master
+$aut_0015 = Autorizacion($UsuarioSesion, '0015'); // Para Reversar[cite: 6]
+$aut_0016 = Autorizacion($UsuarioSesion, '0016'); // Para Grabar Traslados[cite: 6]
+$aut_9999 = Autorizacion($UsuarioSesion, '9999'); // Master[cite: 6]
 
 if ($aut_0015 !== "SI" && $aut_0016 !== "SI" && $aut_9999 !== "SI") {
     die("<h2 style='color:red; text-align:center; margin-top:50px;'>❌ No tiene autorización de acceso</h2>");
@@ -126,7 +126,7 @@ $term = $_GET['term'] ?? '';
 $f_inicio = $_GET['f_inicio'] ?? date('Y-m-d');
 $f_fin = $_GET['f_fin'] ?? date('Y-m-d');
 
-// Parámetros específicos para el nuevo Modal de Consulta Avanzada
+// Parámetros específicos para el nuevo Modal de Consulta Avanzada[cite: 6]
 $con_f_inicio = $_GET['con_f_inicio'] ?? date('Y-m-d');
 $con_f_fin = $_GET['con_f_fin'] ?? date('Y-m-d');
 $con_sede = $_GET['con_sede'] ?? '';
@@ -138,6 +138,21 @@ while($c=$resC->fetch_assoc()) $cats[$c['CodCat']]=$c['Nombre'];
 $nombresGlobales = [];
 $rNom = $mysqliCentral->query("SELECT barcode, descripcion FROM productos");
 while($rn = $rNom->fetch_assoc()) $nombresGlobales[$rn['barcode']] = $rn['descripcion'];
+
+// Mapeo dinámico de nombres de usuarios (Terceros)
+$nombresUsuarios = ['SISTEMA' => 'SISTEMA'];
+$resUsr = $mysqliCentral->query("SELECT nit, nombres FROM terceros");
+if($resUsr) {
+    while($u = $resUsr->fetch_assoc()) {
+        $nombresUsuarios[trim($u['nit'])] = trim($u['nombres']);
+    }
+}
+$resUsrD = $mysqliDrinks->query("SELECT nit, nombres FROM terceros");
+if($resUsrD) {
+    while($u = $resUsrD->fetch_assoc()) {
+        $nombresUsuarios[trim($u['nit'])] = trim($u['nombres']);
+    }
+}
 
 $barcodes = []; $central = []; $drinks = [];
 if($term !== '' || $categoria !== ''){
@@ -155,13 +170,13 @@ if($term !== '' || $categoria !== ''){
 
 $resMov = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE DATE(fecha) BETWEEN '$f_inicio' AND '$f_fin' ORDER BY fecha DESC LIMIT 500");
 
-// Consulta filtrada para el nuevo Modal de Consultas Avanzadas
+// Consulta filtrada para el nuevo Modal de Consultas Avanzadas[cite: 6]
 $whereConsulta = "DATE(fecha) BETWEEN '$con_f_inicio' AND '$con_f_fin'";
 if($con_sede !== '') {
     $whereConsulta .= " AND (NitEmpresa_Orig = '$con_sede' OR NitEmpresa_Dest = '$con_sede')";
 }
 if($con_producto !== '') {
-    // Buscar barCodes que coincidan con la descripción o barcode ingresado
+    // Buscar barCodes que coincidan con la descripción o barcode ingresado[cite: 6]
     $sub_sql = "SELECT barcode FROM productos WHERE barcode LIKE '%$con_producto%' OR descripcion LIKE '%$con_producto%'";
     $res_sub = $mysqliCentral->query($sub_sql);
     $arr_bc = [];
@@ -171,7 +186,7 @@ if($con_producto !== '') {
     if(!empty($arr_bc)) {
         $whereConsulta .= " AND barcode IN (" . implode(',', $arr_bc) . ")";
     } else {
-        $whereConsulta .= " AND 1=0"; // Si no encuentra nada, no trae resultados
+        $whereConsulta .= " AND 1=0"; // Si no encuentra nada, no trae resultados[cite: 6]
     }
 }
 $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos WHERE $whereConsulta ORDER BY fecha DESC LIMIT 500");
@@ -181,7 +196,7 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Traslados de Mercancía</title>
+    <title>Traslados de Mercancía[cite: 6]</title>
     <style>
         * { box-sizing: border-box; }
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
@@ -238,7 +253,7 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
 </head>
 <body>
 <div class="card">
-    <h2>📦 Grabacion de Traslados de Mercancia</h2>
+    <h2>📦 Grabacion de Traslados de Mercancia[cite: 6]</h2>
     <?php if(isset($msg)) echo $msg; ?>
     <form method="GET" class="search-form">
         <select name="categoria" class="input-s">
@@ -291,7 +306,7 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
 <div id="m" class="modal" style="<?= isset($_GET['f_inicio']) && !isset($_GET['con_f_inicio']) ? 'display:block;' : '' ?>">
     <div class="modal-content">
         <span onclick="this.parentElement.parentElement.style.display='none'" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-        <h3>🗓 Historial de Movimientos</h3>
+        <h3>🗓 Historial de Movimientos[cite: 6]</h3>
         <form method="GET" class="search-form" style="margin-bottom:15px;">
             <input type="date" name="f_inicio" value="<?= $f_inicio ?>" class="input-s">
             <input type="date" name="f_fin" value="<?= $f_fin ?>" class="input-s">
@@ -307,9 +322,13 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
                     
                     $classOrig = ($origText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
                     $classDest = ($destText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
+
+                    // Resolver el nombre del usuario a partir del NIT guardado
+                    $nombreUsuario = $nombresUsuarios[$r['usuario_Orig']] ?? $r['usuario_Orig'];
                 ?>
                 <tr style="<?= $r['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
-                    <td><?= $r['fecha'] ?></td><td><?= $r['usuario_Orig'] ?></td>
+                    <td><?= $r['fecha'] ?></td>
+                    <td><?= htmlspecialchars($nombreUsuario) ?></td>
                     <td><?= $nombresGlobales[$r['barcode']] ?? 'Desconocido' ?></td>
                     <td><?= number_format($r['cant'], 1) ?></td>
                     <td>
@@ -340,7 +359,7 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
 <div id="modalConsulta" class="modal" style="<?= isset($_GET['con_f_inicio']) ? 'display:block;' : '' ?>">
     <div class="modal-content">
         <span onclick="this.parentElement.parentElement.style.display='none'" style="float:right; cursor:pointer; font-size:24px;">&times;</span>
-        <h3>🔍 Consulta Avanzada de Traslados</h3>
+        <h3>🔍 Consulta Avanzada de Traslados[cite: 6]</h3>
         <form method="GET" class="search-form" style="margin-bottom:15px;">
             <div style="flex: 1; min-width: 150px;">
                 <label style="font-size: 11px; color: #555; display: block;">Fecha Inicio:</label>
@@ -389,10 +408,13 @@ $resConsultaAvanzada = $mysqliWeb->query("SELECT * FROM inventario_movimientos W
                         
                         $classOrig = ($origText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
                         $classDest = ($destText == 'CENTRAL') ? 'badge-central' : 'badge-drink';
+
+                        // Resolver el nombre del usuario a partir del NIT guardado
+                        $nombreUsuario = $nombresUsuarios[$rc['usuario_Orig']] ?? $rc['usuario_Orig'];
                     ?>
                     <tr style="<?= $rc['Aprobado'] == 0 ? 'background:#fff0f0; color:#999;' : '' ?>">
                         <td><?= $rc['fecha'] ?></td>
-                        <td><?= $rc['usuario_Orig'] ?></td>
+                        <td><?= htmlspecialchars($nombreUsuario) ?></td>
                         <td><code><?= $rc['barcode'] ?></code></td>
                         <td><?= $nombresGlobales[$rc['barcode']] ?? 'Desconocido' ?></td>
                         <td><?= number_format($rc['cant'], 1) ?></td>
