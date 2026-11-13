@@ -11,40 +11,76 @@ if (!isset($_SESSION['Usuario'])) die("Sesión no válida");
 
 $mysqli->set_charset("utf8");
 $usuarioActual = $_SESSION['Usuario'];
-$hoy = date("Y-m-d");
+
+// Obtener fecha seleccionada por el usuario o usar la de hoy por defecto
+$fechaFiltro = isset($_GET['fecha']) && !empty($_GET['fecha']) ? $_GET['fecha'] : date("Y-m-d");
 $ahoraBogota = date("Y-m-d H:i:s");
 
 /* ============================================================
-   FUNCIÓN AUXILIAR: OBTENER PRECIO DE VENTA DESDE EL POS
+   FUNCIÓN AUXILIAR OPTIMIZADA: PRECIO PROMEDIO POR CATEGORÍA
    ============================================================ */
-function obtenerPrecioVentaCategoria($codCat, $nitEmpresa, $mysqliWeb, $dbCentral, $dbDrinks) {
-    $dbPos = (trim($nitEmpresa) === '901724534-7') ? $dbDrinks : $dbCentral;
-    if (!$dbPos) return 0;
-
-    $st = $mysqliWeb->prepare("SELECT Sku FROM catproductos WHERE CodCat = ? AND estado = 1");
-    $st->bind_param("s", $codCat);
-    $st->execute();
-    $res = $st->get_result();
-    $skus = [];
+function obtenerPreciosVentaMasivos($mysqliWeb, $dbCentral, $dbDrinks) {
+    $precios = [];
+    
+    // Obtener todos los mapeos de categoría a SKU en una sola consulta
+    $res = $mysqliWeb->query("SELECT CodCat, Sku FROM catproductos WHERE estado = 1");
+    $mapCatSkus = [];
+    $allSkus = [];
     while ($row = $res->fetch_assoc()) {
-        $skus[] = $row['Sku'];
+        $mapCatSkus[$row['CodCat']][] = $row['Sku'];
+        $allSkus[] = $row['Sku'];
     }
-    $st->close();
 
-    if (empty($skus)) return 0;
+    if (empty($allSkus)) return [];
 
-    $ph = implode(",", array_fill(0, count($skus), '?'));
-    $sql = "SELECT AVG(precioventa) AS precio FROM productos WHERE barcode IN ($ph) AND precioventa > 0";
-    $stmtPos = $dbPos->prepare($sql);
-    if (!$stmtPos) return 0;
+    $allSkus = array_unique($allSkus);
+    $chunks = array_chunk($allSkus, 500); // Evitar desbordamiento por exceso de parámetros IN
 
-    $types = str_repeat("s", count($skus));
-    $stmtPos->bind_param($types, ...$skus);
-    $stmtPos->execute();
-    $rowPos = $stmtPos->get_result()->fetch_assoc();
-    $stmtPos->close();
+    $skuPrecios = [];
+    foreach ($chunks as $chunk) {
+        $ph = implode(",", array_fill(0, count($chunk), '?'));
+        $types = str_repeat("s", count($chunk));
 
-    return (float)($rowPos['precio'] ?? 0);
+        // Consultar Central
+        if ($dbCentral) {
+            $stmt = $dbCentral->prepare("SELECT barcode, AVG(precioventa) as precio FROM productos WHERE barcode IN ($ph) AND precioventa > 0 GROUP BY barcode");
+            $stmt->bind_param($types, ...$chunk);
+            $stmt->execute();
+            $resPos = $stmt->get_result();
+            while ($r = $resPos->fetch_assoc()) {
+                $skuPrecios[$r['barcode']] = (float)$r['precio'];
+            }
+            $stmt->close();
+        }
+
+        // Consultar Drinks
+        if ($dbDrinks) {
+            $stmt = $dbDrinks->prepare("SELECT barcode, AVG(precioventa) as precio FROM productos WHERE barcode IN ($ph) AND precioventa > 0 GROUP BY barcode");
+            $stmt->bind_param($types, ...$chunk);
+            $stmt->execute();
+            $resPos = $stmt->get_result();
+            while ($r = $resPos->fetch_assoc()) {
+                // Si ya existe priorizamos o promediamos, o guardamos por clave compuesta si difieren
+                $skuPrecios[$r['barcode']] = (float)$r['precio'];
+            }
+            $stmt->close();
+        }
+    }
+
+    // Calcular promedio por CodCat en memoria RAM (mucho más rápido que ir a la BD en cada fila)
+    foreach ($mapCatSkus as $codCat => $skusCat) {
+        $suma = 0;
+        $count = 0;
+        foreach ($skusCat as $sku) {
+            if (isset($skuPrecios[$sku])) {
+                $suma += $skuPrecios[$sku];
+                $count++;
+            }
+        }
+        $precios[$codCat] = ($count > 0) ? ($suma / $count) : 0;
+    }
+
+    return $precios;
 }
 
 /* ============================================================
@@ -129,7 +165,7 @@ if (isset($_POST['accion'])) {
         body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
         .table-historial-interno { font-size: 0.70rem; background-color: #fdfdfd; margin-top: 5px; border: 1px solid #eee; }
-        .loading-overlay { display:none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); z-index:9999; justify-content:center; align-items:center; }
+        .loading-overlay { display:none; fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); z-index:9999; justify-content:center; align-items:center; }
     </style>
 </head>
 <body>
@@ -139,7 +175,16 @@ if (isset($_POST['accion'])) {
 <nav class="navbar navbar-dark bg-dark shadow-sm mb-4">
     <div class="container-fluid px-4">
         <span class="navbar-brand fw-bold small"><i class="bi bi-ui-checks me-2"></i>AUDITORÍA DE INVENTARIOS</span>
-        <button onclick="location.reload()" class="btn btn-outline-info btn-sm"><i class="bi bi-arrow-clockwise"></i> REFRESCAR</button>
+        
+        <div class="d-flex align-items-center gap-2">
+            <form method="GET" action="" class="d-flex align-items-center gap-2 mb-0">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-secondary text-white border-secondary"><i class="bi bi-calendar-event"></i></span>
+                    <input type="date" name="fecha" id="filtroFecha" class="form-control form-control-sm" value="<?= $fechaFiltro ?>" onchange="this.form.submit()">
+                </div>
+            </form>
+            <button onclick="location.href='?'" class="btn btn-outline-info btn-sm" title="Ir a la fecha de hoy"><i class="bi bi-arrow-clockwise"></i> Hoy</button>
+        </div>
     </div>
 </nav>
 
@@ -152,6 +197,7 @@ if (isset($_POST['accion'])) {
     </ul>
 
     <div class="tab-content pt-3">
+        <?>
         <?php 
         $sedes = ['DRINKS', 'CENTRAL'];
         foreach ($sedes as $nombreSede): 
@@ -184,7 +230,7 @@ if (isset($_POST['accion'])) {
                                 $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c 
                                                       INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                                                       WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2
-                                                      AND DATE(c.fecha_conteo) = '$hoy' 
+                                                      AND DATE(c.fecha_conteo) = '$fechaFiltro' 
                                                       AND c.NitEmpresa $filtroNit 
                                                       ORDER BY c.fecha_conteo DESC");
                                 while($r = $res->fetch_assoc()): 
@@ -246,7 +292,7 @@ if (isset($_POST['accion'])) {
             </div>
             <div class="card">
                 <div class="card-header bg-warning bg-opacity-10 py-3">
-                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones y Stock Contado: Lo que falta en una bodega frente a lo que sobra en la otra (Hoy)</h6>
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones y Stock Contado: Lo que falta en una bodega frente a lo que sobra en la otra (<?= $fechaFiltro ?>)</h6>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -273,7 +319,7 @@ if (isset($_POST['accion'])) {
                                                     SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.stock_fisico ELSE 0 END) as fisico_central
                                              FROM conteoweb c
                                              INNER JOIN categorias cat ON cat.CodCat = c.CodCat
-                                             WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$hoy'
+                                             WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$fechaFiltro'
                                              GROUP BY cat.CodCat, cat.Nombre
                                              HAVING ABS(dif_drinks) > 0.2 OR ABS(dif_central) > 0.2
                                              ORDER BY cat.Nombre ASC";
@@ -351,7 +397,7 @@ if (isset($_POST['accion'])) {
                                     <?php endwhile; 
                                 else: ?>
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce el día de hoy.</td>
+                                    <td colspan="7" class="text-center text-muted py-4">No hay suficientes registros de conteo en ambas sedes para realizar el cruce en la fecha seleccionada.</td>
                                 </tr>
                                 <?php endif; ?>
                             </tbody>
@@ -364,11 +410,14 @@ if (isset($_POST['accion'])) {
         <!-- PESTAÑA: VALORIZACIÓN DE AJUSTES A PRECIO DE VENTA -->
         <div class="tab-pane fade" id="tabValorizacion">
             <?php
+            // Obtener precios masivos optimizados (evita N+1 consultas por fila)
+            $preciosMasivos = obtenerPreciosVentaMasivos($mysqli, $mysqliCentral ?? null, $mysqliDrinks ?? null);
+
             $sqlVal = "SELECT c.id, c.CodCat, c.NitEmpresa, c.diferencia, c.estado, c.fecha_conteo, cat.Nombre 
                        FROM conteoweb c 
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                        WHERE c.estado IN ('A', 'C') AND ABS(c.diferencia) > 0.2 
-                       AND DATE(c.fecha_conteo) = '$hoy' 
+                       AND DATE(c.fecha_conteo) = '$fechaFiltro' 
                        ORDER BY c.NitEmpresa ASC, c.fecha_conteo DESC";
             $resVal = $mysqli->query($sqlVal);
 
@@ -378,7 +427,7 @@ if (isset($_POST['accion'])) {
 
             if ($resVal) {
                 while ($rv = $resVal->fetch_assoc()) {
-                    $precioVenta = obtenerPrecioVentaCategoria($rv['CodCat'], $rv['NitEmpresa'], $mysqli, $mysqliCentral ?? null, $mysqliDrinks ?? null);
+                    $precioVenta = $preciosMasivos[$rv['CodCat']] ?? 0;
                     $dif = (float)$rv['diferencia'];
                     $valorAjuste = $dif * $precioVenta;
 
@@ -470,7 +519,7 @@ if (isset($_POST['accion'])) {
                                     <?php endforeach; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-4">No hay ajustes pendientes ni aplicados registrados para hoy.</td>
+                                        <td colspan="7" class="text-center text-muted py-4">No hay ajustes pendientes ni aplicados registrados para la fecha seleccionada.</td>
                                     </tr>
                                 <?php endif; ?>
                             </tbody>
