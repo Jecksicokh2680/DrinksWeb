@@ -70,6 +70,72 @@ if ($esAdminStock && isset($_GET['fecha_filtro']) && !empty($_GET['fecha_filtro'
     }
 }
 
+// --- PROCESAR ACCIÓN AJAX (SYNC GMAIL EN SEGUNDO PLANO) ---
+if (isset($_POST['action']) && $_POST['action'] === 'sync_gmail') {
+    header('Content-Type: application/json');
+    
+    $command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
+    $output = shell_exec($command);
+    $nuevos_correos = json_decode($output, true);
+
+    $error_python = null;
+    if ($output === null) {
+        $error_python = "No se pudo ejecutar el script de Python.";
+    } elseif ($nuevos_correos === null && !empty(trim($output))) {
+        $error_python = "Error al decodificar JSON.";
+    }
+
+    $nuevos_insertados = 0;
+    $ultimo_monto = 0;
+
+    if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
+        $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
+        $stmt_insert = $mysqliWeb->prepare("INSERT IGNORE INTO notificaciones_nequi 
+            (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
+
+        $ids_procesados_en_lote = [];
+        foreach ($nuevos_correos as $correo) {
+            if (!isset($correo['id_unico'])) continue;
+            $id_unico = $correo['id_unico'];
+            if (in_array($id_unico, $ids_procesados_en_lote)) { continue; }
+
+            $stmt_check->bind_param("s", $id_unico);
+            $stmt_check->execute();
+            $stmt_check->store_result();
+            
+            if ($stmt_check->num_rows == 0) {
+                $fecha_bogota = !empty($correo['fecha_correo']) ? date('Y-m-d H:i:s', strtotime($correo['fecha_correo'])) : date('Y-m-d H:i:s');
+                $uid          = $correo['uid_correo'] ?? '0';
+                $monto        = isset($correo['monto']) ? (float)$correo['monto'] : 0.00;
+                $celular      = $correo['celular'] ?? 'No detectado';
+                $pagador      = $correo['pagador'] ?? 'No detectado';
+                $banco        = $correo['banco_origen'] ?? 'Nequi';
+                $referencia   = $correo['referencia'] ?? 'No detectado';
+                $num_largo    = $correo['numero_transaccion_largo'] ?? 'No detectado';
+                $asunto       = $correo['asunto'] ?? 'Sin Asunto';
+
+                $stmt_insert->bind_param("ssdsssssss", $id_unico, $uid, $monto, $celular, $pagador, $banco, $referencia, $num_largo, $asunto, $fecha_bogota);
+                if ($stmt_insert->execute()) {
+                    $nuevos_insertados++;
+                    $ultimo_monto = $monto;
+                }
+                $ids_procesados_en_lote[] = $id_unico;
+            }
+        }
+        $stmt_check->close();
+        $stmt_insert->close();
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'nuevos' => $nuevos_insertados,
+        'monto'  => $ultimo_monto,
+        'error'  => $error_python
+    ]);
+    exit;
+}
+
 // --- PROCESAR ACCIÓN AJAX (GUARDAR / ELIMINAR CHECK) ---
 if (isset($_POST['action']) && $_POST['action'] === 'toggle_check') {
     header('Content-Type: application/json');
@@ -209,55 +275,6 @@ if (!empty($usuario_actual)) {
     }
 }
 
-// 2. Ejecutar script de Python para leer Gmail
-$command = 'python3 ' . __DIR__ . '/minequi.py 2>&1';
-$output = shell_exec($command);
-$nuevos_correos = json_decode($output, true);
-
-$error_python = null;
-if ($output === null) {
-    $error_python = "No se pudo ejecutar el script de Python.";
-} elseif ($nuevos_correos === null && !empty(trim($output))) {
-    $error_python = "Error al decodificar JSON.";
-}
-
-// 3. Procesar e insertar registros nuevos
-if (empty($error_python) && !empty($nuevos_correos) && is_array($nuevos_correos)) {
-    $stmt_check = $mysqliWeb->prepare("SELECT id FROM notificaciones_nequi WHERE id_unico = ?");
-    $stmt_insert = $mysqliWeb->prepare("INSERT IGNORE INTO notificaciones_nequi 
-        (id_unico, uid_correo, monto, celular_origen, pagador, banco_origen, referencia, numero_transaccion_largo, asunto, estado_sesion, fecha_correo) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido', ?)");
-
-    $ids_procesados_en_lote = [];
-    foreach ($nuevos_correos as $correo) {
-        if (!isset($correo['id_unico'])) continue;
-        $id_unico = $correo['id_unico'];
-        if (in_array($id_unico, $ids_procesados_en_lote)) { continue; }
-
-        $stmt_check->bind_param("s", $id_unico);
-        $stmt_check->execute();
-        $stmt_check->store_result();
-        
-        if ($stmt_check->num_rows == 0) {
-            $fecha_bogota = !empty($correo['fecha_correo']) ? date('Y-m-d H:i:s', strtotime($correo['fecha_correo'])) : date('Y-m-d H:i:s');
-            $uid          = $correo['uid_correo'] ?? '0';
-            $monto        = isset($correo['monto']) ? (float)$correo['monto'] : 0.00;
-            $celular      = $correo['celular'] ?? 'No detectado';
-            $pagador      = $correo['pagador'] ?? 'No detectado';
-            $banco        = $correo['banco_origen'] ?? 'Nequi';
-            $referencia   = $correo['referencia'] ?? 'No detectado';
-            $num_largo    = $correo['numero_transaccion_largo'] ?? 'No detectado';
-            $asunto       = $correo['asunto'] ?? 'Sin Asunto';
-
-            $stmt_insert->bind_param("ssdsssssss", $id_unico, $uid, $monto, $celular, $pagador, $banco, $referencia, $num_largo, $asunto, $fecha_bogota);
-            $stmt_insert->execute();
-            $ids_procesados_en_lote[] = $id_unico;
-        }
-    }
-    $stmt_check->close();
-    $stmt_insert->close();
-}
-
 // --- FILTRADO PARA RESUMEN ACUMULADO ---
 $filtro_resumen = "";
 if (!$esAdminStock) {
@@ -281,7 +298,7 @@ if ($res_totales && $res_totales->num_rows > 0) {
     }
 }
 
-// 4. CONSULTA GENERAL DE TRANSFERENCIAS
+// 4. CONSULTA GENERAL DE TRANSFERENCIAS (Directo a MySQL, súper rápido)
 $sql_select = "SELECT n.id, n.celular_origen, n.pagador, n.banco_origen, n.referencia, n.numero_transaccion_largo, n.monto, n.fecha_correo,
                      c.usuario_cedula, c.nit_empresa, c.nro_sucursal, c.gerencia_verificado, c.gerencia_usuario_cedula, c.gerencia_fecha_hora, t.Nombre AS nombre_dueno, tg.Nombre AS nombre_gerencia_dueno
                FROM notificaciones_nequi n
@@ -430,9 +447,9 @@ if ($resultado && $resultado->num_rows > 0) {
     <!-- Botones de acción, selector de fecha e impresión -->
     <div class="row align-items-center justify-content-between g-2 pt-2 mb-3">        
         <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
-            <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
+            <button id="btnSincronizar" onclick="sincronizarBanco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
             <button onclick="window.print();" class="btn btn-outline-dark btn-sm text-nowrap px-3 py-2 py-md-1">🖨️ Imprimir Listado</button>
-            <button onclick="hablarTexto('Prueba de audio activada')" class="btn btn-outline-primary btn-sm text-nowrap px-3 py-2 py-md-1">🔊 Probar Voz</button>
+            
 
             <?php if ($esAdminStock): ?>
                 <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
@@ -455,17 +472,11 @@ if ($resultado && $resultado->num_rows > 0) {
         </div>
     </div>
 
-    <!-- Alerta visual flotante para nueva transferencia por si el navegador bloquea la voz en automático -->
+    <!-- Alerta visual flotante para nueva transferencia -->
     <div id="alertaNuevaTransferencia" class="alert alert-success alert-dismissible fade d-none mb-3 shadow" role="alert">
         <strong>¡Nueva transferencia detectada!</strong> <span id="textoAlertaMonto"></span>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
-
-    <?php if ($error_python): ?>
-        <div class="alert alert-warning alert-dismissible fade show small py-2 px-3 mb-3" role="alert" style="font-size:0.8rem;">
-            <strong>Atención:</strong> <?php echo htmlspecialchars($error_python); ?>
-        </div>
-    <?php endif; ?>
 
     <!-- Resumen Acumulado -->
     <div class="card mb-4 shadow-sm border-0">
@@ -545,8 +556,7 @@ if ($resultado && $resultado->num_rows > 0) {
         <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-dark text-nowrap">
                 <tr>
-                    <th class="text-center" style="width: 50px;">ID</th>
-                    <th class="text-center" style="width: 80px;">Asig/VoB-Gcia</th>
+                    <th class="text-center" style="width: 100px;">Asig / Voz</th>
                     <th>Fecha / Hora</th>
                     <th>Remitente</th>
                     <th>Monto</th>
@@ -566,9 +576,11 @@ if ($resultado && $resultado->num_rows > 0) {
                         $gerencia_verificado = isset($row['gerencia_verificado']) && (int)$row['gerencia_verificado'] === 1;
                         $gerencia_checked_attr = $gerencia_verificado ? 'checked' : '';
                         $gerencia_disabled_attr = !$esAdminStock ? 'disabled' : '';
+
+                        $monto_limpio = number_format($row['monto'], 0, '', '');
+                        $texto_voz_fila = "Transferencia por " . $monto_limpio . " pesos de " . ($row['pagador'] !== 'No detectado' ? $row['pagador'] : 'remitente desconocido');
                     ?>
                         <tr>
-                            <td class="text-center font-monospace small text-muted">#<?php echo $row['id']; ?></td>
                             <td class="text-center text-nowrap">
                                 <div class="d-inline-flex align-items-center gap-1">
                                     <input type="checkbox" 
@@ -585,6 +597,14 @@ if ($resultado && $resultado->num_rows > 0) {
                                            data-id="<?php echo $row['id']; ?>" 
                                            <?php echo $gerencia_checked_attr; ?> 
                                            <?php echo $gerencia_disabled_attr; ?>>
+
+                                    <!-- Botón de Parlante por transacción -->
+                                    <button type="button" 
+                                            class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1" 
+                                            title="Escuchar transacción"
+                                            onclick="reproducirAlertaYVoz('<?php echo htmlspecialchars($texto_voz_fila, ENT_QUOTES); ?>', <?php echo $row['monto']; ?>)">
+                                        🔊
+                                    </button>
                                 </div>
                             </td>
                             <td class="text-nowrap">
@@ -639,7 +659,7 @@ if ($resultado && $resultado->num_rows > 0) {
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4" style="font-size:0.85rem;">
+                        <td colspan="5" class="text-center text-muted py-4" style="font-size:0.85rem;">
                             No hay transferencias registradas para la fecha <?php echo $fecha_filtro; ?>.
                         </td>
                     </tr>
@@ -650,63 +670,93 @@ if ($resultado && $resultado->num_rows > 0) {
 </div>
 
 <script>
-    // --- SÍNTESIS DE VOZ PARA NUEVAS TRANSFERENCIAS ---
-    function hablarTexto(texto) {
+    // --- SÍNTESIS DE VOZ Y PITIDO DE ALERTA ---
+    function reproducirAlertaYVoz(textoMensaje, monto) {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = 587.33; 
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.35);
+        } catch (e) {
+            console.log("Audio contextual no permitido", e);
+        }
+
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
-            const mensaje = new SpeechSynthesisUtterance(texto);
-            mensaje.lang = 'es-CO';
-            mensaje.rate = 1.0;
-            mensaje.pitch = 1.0;
-            window.speechSynthesis.speak(mensaje);
+            setTimeout(() => {
+                const mensaje = new SpeechSynthesisUtterance(textoMensaje);
+                mensaje.lang = 'es-CO';
+                mensaje.rate = 1.0;
+                mensaje.pitch = 1.0;
+                window.speechSynthesis.speak(mensaje);
+            }, 300);
         }
     }
 
-    document.addEventListener("DOMContentLoaded", function() {
-        const filasTabla = document.querySelectorAll('tbody tr');
-        
-        if (filasTabla.length > 0) {
-            const primeraCeldaId = filasTabla[0].querySelector('td.font-monospace');
-            
-            if (primeraCeldaId) {
-                const idActual = primeraCeldaId.textContent.trim();
-                const ultimoIdGuardado = localStorage.getItem('ultimo_id_transferencia');
+    // --- SINCRONIZACIÓN ASÍNCRONA (SIN CONGELAR LA PÁGINA) ---
+    function sincronizarBanco(esAutomatico = false) {
+        const btn = document.getElementById('btnSincronizar');
+        if (btn && !esAutomatico) {
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Sincronizando...';
+        }
 
-                if (ultimoIdGuardado && ultimoIdGuardado !== idActual) {
-                    const celdaMonto = filasTabla[0].querySelectorAll('td')[4];
-                    if (celdaMonto) {
-                        let textoMonto = celdaMonto.textContent.trim();
-                        // Limpieza robusta: extrae únicamente los dígitos numéricos del monto
-                        let montoLimpio = textoMonto.replace(/[^0-9]/g, '');
-                        
-                        if (montoLimpio !== "") {
-                            let mensajeVoz = `Nueva transferencia recibida por: ${montoLimpio} pesos`;
-                            
-                            // Retraso de seguridad para permitir que el sintetizador cargue
-                            setTimeout(() => {
-                                hablarTexto(mensajeVoz);
-                            }, 500);
+        const formData = new FormData();
+        formData.append('action', 'sync_gmail');
 
-                            // Mostrar además un banner visual por si el navegador bloquea la voz automática
-                            const alerta = document.getElementById('alertaNuevaTransferencia');
-                            const textoAlerta = document.getElementById('textoAlertaMonto');
-                            if (alerta && textoAlerta) {
-                                textoAlerta.textContent = `Se ha recibido un pago por $${montoLimpio.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
-                                alerta.classList.remove('d-none');
-                                alerta.classList.add('show');
-                            }
+        fetch('', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                if (data.nuevos > 0) {
+                    reproducirAlertaYVoz(`Nueva transferencia recibida por: ${data.monto} pesos`, data.monto);
+                    
+                    const alerta = document.getElementById('alertaNuevaTransferencia');
+                    const textoAlerta = document.getElementById('textoAlertaMonto');
+                    if (alerta && textoAlerta) {
+                        textoAlerta.textContent = `Se ha recibido un pago por $${Number(data.monto).toLocaleString('es-CO')}`;
+                        alerta.classList.remove('d-none');
+                        alerta.classList.add('show');
+                    }
+                    
+                    // Recargar instantáneamente para mostrar los nuevos registros
+                    setTimeout(() => { location.reload(); }, 1500);
+                } else {
+                    if (!esAutomatico) {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '🔄 Sincronizar Banco';
                         }
+                        // Si se sincronizó manualmente y no hay nuevos, solo recargamos rápido
+                        location.reload();
                     }
                 }
-                localStorage.setItem('ultimo_id_transferencia', idActual);
+            } else {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '🔄 Sincronizar Banco';
+                }
             }
-        }
-    });
-
-    function forzarRefresco() {
-        const urlActual = new URL(window.location.href);
-        urlActual.searchParams.set('v', new Date().getTime());
-        window.location.href = urlActual.toString();
+        })
+        .catch(error => {
+            console.error('Error en sincronización:', error);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🔄 Sincronizar Banco';
+            }
+        });
     }
 
     function cambiarFecha(nuevaFecha) {
@@ -735,7 +785,7 @@ if ($resultado && $resultado->num_rows > 0) {
         .then(data => {
             if (data.status === 'success') {
                 alert('✅ ' + data.message);
-                forzarRefresco();
+                location.reload();
             } else {
                 alert('⚠️ ' + data.message);
             }
@@ -766,7 +816,7 @@ if ($resultado && $resultado->num_rows > 0) {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    forzarRefresco();
+                    location.reload();
                 } else {
                     alert('⚠️ ' + data.message);
                     elemento.checked = !elemento.checked;
@@ -802,7 +852,7 @@ if ($resultado && $resultado->num_rows > 0) {
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    forzarRefresco();
+                    location.reload();
                 } else {
                     alert('⚠️ ' + data.message);
                     elemento.checked = !elemento.checked;
@@ -818,6 +868,7 @@ if ($resultado && $resultado->num_rows > 0) {
         });
     });
 
+    // Temporizador de 3 minutos (180 segundos) que revisa nuevos correos automáticamente en segundo plano
     let tiempoRestante = 180; 
     const contenedorTimer = document.getElementById('timer');
 
@@ -834,8 +885,8 @@ if ($resultado && $resultado->num_rows > 0) {
         }
 
         if (tiempoRestante <= 0) {
-            clearInterval(cuentaRegresiva);
-            forzarRefresco(); 
+            tiempoRestante = 180; // Reiniciar temporizador
+            sincronizarBanco(true); // Sincronización silenciosa en segundo plano
         }
     }, 1000);
 
