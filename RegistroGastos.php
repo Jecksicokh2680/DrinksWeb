@@ -367,7 +367,7 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
         <div class="d-flex flex-wrap gap-2">
             <!-- BOTÓN PARA ABRIR MODAL DE ACUMULADO DE GASTOS -->
             <button type="button" class="btn btn-info btn-sm fw-bold text-white" data-bs-toggle="modal" data-bs-target="#modalAcumuladoGastos">
-                📊 Ver Acumulado de Gastos
+                📊 Ver Acumulado de Gastos (Mes)
             </button>
             <form action="<?= htmlspecialchars($pagina_actual) ?>?fecha=<?= $fecha_seleccionada ?>" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar TODOS los registros de la fecha <?= $fecha_seleccionada ?>? Esta acción no se puede deshacer.');">
                 <input type="hidden" name="accion" value="limpiar_dia">
@@ -627,125 +627,66 @@ $fecha_sugerida_origen = date('Y-m-d', strtotime($fecha_seleccionada . ' -1 day'
     </div>
 </div>
 
-<!-- MODAL: ACUMULADO DE GASTOS Y PASIVOS (CON PESTAÑAS DÍA / MES) -->
+<!-- MODAL: ACUMULADO GENERAL DE GASTOS Y PASIVOS DEL MES (SOLO ACUMULADO) -->
 <div class="modal fade" id="modalAcumuladoGastos" tabindex="-1" aria-labelledby="modalAcumuladoGastosLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-info text-white py-2">
-                <h5 class="modal-title fs-6 fw-bold" id="modalAcumuladoGastosLabel">📋 Resumen y Acumulado de Gastos y Pasivos</h5>
+                <h5 class="modal-title fs-6 fw-bold" id="modalAcumuladoGastosLabel">📊 Acumulado General de Gastos y Pasivos (Mes: <?= htmlspecialchars($mes_seleccionado) ?>)</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <!-- Pestañas para alternar entre el Día Seleccionado y el Mes Completo -->
-                <ul class="nav nav-pills mb-3 justify-content-center" id="pills-tab" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active btn-sm fw-bold" id="pills-dia-tab" data-bs-toggle="pill" data-bs-target="#pills-dia" type="button" role="tab" aria-controls="pills-dia" aria-selected="true">
-                            📅 Día: <?= htmlspecialchars($fecha_seleccionada) ?>
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                    <h6 class="text-muted fw-bold mb-0">Consolidado por tipología del mes actual</h6>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-success fw-bold" onclick="exportarTablaExcel('tablaResumenMes', 'Acumulado_Gastos_Mes_<?= htmlspecialchars($mes_seleccionado) ?>')">
+                            📥 Exportar Excel
                         </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link btn-sm fw-bold" id="pills-mes-tab" data-bs-toggle="pill" data-bs-target="#pills-mes" type="button" role="tab" aria-controls="pills-mes" aria-selected="false">
-                            📁 Mes Completo: <?= htmlspecialchars($mes_seleccionado) ?>
+                        <button type="button" class="btn btn-danger fw-bold" onclick="exportarTablaPDF('tablaResumenMes', 'Acumulado General de Gastos y Pasivos - Mes <?= htmlspecialchars($mes_seleccionado) ?>')">
+                            📄 Exportar PDF
                         </button>
-                    </li>
-                </ul>
-
-                <div class="tab-content" id="pills-tabContent">
-                    <!-- PESTAÑA 1: VISTA DEL DÍA -->
-                    <div class="tab-pane fade show active" id="pills-dia" role="tabpanel" aria-labelledby="pills-dia-tab">
-                        <h6 class="text-muted fw-bold mb-2">Gastos y Pasivos del Día <?= htmlspecialchars($fecha_seleccionada) ?></h6>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-striped align-middle" style="font-size: 0.9rem;">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Tipología</th>
-                                        <th>Tipo / Ámbito</th>
-                                        <th>Observación / Descripción</th>
-                                        <th class="text-end">Monto</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php 
-                                    $acumulado_total_modal = 0;
-                                    if (count($pasivos_gastos) > 0): 
-                                        foreach ($pasivos_gastos as $pg): 
-                                            $monto_pg = floatval($pg['monto']);
-                                            if (!isset($pg['causado']) || $pg['causado'] == 1) {
-                                                $acumulado_total_modal += $monto_pg;
-                                            }
-                                    ?>
-                                        <tr>
-                                            <td><strong><?= htmlspecialchars($pg['tipologia']) ?></strong></td>
-                                            <td>
-                                                <span class="badge bg-secondary"><?= $pg['tipo'] ?></span>
-                                                <span class="badge bg-primary"><?= $pg['ambito'] ?? 'Empresa' ?></span>
-                                            </td>
-                                            <td><?= htmlspecialchars($pg['observacion'] ?: 'Sin descripción') ?></td>
-                                            <td class="text-end fw-bold text-danger">$<?= number_format($monto_pg, 0, ',', '.') ?></td>
-                                        </tr>
-                                    <?php 
-                                        endforeach; 
-                                    else: 
-                                    ?>
-                                        <tr>
-                                            <td colspan="4" class="text-center text-muted py-3">No hay gastos o pasivos registrados para esta fecha.</td>
-                                        </tr>
-                                    <?php endif; ?>
-                                </tbody>
-                                <tfoot class="table-dark">
-                                    <tr>
-                                        <th colspan="3" class="text-end">TOTAL DÍA:</th>
-                                        <th class="text-end">$<?= number_format($acumulado_total_modal, 0, ',', '.') ?></th>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
                     </div>
+                </div>
 
-                    <!-- PESTAÑA 2: VISTA DEL MES ACUMULADO -->
-                    <div class="tab-pane fade" id="pills-mes" role="tabpanel" aria-labelledby="pills-mes-tab">
-                        <h6 class="text-muted fw-bold mb-2">Acumulado General de Gastos y Pasivos del Mes: <?= htmlspecialchars($mes_seleccionado) ?></h6>
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-striped align-middle" style="font-size: 0.9rem;">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Tipología</th>
-                                        <th>Tipo / Ámbito</th>
-                                        <th>Observaciones / Descripciones Consolidadas</th>
-                                        <th class="text-end">Total Acumulado</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (count($gastos_acumulados_mes) > 0): 
-                                        foreach ($gastos_acumulados_mes as $gam): 
-                                    ?>
-                                        <tr>
-                                            <td><strong><?= htmlspecialchars($gam['tipologia']) ?></strong></td>
-                                            <td>
-                                                <span class="badge bg-secondary"><?= $gam['tipo'] ?></span>
-                                                <span class="badge bg-primary"><?= $gam['ambito'] ?? 'Empresa' ?></span>
-                                            </td>
-                                            <td><?= htmlspecialchars($gam['observaciones'] ?: 'Sin descripciones') ?></td>
-                                            <td class="text-end fw-bold text-danger">$<?= number_format($gam['total_monto'], 0, ',', '.') ?></td>
-                                        </tr>
-                                    <?php 
-                                        endforeach; 
-                                    else: 
-                                    ?>
-                                        <tr>
-                                            <td colspan="4" class="text-center text-muted py-3">No hay gastos acumulados registrados en este mes.</td>
-                                        </tr>
-                                    <?php endif; ?>
-                                </tbody>
-                                <tfoot class="table-dark">
-                                    <tr>
-                                        <th colspan="3" class="text-end">TOTAL ACUMULADO MES:</th>
-                                        <th class="text-end">$<?= number_format($total_general_mes_acumulado, 0, ',', '.') ?></th>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
+                <div class="table-responsive">
+                    <table id="tablaResumenMes" class="table table-bordered table-striped align-middle" style="font-size: 0.9rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipología</th>
+                                <th>Tipo / Ámbito</th>
+                                <th>Observaciones / Descripciones Consolidadas</th>
+                                <th class="text-end">Total Acumulado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (count($gastos_acumulados_mes) > 0): 
+                                foreach ($gastos_acumulados_mes as $gam): 
+                            ?>
+                                <tr>
+                                    <td><strong><?= htmlspecialchars($gam['tipologia']) ?></strong></td>
+                                    <td>
+                                        <span class="badge bg-secondary"><?= $gam['tipo'] ?></span>
+                                        <span class="badge bg-primary"><?= $gam['ambito'] ?? 'Empresa' ?></span>
+                                    </td>
+                                    <td><?= htmlspecialchars($gam['observaciones'] ?: 'Sin descripciones') ?></td>
+                                    <td class="text-end fw-bold text-danger">$<?= number_format($gam['total_monto'], 0, ',', '.') ?></td>
+                                </tr>
+                            <?php 
+                                endforeach; 
+                            else: 
+                            ?>
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-3">No hay gastos acumulados registrados en este mes.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                        <tfoot class="table-dark">
+                            <tr>
+                                <th colspan="3" class="text-end">TOTAL ACUMULADO MES:</th>
+                                <th class="text-end">$<?= number_format($total_general_mes_acumulado, 0, ',', '.') ?></th>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
             <div class="modal-footer py-2">
@@ -866,7 +807,6 @@ const graficoActivos = new Chart(ctx, {
                 display: true,
                 position: 'top'
             },
-            // Configuración para pintar los valores numéricos directamente encima de cada punto
             datalabels: {
                 align: 'top',
                 anchor: 'end',
@@ -900,6 +840,117 @@ const graficoActivos = new Chart(ctx, {
         }
     }
 });
+
+// ---------------------------------------------------------
+// EXPORTAR RESUMEN DE GASTOS A EXCEL (.xls)
+// ---------------------------------------------------------
+function exportarTablaExcel(idTabla, nombreArchivo) {
+    const tabla = document.getElementById(idTabla);
+    if (!tabla) return;
+
+    const clonTabla = tabla.cloneNode(true);
+    clonTabla.setAttribute('border', '1');
+
+    clonTabla.querySelectorAll('thead th').forEach(th => {
+        th.style.backgroundColor = '#1f4e78';
+        th.style.color = '#ffffff';
+        th.style.fontWeight = 'bold';
+        th.style.padding = '6px';
+    });
+    clonTabla.querySelectorAll('tfoot th').forEach(th => {
+        th.style.backgroundColor = '#d9e1f2';
+        th.style.color = '#000000';
+        th.style.fontWeight = 'bold';
+        th.style.padding = '6px';
+    });
+    clonTabla.querySelectorAll('td').forEach(td => {
+        td.style.padding = '5px';
+    });
+
+    const htmlExcel = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" 
+              xmlns:x="urn:schemas-microsoft-com:office:excel" 
+              xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta charset="UTF-8">
+            <!--[if gte mso 9]>
+            <xml>
+                <x:ExcelWorkbook>
+                    <x:ExcelWorksheets>
+                        <x:ExcelWorksheet>
+                            <x:Name>Acumulado Gastos</x:Name>
+                            <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+                        </x:ExcelWorksheet>
+                    </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+            </xml>
+            <![endif]-->
+        </head>
+        <body>
+            ${clonTabla.outerHTML}
+        </body>
+        </html>
+    `;
+
+    const blob = new Blob(['\ufeff', htmlExcel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombreArchivo + '.xls';
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------
+// EXPORTAR RESUMEN DE GASTOS A PDF (VENTANA DE IMPRESIÓN)
+// ---------------------------------------------------------
+function exportarTablaPDF(idTabla, tituloReporte) {
+    const tabla = document.getElementById(idTabla);
+    if (!tabla) return;
+
+    const ventanaImpresion = window.open('', '_blank', 'width=900,height=700');
+    ventanaImpresion.document.write(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>${tituloReporte}</title>
+            <style>
+                body { font-family: Arial, Helvetica, sans-serif; color: #222; margin: 25px; }
+                .header { border-bottom: 2px solid #1f4e78; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+                .header h2 { margin: 0; color: #1f4e78; font-size: 18px; }
+                .header span { font-size: 12px; color: #666; }
+                table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                thead th { background-color: #1f4e78; color: #fff; font-weight: bold; }
+                tbody tr:nth-child(even) { background-color: #f8f9fa; }
+                tfoot th { background-color: #e9ecef; color: #000; font-weight: bold; font-size: 13px; }
+                .text-end { text-align: right; }
+                .badge { display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 3px; background: #e2e8f0; color: #1e293b; margin-right: 4px; }
+                @media print {
+                    body { margin: 10px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>${tituloReporte}</h2>
+                <span>Generado: ${new Date().toLocaleString('es-CO')}</span>
+            </div>
+            ${tabla.outerHTML}
+            <script>
+                window.onload = function() {
+                    window.focus();
+                    window.print();
+                };
+            <\/script>
+        </body>
+        </html>
+    `);
+    ventanaImpresion.document.close();
+}
 
 function cambiarCausado(checkbox) {
     const id = checkbox.getAttribute('data-id');
