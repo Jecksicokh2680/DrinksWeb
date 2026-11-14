@@ -455,6 +455,12 @@ if ($resultado && $resultado->num_rows > 0) {
         </div>
     </div>
 
+    <!-- Alerta visual flotante para nueva transferencia por si el navegador bloquea la voz en automático -->
+    <div id="alertaNuevaTransferencia" class="alert alert-success alert-dismissible fade d-none mb-3 shadow" role="alert">
+        <strong>¡Nueva transferencia detectada!</strong> <span id="textoAlertaMonto"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
     <?php if ($error_python): ?>
         <div class="alert alert-warning alert-dismissible fade show small py-2 px-3 mb-3" role="alert" style="font-size:0.8rem;">
             <strong>Atención:</strong> <?php echo htmlspecialchars($error_python); ?>
@@ -670,11 +676,25 @@ if ($resultado && $resultado->num_rows > 0) {
                     const celdaMonto = filasTabla[0].querySelectorAll('td')[4];
                     if (celdaMonto) {
                         let textoMonto = celdaMonto.textContent.trim();
-                        let montoLimpio = textoMonto.replace('$', '').replace(/\./g, '').trim();
+                        // Limpieza robusta: extrae únicamente los dígitos numéricos del monto
+                        let montoLimpio = textoMonto.replace(/[^0-9]/g, '');
                         
-                        if (!isNaN(montoLimpio) && montoLimpio !== "") {
+                        if (montoLimpio !== "") {
                             let mensajeVoz = `Nueva transferencia recibida por: ${montoLimpio} pesos`;
-                            hablarTexto(mensajeVoz);
+                            
+                            // Retraso de seguridad para permitir que el sintetizador cargue
+                            setTimeout(() => {
+                                hablarTexto(mensajeVoz);
+                            }, 500);
+
+                            // Mostrar además un banner visual por si el navegador bloquea la voz automática
+                            const alerta = document.getElementById('alertaNuevaTransferencia');
+                            const textoAlerta = document.getElementById('textoAlertaMonto');
+                            if (alerta && textoAlerta) {
+                                textoAlerta.textContent = `Se ha recibido un pago por $${montoLimpio.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
+                                alerta.classList.remove('d-none');
+                                alerta.classList.add('show');
+                            }
                         }
                     }
                 }
