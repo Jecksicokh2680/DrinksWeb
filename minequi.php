@@ -392,7 +392,6 @@ if ($resultado && $resultado->num_rows > 0) {
                 margin-top: 0 !important;
                 padding: 0 !important;
             }
-            /* Ocultar elementos que no deben salir en papel */
             button, .busqueda-container, .alert, .container-fluid.container-xl.pt-3.mb-3:first-of-type, small {
                 display: none !important;
             }
@@ -433,6 +432,7 @@ if ($resultado && $resultado->num_rows > 0) {
         <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
             <button onclick="forzarRefresco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
             <button onclick="window.print();" class="btn btn-outline-dark btn-sm text-nowrap px-3 py-2 py-md-1">🖨️ Imprimir Listado</button>
+            <button onclick="hablarTexto('Prueba de audio activada')" class="btn btn-outline-primary btn-sm text-nowrap px-3 py-2 py-md-1">🔊 Probar Voz</button>
 
             <?php if ($esAdminStock): ?>
                 <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
@@ -591,7 +591,7 @@ if ($resultado && $resultado->num_rows > 0) {
                                 <?php endif; ?>
                                 
                                 <?php if ($row['pagador'] !== 'No detectado'): ?>
-                                    <small class="text-dark fw-semibold pagador-texto"><?php echo htmlspecialchars($row['pagador']); ?></small><br>
+                                    <small class="text-dark fw-semibold pagador-texto"><?php echo strtoupper(htmlspecialchars($row['pagador'])); ?></small><br>
                                 <?php endif; ?>
 
                                 <?php if ($row['celular_origen'] === 'No detectado' && $row['pagador'] === 'No detectado'): ?>
@@ -644,6 +644,45 @@ if ($resultado && $resultado->num_rows > 0) {
 </div>
 
 <script>
+    // --- SÍNTESIS DE VOZ PARA NUEVAS TRANSFERENCIAS ---
+    function hablarTexto(texto) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const mensaje = new SpeechSynthesisUtterance(texto);
+            mensaje.lang = 'es-CO';
+            mensaje.rate = 1.0;
+            mensaje.pitch = 1.0;
+            window.speechSynthesis.speak(mensaje);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const filasTabla = document.querySelectorAll('tbody tr');
+        
+        if (filasTabla.length > 0) {
+            const primeraCeldaId = filasTabla[0].querySelector('td.font-monospace');
+            
+            if (primeraCeldaId) {
+                const idActual = primeraCeldaId.textContent.trim();
+                const ultimoIdGuardado = localStorage.getItem('ultimo_id_transferencia');
+
+                if (ultimoIdGuardado && ultimoIdGuardado !== idActual) {
+                    const celdaMonto = filasTabla[0].querySelectorAll('td')[4];
+                    if (celdaMonto) {
+                        let textoMonto = celdaMonto.textContent.trim();
+                        let montoLimpio = textoMonto.replace('$', '').replace(/\./g, '').trim();
+                        
+                        if (!isNaN(montoLimpio) && montoLimpio !== "") {
+                            let mensajeVoz = `Nueva transferencia recibida por: ${montoLimpio} pesos`;
+                            hablarTexto(mensajeVoz);
+                        }
+                    }
+                }
+                localStorage.setItem('ultimo_id_transferencia', idActual);
+            }
+        }
+    });
+
     function forzarRefresco() {
         const urlActual = new URL(window.location.href);
         urlActual.searchParams.set('v', new Date().getTime());
