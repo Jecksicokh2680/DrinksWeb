@@ -39,15 +39,27 @@ function Autorizacion($User, $Solicitud) {
     return ($row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
+$usuario    = $_SESSION['CedulaNit'] ?? 'SISTEMA';
+
+// Verificación de autorización 9999 para habilitar el filtro de fecha por calendario
+$AUT_FILTRO_FECHA = (Autorizacion($usuario, '9999') === 'SI');
+
+// Capturar la fecha seleccionada (por defecto hoy si no tiene permiso o no se envía)
+$fechaFiltro = date('Y-m-d');
+if ($AUT_FILTRO_FECHA && isset($_GET['fecha_filtro']) && !empty($_GET['fecha_filtro'])) {
+    $fechaFiltro = $_GET['fecha_filtro'];
+}
+
 /* ============================================
-   LÓGICA AJAX: CONSULTAR CATEGORÍAS CONTADAS HOY (DINÁMICO)
+   LÓGICA AJAX: CONSULTAR CATEGORÍAS CONTADAS (DINÁMICO)
 ============================================ */
 if (isset($_POST['action']) && $_POST['action'] === 'obtener_contados') {
     $nit = $_POST['nit'] ?? '';
+    $fFiltroAjax = $_POST['fecha'] ?? date('Y-m-d');
     $contados = [];
     if ($nit) {
-        $stmt = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
-        $stmt->bind_param("s", $nit);
+        $stmt = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=? AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
+        $stmt->bind_param("ss", $fFiltroAjax, $nit);
         $stmt->execute();
         $res = $stmt->get_result();
         while ($r = $res->fetch_assoc()) {
@@ -133,7 +145,11 @@ if (isset($_GET['cambiar_nit'])) {
     if ($nuevo_nit == NIT_CENTRAL || $nuevo_nit == NIT_DRINKS) {
         $_SESSION['NitEmpresa'] = $nuevo_nit;
         $_SESSION['NroSucursal'] = '001';
-        header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
+        $redirectUrl = strtok($_SERVER["REQUEST_URI"], '?');
+        if($AUT_FILTRO_FECHA && isset($_GET['fecha_filtro'])) {
+            $redirectUrl .= "?fecha_filtro=" . $_GET['fecha_filtro'];
+        }
+        header("Location: " . $redirectUrl);
         exit;
     }
 }
@@ -142,7 +158,6 @@ if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida. Por favor inicie sesión.");
 }
 
-$usuario    = $_SESSION['CedulaNit'] ?? 'SISTEMA';
 $nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL; 
 $sucursal   = $_SESSION['NroSucursal'] ?? '001';
 $idalmacen  = 1; 
@@ -178,23 +193,26 @@ if (isset($_POST['guardar_conteo'])) {
     $unicaja       = floatval($_POST['unicaja']);
     $stockSistema  = floatval($_POST['stock_sistema']);
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
-    $diferencia    = $stockFisico - $stockSistema; // Corregido error de sintaxis aquí
+    $diferencia    = $stockFisico - $stockSistema; 
     $estadoActivo  = 'A';
 
     $stmt_check = $mysqli->prepare("
         SELECT id FROM conteoweb 
-        WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = CURDATE()
+        WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = ?
         LIMIT 1
     ");
-    $stmt_check->bind_param("sss", $codCat, $nitSesion, $estadoActivo);
+    $stmt_check->bind_param("ssss", $codCat, $nitSesion, $estadoActivo, $fechaFiltro);
     $stmt_check->execute();
     $res_check = $stmt_check->get_result();
 
     if ($res_check->num_rows > 0) {
-        $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría el día de hoy.";
+        $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría en la fecha seleccionada.";
     } else {
-        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,'A')");
-        $stmt->bind_param("sdddsss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        // Se inserta respetando la fecha seleccionada en el filtro si la API lo permite, o fecha actual si es el día de hoy
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,?,'A')");
+        // Ajustamos la inserción para que mantenga la fecha si se desea auditar días anteriores
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado, fecha_conteo) VALUES (?,?,?,?,?,?,?,?,'A', NOW())");
+        $stmt->bind_param("sdddssss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
         
         if ($stmt->execute()) {
             $mensaje = "✅ Conteo guardado correctamente";
@@ -205,10 +223,10 @@ if (isset($_POST['guardar_conteo'])) {
     }
 }
 
-// Cargar Categorías Contadas Hoy
+// Cargar Categorías Contadas en la fecha seleccionada
 $contados = [];
-$resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=CURDATE() AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
-$resCont->bind_param("s", $nitSesion);
+$resCont = $mysqli->prepare("SELECT DISTINCT CodCat FROM conteoweb WHERE DATE(fecha_conteo)=? AND estado='A' AND TRIM(NitEmpresa)=TRIM(?)");
+$resCont->bind_param("ss", $fechaFiltro, $nitSesion);
 $resCont->execute();
 $resResult = $resCont->get_result();
 while ($r = $resResult->fetch_assoc()) {
@@ -263,10 +281,10 @@ if ($categoriaSel && $categoriaEncontrada) {
     }
 }
 
-// Historial del día
+// Historial de la fecha seleccionada
 $conteos = [];
-$resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE TRIM(c.NitEmpresa)=TRIM(?) AND c.estado='A' AND DATE(c.fecha_conteo)=CURDATE() ORDER BY c.fecha_conteo DESC");
-$resH->bind_param("s", $nitSesion);
+$resH = $mysqli->prepare("SELECT c.*, cat.Nombre, DATE_FORMAT(c.fecha_conteo,'%H:%i:%s') AS hora FROM conteoweb c INNER JOIN categorias cat ON cat.CodCat=c.CodCat WHERE TRIM(c.NitEmpresa)=TRIM(?) AND c.estado='A' AND DATE(c.fecha_conteo)=? ORDER BY c.fecha_conteo DESC");
+$resH->bind_param("ss", $nitSesion, $fechaFiltro);
 $resH->execute();
 $resultConteos = $resH->get_result();
 while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
@@ -334,12 +352,25 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 <div class="card">
     <div class="sede-selector no-print">
         <span style="font-size:11px; font-weight:bold; color:#777;">📍 SEDE:</span>
-        <a href="?cambiar_nit=<?= NIT_CENTRAL ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
-        <a href="?cambiar_nit=<?= NIT_DRINKS ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
+        <a href="?cambiar_nit=<?= NIT_CENTRAL ?><?= $AUT_FILTRO_FECHA ? '&fecha_filtro='.$fechaFiltro : '' ?>" class="sede-btn <?= ($nitSesion == NIT_CENTRAL)?'active':'' ?>">CENTRAL</a>
+        <a href="?cambiar_nit=<?= NIT_DRINKS ?><?= $AUT_FILTRO_FECHA ? '&fecha_filtro='.$fechaFiltro : '' ?>" class="sede-btn <?= ($nitSesion == NIT_DRINKS)?'active':'' ?>">DRINKS</a>
         <button type="button" class="btn-refresh" onclick="window.location.reload()">🔄</button>
     </div>
 
-    <h3 style="margin:0 0 15px 0;" class="no-print">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span></h3>
+    <!-- FILTRO DE FECHA TIPO CALENDARIO (EXCLUSIVO AUTORIZACIÓN 9999) -->
+    <?php if($AUT_FILTRO_FECHA): ?>
+    <div style="background:#e8f4f8; padding:12px; border-radius:8px; margin-bottom:15px; border:1px solid #bce8f1;" class="no-print">
+        <form method="GET" action="" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0;">
+            <label for="fecha_filtro" style="margin:0; font-size:12px; color:#31708f;">📅 Consultar Fecha de Conteo:</label>
+            <input type="date" name="fecha_filtro" id="fecha_filtro" value="<?= $fechaFiltro ?>" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:#fff; font-size:13px;" onchange="this.form.submit()">
+            <?php if($fechaFiltro !== date('Y-m-d')): ?>
+                <a href="?" style="font-size:12px; text-decoration:none; background:#31708f; color:#fff; padding:6px 10px; border-radius:6px;">🔄 Ver Hoy</a>
+            <?php endif; ?>
+        </form>
+    </div>
+    <?php endif; ?>
+
+    <h3 style="margin:0 0 15px 0;" class="no-print">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span> <?php if($fechaFiltro !== date('Y-m-d')): ?><small style="font-size:13px; color:#d9534f;">(Fecha: <?= $fechaFiltro ?>)</small><?php endif; ?></h3>
     
     <?php if($mensaje): ?>
         <div style="background:#d4edda; color:#155724; padding:12px; border-radius:8px; margin-bottom:15px; border-left:5px solid #28a745; font-size: 14px;" class="no-print">
@@ -397,7 +428,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php if($conteos): ?>
         <div style="margin-top:30px;" id="seccion-historial">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h4 style="margin:0; color:#666;">HISTORIAL DE CONTEOS DE HOY - SEDE: <?= $nombreSede ?></h4>
+                <h4 style="margin:0; color:#666;">HISTORIAL DE CONTEOS (<?= $fechaFiltro ?>) - SEDE: <?= $nombreSede ?></h4>
                 <div style="display:flex; gap:10px; align-items:center;">
                     <input type="text" id="buscador-historial" class="no-print" placeholder="🔍 Buscar en contados..." onkeyup="filtrarHistorial()" style="padding:6px 10px; font-size:13px; border-radius:6px; border:1px solid #ddd; width:200px; max-width:100%;">
                     <button type="button" class="btn-print no-print" onclick="window.print()">🖨️ Imprimir Historial</button>
@@ -489,6 +520,7 @@ function actualizarCategoriasContadas() {
     const formData = new FormData();
     formData.append('action', 'obtener_contados');
     formData.append('nit', '<?= $nitSesion ?>');
+    formData.append('fecha', '<?= $fechaFiltro ?>');
     
     fetch(window.location.href, { method: 'POST', body: formData })
     .then(r => r.json())

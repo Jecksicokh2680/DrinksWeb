@@ -14,6 +14,8 @@ $usuarioActual = $_SESSION['Usuario'];
 
 // Obtener fecha seleccionada por el usuario o usar la de hoy por defecto
 $fechaFiltro = isset($_GET['fecha']) && !empty($_GET['fecha']) ? $_GET['fecha'] : date("Y-m-d");
+// Fecha específica para el filtro de la pestaña Historial de Ajustes
+$fechaHistorial = isset($_GET['fecha_historial']) && !empty($_GET['fecha_historial']) ? $_GET['fecha_historial'] : $fechaFiltro;
 $ahoraBogota = date("Y-m-d H:i:s");
 
 /* ============================================================
@@ -60,14 +62,13 @@ function obtenerPreciosVentaMasivos($mysqliWeb, $dbCentral, $dbDrinks) {
             $stmt->execute();
             $resPos = $stmt->get_result();
             while ($r = $resPos->fetch_assoc()) {
-                // Si ya existe priorizamos o promediamos, o guardamos por clave compuesta si difieren
                 $skuPrecios[$r['barcode']] = (float)$r['precio'];
             }
             $stmt->close();
         }
     }
 
-    // Calcular promedio por CodCat en memoria RAM (mucho más rápido que ir a la BD en cada fila)
+    // Calcular promedio por CodCat en memoria RAM
     foreach ($mapCatSkus as $codCat => $skusCat) {
         $suma = 0;
         $count = 0;
@@ -165,7 +166,7 @@ if (isset($_POST['accion'])) {
         body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04); }
         .table-historial-interno { font-size: 0.70rem; background-color: #fdfdfd; margin-top: 5px; border: 1px solid #eee; }
-        .loading-overlay { display:none; fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); z-index:9999; justify-content:center; align-items:center; }
+        .loading-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); z-index:9999; justify-content:center; align-items:center; }
     </style>
 </head>
 <body>
@@ -180,7 +181,7 @@ if (isset($_POST['accion'])) {
             <form method="GET" action="" class="d-flex align-items-center gap-2 mb-0">
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-secondary text-white border-secondary"><i class="bi bi-calendar-event"></i></span>
-                    <input type="date" name="fecha" id="filtroFecha" class="form-control form-control-sm" value="<?= $fechaFiltro ?>" onchange="this.form.submit()">
+                    <input type="date" name="fecha" id="filtroFecha" class="form-control form-control-sm" value="<?= htmlspecialchars($fechaFiltro) ?>" onchange="this.form.submit()">
                 </div>
             </form>
             <button onclick="location.href='?'" class="btn btn-outline-info btn-sm" title="Ir a la fecha de hoy"><i class="bi bi-arrow-clockwise"></i> Hoy</button>
@@ -194,10 +195,10 @@ if (isset($_POST['accion'])) {
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCentral">CENTRAL</button></li>
         <li class="nav-item"><button class="nav-link text-warning fw-bold" data-bs-toggle="tab" data-bs-target="#tabCruce"><i class="bi bi-arrow-left-right me-1"></i> CRUCE DE BODEGAS</button></li>
         <li class="nav-item"><button class="nav-link text-success fw-bold" data-bs-toggle="tab" data-bs-target="#tabValorizacion"><i class="bi bi-currency-dollar me-1"></i> VALORIZACIÓN DE AJUSTES</button></li>
+        <li class="nav-item"><button class="nav-link text-primary fw-bold" data-bs-toggle="tab" data-bs-target="#tabHistorialAjustes"><i class="bi bi-clock-history me-1"></i> AJUSTES REALIZADOS</button></li>
     </ul>
 
     <div class="tab-content pt-3">
-        <?>
         <?php 
         $sedes = ['DRINKS', 'CENTRAL'];
         foreach ($sedes as $nombreSede): 
@@ -227,10 +228,11 @@ if (isset($_POST['accion'])) {
                             </thead>
                             <tbody>
                                 <?php 
+                                $fechaEsc = $mysqli->real_escape_string($fechaFiltro);
                                 $res = $mysqli->query("SELECT c.*, cat.Nombre FROM conteoweb c 
                                                       INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                                                       WHERE c.estado = 'A' AND ABS(c.diferencia) > 0.2
-                                                      AND DATE(c.fecha_conteo) = '$fechaFiltro' 
+                                                      AND DATE(c.fecha_conteo) = '$fechaEsc' 
                                                       AND c.NitEmpresa $filtroNit 
                                                       ORDER BY c.fecha_conteo DESC");
                                 while($r = $res->fetch_assoc()): 
@@ -292,7 +294,7 @@ if (isset($_POST['accion'])) {
             </div>
             <div class="card">
                 <div class="card-header bg-warning bg-opacity-10 py-3">
-                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones y Stock Contado: Lo que falta en una bodega frente a lo que sobra en la otra (<?= $fechaFiltro ?>)</h6>
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-info-circle me-2"></i>Comparativa de Desviaciones y Stock Contado: Lo que falta en una bodega frente a lo que sobra en la otra (<?= htmlspecialchars($fechaFiltro) ?>)</h6>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -310,6 +312,7 @@ if (isset($_POST['accion'])) {
                             </thead>
                             <tbody>
                                 <?php 
+                                $fechaEsc = $mysqli->real_escape_string($fechaFiltro);
                                 $sqlCruce = "SELECT cat.CodCat, cat.Nombre, 
                                                     MAX(CASE WHEN c.NitEmpresa = '901724534-7' THEN c.id ELSE NULL END) as id_drinks,
                                                     MAX(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.id ELSE NULL END) as id_central,
@@ -319,13 +322,13 @@ if (isset($_POST['accion'])) {
                                                     SUM(CASE WHEN c.NitEmpresa != '901724534-7' THEN c.stock_fisico ELSE 0 END) as fisico_central
                                              FROM conteoweb c
                                              INNER JOIN categorias cat ON cat.CodCat = c.CodCat
-                                             WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$fechaFiltro'
+                                             WHERE c.estado = 'A' AND DATE(c.fecha_conteo) = '$fechaEsc'
                                              GROUP BY cat.CodCat, cat.Nombre
                                              HAVING ABS(dif_drinks) > 0.2 OR ABS(dif_central) > 0.2
                                              ORDER BY cat.Nombre ASC";
                                 $resCruce = $mysqli->query($sqlCruce);
 
-                                if ($resCruce->num_rows > 0):
+                                if ($resCruce && $resCruce->num_rows > 0):
                                     while($cr = $resCruce->fetch_assoc()):
                                         $dDrinks = (float)$cr['dif_drinks'];
                                         $fDrinks = (float)$cr['fisico_drinks'];
@@ -410,14 +413,14 @@ if (isset($_POST['accion'])) {
         <!-- PESTAÑA: VALORIZACIÓN DE AJUSTES A PRECIO DE VENTA -->
         <div class="tab-pane fade" id="tabValorizacion">
             <?php
-            // Obtener precios masivos optimizados (evita N+1 consultas por fila)
             $preciosMasivos = obtenerPreciosVentaMasivos($mysqli, $mysqliCentral ?? null, $mysqliDrinks ?? null);
 
+            $fechaEsc = $mysqli->real_escape_string($fechaFiltro);
             $sqlVal = "SELECT c.id, c.CodCat, c.NitEmpresa, c.diferencia, c.estado, c.fecha_conteo, cat.Nombre 
                        FROM conteoweb c 
                        INNER JOIN categorias cat ON cat.CodCat = c.CodCat 
                        WHERE c.estado IN ('A', 'C') AND ABS(c.diferencia) > 0.2 
-                       AND DATE(c.fecha_conteo) = '$fechaFiltro' 
+                       AND DATE(c.fecha_conteo) = '$fechaEsc' 
                        ORDER BY c.NitEmpresa ASC, c.fecha_conteo DESC";
             $resVal = $mysqli->query($sqlVal);
 
@@ -522,6 +525,119 @@ if (isset($_POST['accion'])) {
                                         <td colspan="7" class="text-center text-muted py-4">No hay ajustes pendientes ni aplicados registrados para la fecha seleccionada.</td>
                                     </tr>
                                 <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PESTAÑA: HISTORIAL DE AJUSTES REALIZADOS (INCLUYE BORRADOS) -->
+        <div class="tab-pane fade" id="tabHistorialAjustes">
+            <div class="card mb-3 p-3 bg-white">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <form method="GET" action="" class="d-flex align-items-center gap-2 mb-0">
+                            <input type="hidden" name="fecha" value="<?= htmlspecialchars($fechaFiltro) ?>">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-primary text-white fw-bold"><i class="bi bi-calendar3 me-1"></i> Fecha Ajuste:</span>
+                                <input type="date" name="fecha_historial" class="form-control" value="<?= htmlspecialchars($fechaHistorial) ?>" onchange="this.form.submit()">
+                                <a href="?fecha=<?= htmlspecialchars($fechaFiltro) ?>&fecha_historial=<?= date('Y-m-d') ?>" class="btn btn-outline-secondary" title="Hoy">Hoy</a>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control filtro-tabla" placeholder="Filtrar por sede, código, categoría o usuario..." data-table-id="tabla_historial_ajustes">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-primary bg-opacity-10 py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold text-dark">
+                        <i class="bi bi-journal-check me-2"></i>Registro Histórico de Ajustes Aplicados al Inventario (<?= htmlspecialchars($fechaHistorial) ?>)
+                    </h6>
+                    <span class="badge bg-primary">Incluye conteos anulados/borrados</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0" id="tabla_historial_ajustes">
+                            <thead class="table-light text-uppercase" style="font-size: 11px;">
+                                <tr>
+                                    <th class="ps-4">HORA CONTEO</th>
+                                    <th>HORA AJUSTE</th>
+                                    <th>SEDE</th>
+                                    <th>CÓD. CAT.</th>
+                                    <th>CATEGORÍA / PRODUCTO</th>
+                                    <th class="text-end">STOCK ANT.</th>
+                                    <th class="text-center">DIF. APLICADA</th>
+                                    <th class="text-end">STOCK NUEVO</th>
+                                    <th class="text-center">USUARIO</th>
+                                    <th class="text-center pe-4">ESTADO CONTEO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $stmtHist = $mysqli->prepare("
+                                    SELECT h.*, cat.Nombre AS nombre_categoria, c.estado AS estado_conteo, c.fecha_conteo
+                                    FROM historial_ajustes h
+                                    LEFT JOIN categorias cat ON cat.CodCat = h.categoria
+                                    LEFT JOIN conteoweb c ON c.id = h.id_conteo
+                                    WHERE DATE(h.fecha_ajuste) = ?
+                                    ORDER BY h.fecha_ajuste DESC
+                                ");
+                                $stmtHist->bind_param("s", $fechaHistorial);
+                                $stmtHist->execute();
+                                $resHist = $stmtHist->get_result();
+
+                                if ($resHist && $resHist->num_rows > 0):
+                                    while ($ha = $resHist->fetch_assoc()):
+                                        $sedeHa = (trim($ha['nit_empresa']) === '901724534-7') ? 'DRINKS' : 'CENTRAL';
+                                        $badgeSedeHa = ($sedeHa === 'DRINKS') ? 'bg-info text-dark' : 'bg-secondary';
+                                        $difHa = (float)$ha['diferencia_aplicada'];
+                                        $estConteo = $ha['estado_conteo'] ?? '';
+                                        $horaConteoHa = !empty($ha['fecha_conteo']) ? date("H:i:s", strtotime($ha['fecha_conteo'])) : 'N/A';
+
+                                        if ($estConteo === 'E' || $estConteo === 'X') {
+                                            $badgeEstado = '<span class="badge bg-danger">BORRADO</span>';
+                                        } elseif ($estConteo === 'C') {
+                                            $badgeEstado = '<span class="badge bg-success">APLICADO</span>';
+                                        } elseif ($estConteo === 'A') {
+                                            $badgeEstado = '<span class="badge bg-warning text-dark">ACTIVO</span>';
+                                        } else {
+                                            $badgeEstado = '<span class="badge bg-secondary">SIN REF.</span>';
+                                        }
+                                ?>
+                                <tr>
+                                    <td class="ps-4 text-primary small font-monospace fw-bold"><?= $horaConteoHa ?></td>
+                                    <td class="text-muted small font-monospace fw-bold"><?= date("H:i:s", strtotime($ha['fecha_ajuste'])) ?></td>
+                                    <td><span class="badge <?= $badgeSedeHa ?>"><?= $sedeHa ?></span></td>
+                                    <td class="font-monospace fw-bold text-secondary small"><?= htmlspecialchars($ha['categoria']) ?></td>
+                                    <td class="fw-bold text-dark"><?= htmlspecialchars($ha['nombre_categoria'] ?? 'Categoría no encontrada') ?></td>
+                                    <td class="text-end text-muted small"><?= number_format((float)$ha['stock_anterior'], 2) ?></td>
+                                    <td class="text-center">
+                                        <span class="badge <?= $difHa < 0 ? 'bg-danger' : 'bg-success' ?> rounded-pill">
+                                            <?= ($difHa > 0 ? '+' : '') . number_format($difHa, 2) ?>
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-bold"><?= number_format((float)$ha['stock_nuevo'], 2) ?></td>
+                                    <td class="text-center small text-muted"><?= htmlspecialchars($ha['usuario']) ?></td>
+                                    <td class="text-center pe-4"><?= $badgeEstado ?></td>
+                                </tr>
+                                <?php 
+                                    endwhile;
+                                else: 
+                                ?>
+                                <tr>
+                                    <td colspan="10" class="text-center text-muted py-4">No se encontraron ajustes realizados en la fecha seleccionada (<?= htmlspecialchars($fechaHistorial) ?>).</td>
+                                </tr>
+                                <?php 
+                                endif; 
+                                $stmtHist->close();
+                                ?>
                             </tbody>
                         </table>
                     </div>
