@@ -208,11 +208,11 @@ if (isset($_POST['guardar_conteo'])) {
     if ($res_check->num_rows > 0) {
         $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría en la fecha seleccionada.";
     } else {
-        // Se inserta respetando la fecha seleccionada en el filtro si la API lo permite, o fecha actual si es el día de hoy
-        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado) VALUES (?,?,?,?,?,?,?,?,'A')");
-        // Ajustamos la inserción para que mantenga la fecha si se desea auditar días anteriores
-        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado, fecha_conteo) VALUES (?,?,?,?,?,?,?,?,'A', NOW())");
-        $stmt->bind_param("sdddssss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario);
+        // Se define si se guarda con la fecha del filtro actual o con la fecha/hora actual si es el día de hoy
+        $fechaRegistro = ($fechaFiltro === date('Y-m-d')) ? date('Y-m-d H:i:s') : $fechaFiltro . ' ' . date('H:i:s');
+
+        $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado, fecha_conteo) VALUES (?, ?, ?, ?, ?, ?, ?, 'A', ?)");
+        $stmt->bind_param("sdddssss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario, $fechaRegistro);
         
         if ($stmt->execute()) {
             $mensaje = "✅ Conteo guardado correctamente";
