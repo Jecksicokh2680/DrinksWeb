@@ -17,15 +17,16 @@ date_default_timezone_set('America/Bogota');
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'auto_save') {
     header('Content-Type: application/json');
     
-    $nit   = $mysqli->real_escape_string($_POST['nit']);
-    $fecha = $mysqli->real_escape_string($_POST['fecha']);
-    $hora  = $mysqli->real_escape_string($_POST['hora']);
+    $nit       = $mysqli->real_escape_string($_POST['nit']);
+    $fecha     = $mysqli->real_escape_string($_POST['fecha']);
+    $hora      = $mysqli->real_escape_string($_POST['hora']);
     
-    $tipo     = $mysqli->real_escape_string($_POST['tipo']);
-    $monto    = floatval(str_replace('.', '', $_POST['monto']));
-    $num_fact = strtoupper($mysqli->real_escape_string($_POST['numfact_proveedor']));
-    $id_pago  = intval($_POST['id_pago']);
-    $desc     = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
+    $tipo      = $mysqli->real_escape_string($_POST['tipo']);
+    $monto     = floatval(str_replace('.', '', $_POST['monto']));
+    $num_fact  = strtoupper($mysqli->real_escape_string($_POST['numfact_proveedor']));
+    $id_pago   = intval($_POST['id_pago']);
+    $verificado = intval($_POST['verificado']); // Nuevo check de revisión
+    $desc      = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
 
     if ($tipo === 'F') $monto *= -1;
 
@@ -35,7 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             TipoMonto='$tipo',
             Descripcion='$desc',
             NumfactProveedor='$num_fact',
-            idPago='$id_pago'
+            idPago='$id_pago',
+            Verificado='$verificado'
         WHERE Nit='$nit'
           AND F_Creacion='$fecha'
           AND H_Creacion='$hora'
@@ -46,19 +48,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -------------------------------------------------
-// ACCIÓN: EXPORTAR A EXCEL
+// ACCIÓN: EXPORTAR A EXCEL (Respetando filtros)
 // -------------------------------------------------
 if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['exportar'] == 1) {
     $nit = $mysqli->real_escape_string($_GET['proveedor']);
+    $filtroTipo = $_GET['filtro_tipo'] ?? '';
+    $filtroRevision = $_GET['filtro_revision'] ?? '';
+
+    $whereClause = "Nit='$nit' AND Estado='1'";
+    if ($filtroTipo === 'F' || $filtroTipo === 'P') {
+        $whereClause .= " AND TipoMonto='$filtroTipo'";
+    }
+    if ($filtroRevision === '1' || $filtroRevision === '0') {
+        $whereClause .= " AND idPago='$filtroRevision'";
+    }
+
     header("Content-Type: application/vnd.ms-excel; charset=utf-8");
     header("Content-Disposition: attachment; filename=Reporte_Proveedor_$nit.xls");
     header("Pragma: no-cache");
     header("Expires: 0");
 
     $resExcel = $mysqli->query("
-        SELECT F_Creacion, H_Creacion, TipoMonto, Monto, Descripcion, NumfactProveedor, idPago 
+        SELECT F_Creacion, H_Creacion, TipoMonto, Monto, Descripcion, NumfactProveedor, idPago, Verificado 
         FROM pagosproveedores 
-        WHERE Nit='$nit' AND Estado='1' 
+        WHERE $whereClause 
         ORDER BY F_Creacion DESC, H_Creacion DESC
     ");
     ?>
@@ -70,7 +83,8 @@ if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['e
                 <th>Tipo</th>
                 <th>Monto</th>
                 <th>Nro Factura Prov</th>
-                <th>Revisado (idPago)</th>
+                <th>idPago</th>
+                <th>Verificado</th>
                 <th>Descripcion</th>
             </tr>
         </thead>
@@ -83,6 +97,7 @@ if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['e
                     <td><?= $r['Monto'] ?></td>
                     <td><?= htmlspecialchars($r['NumfactProveedor']) ?></td>
                     <td><?= $r['idPago'] == 1 ? 'SI' : 'NO' ?></td>
+                    <td><?= $r['Verificado'] == 1 ? 'SI' : 'NO' ?></td>
                     <td><?= htmlspecialchars($r['Descripcion']) ?></td>
                 </tr>
             <?php endwhile; ?>
@@ -106,22 +121,23 @@ $proveedores = $mysqli->query("
 // INSERTAR NUEVO REGISTRO
 // -------------------------------------------------
 if (isset($_POST['grabar'])) {
-    $nit   = $_POST['proveedor'];
-    $fecha = str_replace('-', '', $_POST['fecha']);
-    $hora  = date("H:i:s");
-    $tipo  = $_POST['tipo'];
-    $monto = floatval(str_replace('.', '', $_POST['monto']));
-    $desc  = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
-    $num_fact = strtoupper($mysqli->real_escape_string($_POST['numfact_proveedor']));
-    $id_pago  = isset($_POST['id_pago']) ? 1 : 0;
+    $nit        = $_POST['proveedor'];
+    $fecha      = str_replace('-', '', $_POST['fecha']);
+    $hora       = date("H:i:s");
+    $tipo       = $_POST['tipo'];
+    $monto      = floatval(str_replace('.', '', $_POST['monto']));
+    $desc       = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
+    $num_fact   = strtoupper($mysqli->real_escape_string($_POST['numfact_proveedor']));
+    $id_pago    = isset($_POST['id_pago']) ? 1 : 0;
+    $verificado = isset($_POST['verificado']) ? 1 : 0;
 
     if ($tipo === 'F') $monto *= -1;
 
     $mysqli->query("
         INSERT INTO pagosproveedores
-        (Nit,F_Creacion,H_Creacion,Monto,TipoMonto,Descripcion,NumfactProveedor,idPago,Estado)
+        (Nit,F_Creacion,H_Creacion,Monto,TipoMonto,Descripcion,NumfactProveedor,idPago,Verificado,Estado)
         VALUES
-        ('$nit','$fecha','$hora','$monto','$tipo','$desc','$num_fact','$id_pago','1')
+        ('$nit','$fecha','$hora','$monto','$tipo','$desc','$num_fact','$id_pago','$verificado','1')
     ");
 
     header("Location: ?proveedor=$nit&consultar=1");
@@ -149,23 +165,35 @@ if (isset($_GET['borrar'])) {
 }
 
 // -------------------------------------------------
-// PAGINACIÓN Y CONSULTA (AJUSTADO A 15 LÍNEAS)
+// PAGINACIÓN Y CONSULTA CON FILTROS
 // -------------------------------------------------
-$porPagina = 13; // <--- AQUÍ SE MODIFICÓ A 15
+$porPagina = 30;
 $pagina = max(1, intval($_GET['page'] ?? 1));
 $offset = ($pagina - 1) * $porPagina;
 $abonos = [];
 $total = 0;
 $nit = '';
 
+$filtroTipo = $_GET['filtro_tipo'] ?? '';
+$filtroRevision = $_GET['filtro_revision'] ?? '';
+
 if (isset($_GET['consultar'], $_GET['proveedor'])) {
     $nit = $_GET['proveedor'];
-    $resTotal = $mysqli->query("SELECT IFNULL(SUM(Monto),0) total, COUNT(*) cant FROM pagosproveedores WHERE Nit='$nit' AND Estado='1'");
+    
+    $whereClause = "Nit='$nit' AND Estado='1'";
+    if ($filtroTipo === 'F' || $filtroTipo === 'P') {
+        $whereClause .= " AND TipoMonto='$filtroTipo'";
+    }
+    if ($filtroRevision === '1' || $filtroRevision === '0') {
+        $whereClause .= " AND idPago='$filtroRevision'";
+    }
+
+    $resTotal = $mysqli->query("SELECT IFNULL(SUM(Monto),0) total, COUNT(*) cant FROM pagosproveedores WHERE $whereClause");
     $rowT = $resTotal->fetch_assoc();
     $total = $rowT['total'];
     $totalPaginas = max(1, ceil($rowT['cant'] / $porPagina));
 
-    $res = $mysqli->query("SELECT * FROM pagosproveedores WHERE Nit='$nit' AND Estado='1' ORDER BY F_Creacion DESC, H_Creacion DESC LIMIT $offset,$porPagina");
+    $res = $mysqli->query("SELECT * FROM pagosproveedores WHERE $whereClause ORDER BY F_Creacion DESC, H_Creacion DESC LIMIT $offset,$porPagina");
     while ($r = $res->fetch_assoc()) { $abonos[] = $r; }
 }
 ?>
@@ -176,11 +204,11 @@ if (isset($_GET['consultar'], $_GET['proveedor'])) {
 <title>Cartera Proveedores</title>
 <style>
 body{font-family:Arial;background:#f4f4f4}
-.box{background:#fff;padding:15px;border-radius:10px;max-width:1250px;margin:auto}
+.box{background:#fff;padding:15px;border-radius:10px;max-width:1300px;margin:auto}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
 .row input,.row select,.row button{padding:7px;border-radius:6px;border:1px solid #ccc}
 table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;}
-th{background:#007bff;color:#fff;padding:8px;font-size:14px}
+th{background:#007bff;color:#fff;padding:8px;font-size:13px}
 td{padding:6px;border-bottom:1px solid #ddd; text-align:center;vertical-align:middle;}
 .neg{background:#fde2e2}
 .pos{background:#e6fffa}
@@ -216,15 +244,28 @@ input:checked + .slider:before { transform: translateX(16px); }
 <h2>Cartera por Proveedor</h2>
 
 <form method="GET" class="row">
-<select name="proveedor" required>
-<option value="">Proveedor</option>
-<?php while($p=$proveedores->fetch_assoc()): ?>
-<option value="<?= $p['Nit'] ?>" <?= $p['Nit']==$nit?'selected':'' ?>>
-<?= $p['Nombre'] ?>
-</option>
-<?php endwhile; ?>
-</select>
-<button name="consultar">Consultar</button>
+    <select name="proveedor" required>
+        <option value="">Seleccione Proveedor</option>
+        <?php while($p=$proveedores->fetch_assoc()): ?>
+        <option value="<?= $p['Nit'] ?>" <?= $p['Nit']==$nit?'selected':'' ?>>
+            <?= $p['Nombre'] ?>
+        </option>
+        <?php endwhile; ?>
+    </select>
+
+    <select name="filtro_tipo">
+        <option value="">-- Todos los Tipos --</option>
+        <option value="F" <?= $filtroTipo=='F'?'selected':'' ?>>Solo Facturas (F)</option>
+        <option value="P" <?= $filtroTipo=='P'?'selected':'' ?>>Solo Pagos (P)</option>
+    </select>
+
+    <select name="filtro_revision">
+        <option value="">-- Estado idPago --</option>
+        <option value="1" <?= $filtroRevision=='1'?'selected':'' ?>>Revisados (Sí)</option>
+        <option value="0" <?= $filtroRevision=='0'?'selected':'' ?>>Pendientes (No)</option>
+    </select>
+
+    <button name="consultar" value="1">Consultar</button>
 </form>
 
 <?php if($nit): ?>
@@ -238,29 +279,33 @@ input:checked + .slider:before { transform: translateX(16px); }
 <input name="monto" class="monto-mask" placeholder="Monto" required style="width:120px;">
 <input name="numfact_proveedor" placeholder="Nro Factura" style="width:130px;">
 <input name="descripcion" placeholder="Descripción" style="flex:1; min-width:180px;">
-<label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:14px;">
-    <input type="checkbox" name="id_pago" value="1"> ¿Revisado?
+<label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
+    <input type="checkbox" name="id_pago" value="1"> idPago
+</label>
+<label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
+    <input type="checkbox" name="verificado" value="1"> Verificado
 </label>
 <button name="grabar">Grabar</button>
 </form>
 <?php endif; ?>
 
-<?php if($abonos): ?>
+<?php if(isset($_GET['consultar'])): ?>
 <div class="total" style="display: flex; justify-content: space-between; align-items: center;">
-    <span>Saldo Pte: <?= number_format($total,0,',','.') ?> (Recarga la página para actualizar saldo global)</span>
-    <a href="?proveedor=<?= $nit ?>&consultar=1&exportar=1" class="btn-excel">📊 Exportar a Excel</a>
+    <span>Saldo Pte (Filtro Actual): <?= number_format($total,0,',','.') ?></span>
+    <a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&exportar=1" class="btn-excel">📊 Exportar a Excel</a>
 </div>
 
 <table>
 <colgroup>
-    <col style="width: 10%;">
     <col style="width: 9%;">
     <col style="width: 8%;">
-    <col style="width: 14%;">
-    <col style="width: 14%;">
+    <col style="width: 7%;">
+    <col style="width: 13%;">
+    <col style="width: 13%;">
     <col style="width: 8%;">
-    <col style="width: 32%;">
-    <col style="width: 5%;">
+    <col style="width: 8%;">
+    <col style="width: 31%;">
+    <col style="width: 3%;">
 </colgroup>
 <tr>
 <th>Fecha</th>
@@ -269,62 +314,79 @@ input:checked + .slider:before { transform: translateX(16px); }
 <th>Monto</th>
 <th>Nro Factura Prov</th>
 <th>idPago</th>
+<th>Verificado</th>
 <th>Descripción</th>
 <th></th>
 </tr>
 
-<?php foreach($abonos as $a): 
-    $rowId = "row_" . $a['F_Creacion'] . "_" . str_replace(':', '', $a['H_Creacion']);
-?>
-<tr id="<?= $rowId ?>" class="<?= $a['Monto']<0?'neg':'pos' ?>">
-<td><?= $a['F_Creacion'] ?></td>
-<td><?= $a['H_Creacion'] ?></td>
-<td>
-    <select class="auto-input" data-field="tipo" data-row="<?= $rowId ?>">
-        <option value="F" <?= $a['TipoMonto']=='F'?'selected':'' ?>>F</option>
-        <option value="P" <?= $a['TipoMonto']=='P'?'selected':'' ?>>P</option>
-    </select>
-</td>
-<td>
-    <input class="monto-mask auto-input" data-field="monto" data-row="<?= $rowId ?>" style="text-align:right; font-weight:bold;"
-           value="<?= number_format(abs($a['Monto']),0,',','.') ?>">
-</td>
-<td>
-    <input class="auto-input" data-field="numfact_proveedor" style="text-align:center;"
-           value="<?= htmlspecialchars($a['NumfactProveedor'] ?? '') ?>">
-</td>
-<td>
-    <label class="switch">
-        <input type="checkbox" class="auto-input" data-field="id_pago" data-row="<?= $rowId ?>" value="1" <?= $a['idPago']==1?'checked':'' ?>>
-        <span class="slider"></span>
-    </label>
-</td>
-<td>
-    <input class="auto-input" data-field="descripcion" style="text-align:left;"
-           value="<?= htmlspecialchars($a['Descripcion']) ?>">
-</td>
-<td>
-    <input type="hidden" class="key-nit" value="<?= $a['Nit'] ?>">
-    <input type="hidden" class="key-fecha" value="<?= $a['F_Creacion'] ?>">
-    <input type="hidden" class="key-hora" value="<?= $a['H_Creacion'] ?>">
-    
-    <a class="btn-del"
-       href="?proveedor=<?= $nit ?>&consultar=1&borrar=1&nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
-       onclick="return confirm('¿Eliminar este registro?')">🗑️</a>
-</td>
+<?php if(empty($abonos)): ?>
+<tr>
+    <td colspan="9" style="padding: 20px; text-align: center; color: #777;">No se encontraron registros con los filtros seleccionados.</td>
 </tr>
-<?php endforeach; ?>
+<?php else: ?>
+    <?php foreach($abonos as $a): 
+        $rowId = "row_" . $a['F_Creacion'] . "_" . str_replace(':', '', $a['H_Creacion']);
+    ?>
+    <tr id="<?= $rowId ?>" class="<?= $a['Monto']<0?'neg':'pos' ?>">
+    <td><?= $a['F_Creacion'] ?></td>
+    <td><?= $a['H_Creacion'] ?></td>
+    <td>
+        <select class="auto-input" data-field="tipo" data-row="<?= $rowId ?>">
+            <option value="F" <?= $a['TipoMonto']=='F'?'selected':'' ?>>F</option>
+            <option value="P" <?= $a['TipoMonto']=='P'?'selected':'' ?>>P</option>
+        </select>
+    </td>
+    <td>
+        <input class="monto-mask auto-input" data-field="monto" data-row="<?= $rowId ?>" style="text-align:right; font-weight:bold;"
+               value="<?= number_format(abs($a['Monto']),0,',','.') ?>">
+    </td>
+    <td>
+        <input class="auto-input" data-field="numfact_proveedor" style="text-align:center;"
+               value="<?= htmlspecialchars($a['NumfactProveedor'] ?? '') ?>">
+    </td>
+    <!-- Check 1: idPago -->
+    <td>
+        <label class="switch">
+            <input type="checkbox" class="auto-input" data-field="id_pago" data-row="<?= $rowId ?>" value="1" <?= $a['idPago']==1?'checked':'' ?>>
+            <span class="slider"></span>
+        </label>
+    </td>
+    <!-- Check 2: Verificado (Nuevo Check de Revisión) -->
+    <td>
+        <label class="switch">
+            <input type="checkbox" class="auto-input" data-field="verificado" data-row="<?= $rowId ?>" value="1" <?= (isset($a['Verificado']) && $a['Verificado']==1)?'checked':'' ?>>
+            <span class="slider"></span>
+        </label>
+    </td>
+    <td>
+        <input class="auto-input" data-field="descripcion" style="text-align:left;"
+               value="<?= htmlspecialchars($a['Descripcion']) ?>">
+    </td>
+    <td>
+        <input type="hidden" class="key-nit" value="<?= $a['Nit'] ?>">
+        <input type="hidden" class="key-fecha" value="<?= $a['F_Creacion'] ?>">
+        <input type="hidden" class="key-hora" value="<?= $a['H_Creacion'] ?>">
+        
+        <a class="btn-del"
+           href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&borrar=1&nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
+           onclick="return confirm('¿Eliminar este registro?')">🗑️</a>
+    </td>
+    </tr>
+    <?php endforeach; ?>
+<?php endif; ?>
 </table>
 
+<?php if($totalPaginas > 1): ?>
 <div class="paginacion">
 <?php if($pagina>1): ?>
-<a href="?proveedor=<?= $nit ?>&consultar=1&page=<?= $pagina-1 ?>">⬅</a>
+<a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&page=<?= $pagina-1 ?>">⬅</a>
 <?php endif; ?>
- Página <?= $pagina ?>
+ Página <?= $pagina ?> de <?= $totalPaginas ?>
 <?php if($pagina<$totalPaginas): ?>
-<a href="?proveedor=<?= $nit ?>&consultar=1&page=<?= $pagina+1 ?>">➡</a>
+<a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&page=<?= $pagina+1 ?>">➡</a>
 <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <?php endif; ?>
 
@@ -341,7 +403,7 @@ document.querySelectorAll('.monto-mask').forEach(input => {
     input.addEventListener('input', () => aplicarMascara(input));
 });
 
-// ESCUCHAR CAMBIOS PARA GUARDADO AUTOMÁTICO
+// ESCUCHAR CAMBIOS PARA GUARDADO AUTOMÁTICO (AJAX)
 document.querySelectorAll('.auto-input').forEach(input => {
     input.addEventListener('change', function() {
         const tr = this.closest('tr');
@@ -355,6 +417,7 @@ document.querySelectorAll('.auto-input').forEach(input => {
         const monto = tr.querySelector('[data-field="monto"]').value;
         const numfact = tr.querySelector('[data-field="numfact_proveedor"]').value;
         const idPago = tr.querySelector('[data-field="id_pago"]').checked ? 1 : 0;
+        const verificado = tr.querySelector('[data-field="verificado"]').checked ? 1 : 0;
         const descripcion = tr.querySelector('[data-field="descripcion"]').value;
 
         const formData = new FormData();
@@ -366,6 +429,7 @@ document.querySelectorAll('.auto-input').forEach(input => {
         formData.append('monto', monto);
         formData.append('numfact_proveedor', numfact);
         formData.append('id_pago', idPago);
+        formData.append('verificado', verificado);
         formData.append('descripcion', descripcion);
 
         fetch('', {
