@@ -33,7 +33,6 @@ function Autorizacion($User, $Solicitud) {
     return ($res && $row = $res->fetch_assoc()) ? $row['Swich'] : 'NO';
 }
 
-// Permiso administrativo global para cambiar el estado de cualquier solicitud
 $puedeBorrarGlobal = ($Usuario == '9999' || $Usuario == '0003' || Autorizacion($Usuario, '9999') === 'SI'); 
 
 function conectarPOS($nitSede) {
@@ -241,7 +240,6 @@ if (isset($_GET['accion']) && $_GET['accion'] == 'borrar') {
         }
     }
 
-    // CORRECCIÓN: En lugar de DELETE, cambiamos el Estado a '0'
     $stmt = $mysqli->prepare("UPDATE solicitud_anulacion SET Estado = '0' WHERE NroFactAnular=? AND F_Creacion=? AND Nit_Empresa=?");
     $stmt->bind_param("sss", $facturaAEliminar, $fechaAEliminar, $sedeAEliminar);
     $stmt->execute();
@@ -310,7 +308,6 @@ if ($dbSede) {
     }
 }
 
-// Consulta de facturas anuladas, devueltas y pedidos anulados unificando ambas sedes
 $sedesAProcesar = [
     ['db' => conectarPOS(NIT_CENTRAL), 'nit' => NIT_CENTRAL, 'nombre' => 'CENTRAL'],
     ['db' => conectarPOS(NIT_DRINKS), 'nit' => NIT_DRINKS, 'nombre' => 'DRINKS']
@@ -348,6 +345,15 @@ foreach ($sedesAProcesar as $sInfo) {
             }
         }
     }
+}
+
+// Índice robusto independiente de la sede exacta para garantizar el cruce de pedidos y facturas
+$anuladosDevueltosIndex = [];
+foreach ($docsAnuladosDevueltos as $dad) {
+    $nroDocLimpio = trim($dad['NUMERO']);
+    // Guardamos clave por sede específica y clave global por número de documento para evitar que falle el cruce
+    $anuladosDevueltosIndex[$dad['NIT_SEDE'] . '_' . $nroDocLimpio] = $dad['TIPO_MOV'];
+    $anuladosDevueltosIndex[$nroDocLimpio] = $dad['TIPO_MOV']; 
 }
 ?>
 
@@ -514,8 +520,15 @@ foreach ($sedesAProcesar as $sInfo) {
                             $esCreador = ($r['NitCajero'] === $Usuario);
                             $estaLimpio = ($r['JefeBodCheck'] !== '1' && $r['GerenteCheck'] !== '1' && $anuladoPOS == 0);
                             $puedeBorrarPropio = ($esCreador && $estaLimpio);
+
+                            // Cruce robusto por sede y también respaldo por número exacto de documento
+                            $nroDocActual = trim($r['NroFactAnular']);
+                            $claveBusquedaSede = $r['Nit_Empresa'] . '_' . $nroDocActual;
+                            
+                            $tipoAnulacionAbajo = $anuladosDevueltosIndex[$claveBusquedaSede] ?? ($anuladosDevueltosIndex[$nroDocActual] ?? null);
+                            $rowHighlightClass = $tipoAnulacionAbajo ? 'table-warning' : '';
                         ?>
-                        <tr>
+                        <tr class="<?= $rowHighlightClass ?>">
                             <td><?= date('H:i', strtotime($r['FH_CajeroCheck'])) ?></td>
                             <td><span class="badge bg-secondary"><?= $txtSede ?></span></td>
                             <td class="text-start">
@@ -527,6 +540,13 @@ foreach ($sedesAProcesar as $sInfo) {
                                 <span class="doc-link" onclick="abrirVentanaFlotante('<?= $r['NroFactAnular'] ?>', '<?= $r['Nit_Empresa'] ?>', '<?= $r['Tipo'] ?>', 'DOCUMENTO A ANULAR')">
                                     <?= $r['NroFactAnular'] ?>
                                 </span>
+                                <?php if ($tipoAnulacionAbajo): 
+                                    $badgeInferiorColor = 'bg-danger';
+                                    if ($tipoAnulacionAbajo === 'FACTURA DEVUELTA') $badgeInferiorColor = 'bg-warning text-dark';
+                                    if ($tipoAnulacionAbajo === 'PEDIDO ANULADO') $badgeInferiorColor = 'bg-dark';
+                                ?>
+                                    <span class="badge <?= $badgeInferiorColor ?> d-block mt-1" style="font-size: 0.55rem;" title="Encontrado en registros del POS"><?= $tipoAnulacionAbajo ?></span>
+                                <?php endif; ?>
                             </td>
                             <td class="fw-bold">$<?= number_format($r['ValorFactAnular'], 0)?></td>
                             <td>
