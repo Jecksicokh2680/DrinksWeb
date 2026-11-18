@@ -13,25 +13,47 @@ $editando = false;
 $id_tipologia = '';
 $nombre = '';
 $ambito = 'Empresa';
-$tipo = 'Variable';
+$tipo = 'Activo'; // Valor predeterminado actualizado
 $descripcion = '';
 $pagina_actual = basename($_SERVER['PHP_SELF']);
 
-// 1. Procesar Guardar / Actualizar (POST)
+// 1. Si se solicita editar (GET) - Ocurre PRIMERO para cargar los datos en el formulario
+if (isset($_GET['editar']) && !empty($_GET['editar'])) {
+    $id_tipologia = intval($_GET['editar']);
+    
+    $stmt = $mysqliWeb->prepare("SELECT * FROM TipologiaGastos WHERE id = ?");
+    $stmt->bind_param("i", $id_tipologia);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    
+    if ($tipologia = $resultado->fetch_assoc()) {
+        $editando = true;
+        $nombre = $tipologia['nombre'];
+        $ambito = $tipologia['ambito'] ?? 'Empresa';
+        $tipo = $tipologia['tipo'];
+        $descripcion = $tipologia['descripcion'];
+    }
+    $stmt->close();
+}
+
+// 2. Procesar Guardar / Actualizar (POST)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $id_tipologia = $_POST['id_tipologia'] ?? '';
+    // Capturamos el ID oculto del formulario (si viene lleno, es actualización; si viene vacío, es nuevo)
+    $id_tipologia = trim($_POST['id_tipologia'] ?? '');
     $nombre = trim($_POST['nombre'] ?? '');
     $ambito = $_POST['ambito'] ?? 'Empresa';
-    $tipo = $_POST['tipo'] ?? 'Variable';
+    $tipo = $_POST['tipo'] ?? 'Activo';
     $descripcion = trim($_POST['descripcion'] ?? '');
 
     if (!empty($nombre) && !empty($ambito) && !empty($tipo)) {
         if (!empty($id_tipologia)) {
+            // ACTUALIZAR registro existente
             $stmt = $mysqliWeb->prepare("UPDATE TipologiaGastos SET nombre = ?, ambito = ?, tipo = ?, descripcion = ? WHERE id = ?");
             $stmt->bind_param("ssssi", $nombre, $ambito, $tipo, $descripcion, $id_tipologia);
             $stmt->execute();
             $stmt->close();
         } else {
+            // INSERTAR nuevo registro
             $stmt = $mysqliWeb->prepare("INSERT INTO TipologiaGastos (nombre, ambito, tipo, descripcion) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("ssss", $nombre, $ambito, $tipo, $descripcion);
             $stmt->execute();
@@ -42,26 +64,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 2. Si se solicita editar
-if (isset($_GET['editar'])) {
-    $editando = true;
-    $id_tipologia = $_GET['editar'];
+// 3. Procesar Eliminación (GET)
+if (isset($_GET['eliminar']) && !empty($_GET['eliminar'])) {
+    $id_a_eliminar = intval($_GET['eliminar']);
+    $stmtDel = $mysqliWeb->prepare("DELETE FROM TipologiaGastos WHERE id = ?");
+    $stmtDel->bind_param("i", $id_a_eliminar);
+    $stmtDel->execute();
+    $stmtDel->close();
     
-    $stmt = $mysqliWeb->prepare("SELECT * FROM TipologiaGastos WHERE id = ?");
-    $stmt->bind_param("i", $id_tipologia);
-    $stmt->execute();
-    $resultado = $stmt->get_result();
-    
-    if ($tipologia = $resultado->fetch_assoc()) {
-        $nombre = $tipologia['nombre'];
-        $ambito = $tipologia['ambito'] ?? 'Empresa';
-        $tipo = $tipologia['tipo'];
-        $descripcion = $tipologia['descripcion'];
-    }
-    $stmt->close();
+    header("Location: " . $pagina_actual);
+    exit;
 }
 
-// 3. Obtener todas las tipologías ordenadas por ámbito, tipo y nombre
+// 4. Obtener todas las tipologías ordenadas para la tabla
 $resultado_tipologias = $mysqliWeb->query("SELECT * FROM TipologiaGastos ORDER BY ambito ASC, tipo ASC, nombre ASC");
 $tipologias = [];
 if ($resultado_tipologias) {
@@ -86,19 +101,20 @@ if ($resultado_tipologias) {
         <a href="RegistroGastos.php" class="btn btn-outline-primary btn-sm">&larr; Ir a Registro</a>
     </div>
 
-    <!-- FORMULARIO EN TIPO FILA (SUPERIOR) PARA AHORRAR ESPACIO -->
+    <!-- FORMULARIO -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-primary text-white py-2" id="form-header">
             <h6 class="mb-0" id="form-title"><?= $editando ? 'Editar Tipología ID: ' . $id_tipologia : 'Nueva Tipología' ?></h6>
         </div>
         <div class="card-body bg-white py-3">
             <form action="<?= htmlspecialchars($pagina_actual) ?>" method="POST">
-                <input type="hidden" name="id_tipologia" value="<?= $id_tipologia ?>">
+                <!-- Campo oculto indispensable para conservar el ID al actualizar -->
+                <input type="hidden" name="id_tipologia" value="<?= htmlspecialchars($id_tipologia) ?>">
 
                 <div class="row align-items-end g-3">
                     <div class="col-md-3">
                         <label for="nombre" class="form-label form-label-sm fw-bold">Nombre</label>
-                        <input type="text" class="form-control form-control-sm" id="nombre" name="nombre" value="<?= htmlspecialchars($nombre) ?>" maxlength="50" required placeholder="Ej. Arriendo, Nómina...">
+                        <input type="text" class="form-control form-control-sm" id="nombre" name="nombre" value="<?= htmlspecialchars($nombre) ?>" maxlength="50" required placeholder="Ej. Inversión, Préstamo...">
                     </div>
 
                     <div class="col-md-2">
@@ -112,8 +128,6 @@ if ($resultado_tipologias) {
                     <div class="col-md-2">
                         <label for="tipo" class="form-label form-label-sm fw-bold">Clasificación</label>
                         <select class="form-select form-select-sm" id="tipo" name="tipo" required>
-                            <option value="Fijo" <?= ($tipo === 'Fijo') ? 'selected' : '' ?>>Fijo</option>
-                            <option value="Variable" <?= ($tipo === 'Variable') ? 'selected' : '' ?>>Variable</option>
                             <option value="Activo" <?= ($tipo === 'Activo') ? 'selected' : '' ?>>Activo</option>
                             <option value="Pasivo" <?= ($tipo === 'Pasivo') ? 'selected' : '' ?>>Pasivo</option>
                         </select>
@@ -135,7 +149,7 @@ if ($resultado_tipologias) {
         </div>
     </div>
 
-    <!-- TABLA DE LISTADO (ANCHO COMPLETO) -->
+    <!-- TABLA DE LISTADO -->
     <div class="card shadow-sm">
         <div class="card-header bg-secondary text-white py-2">
             <h6 class="mb-0">Listado de Tipologías Registradas</h6>
@@ -155,14 +169,10 @@ if ($resultado_tipologias) {
                     <?php if (count($tipologias) > 0): ?>
                         <?php foreach ($tipologias as $row): ?>
                             <?php 
-                                // Badge color para el Tipo
                                 $badge_tipo = 'bg-secondary';
-                                if ($row['tipo'] === 'Fijo') $badge_tipo = 'bg-info text-dark';
-                                elseif ($row['tipo'] === 'Variable') $badge_tipo = 'bg-warning text-dark';
-                                elseif ($row['tipo'] === 'Activo') $badge_tipo = 'bg-success';
+                                if ($row['tipo'] === 'Activo') $badge_tipo = 'bg-success';
                                 elseif ($row['tipo'] === 'Pasivo') $badge_tipo = 'bg-dark text-white';
 
-                                // Badge color para el Ámbito
                                 $badge_ambito = (($row['ambito'] ?? 'Empresa') === 'Empresa') ? 'bg-primary' : 'bg-secondary';
                             ?>
                             <tr>
@@ -174,13 +184,13 @@ if ($resultado_tipologias) {
                                 </td>
                                 <td>
                                     <span class="badge <?= $badge_tipo ?>" style="font-size: 0.75rem;">
-                                        <?= $row['tipo'] ?>
+                                        <?= htmlspecialchars($row['tipo']) ?>
                                     </span>
                                 </td>
                                 <td><?= htmlspecialchars($row['descripcion']) ?></td>
                                 <td class="text-center">
                                     <a href="<?= htmlspecialchars($pagina_actual) ?>?editar=<?= $row['id'] ?>" class="btn btn-sm btn-warning py-0 px-2">Editar</a>
-                                    <a href="eliminar_tipologia.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-danger py-0 px-2" onclick="return confirm('¿Estás seguro de eliminar esta tipología?');">Eliminar</a>
+                                    <a href="<?= htmlspecialchars($pagina_actual) ?>?eliminar=<?= $row['id'] ?>" class="btn btn-sm btn-danger py-0 px-2" onclick="return confirm('¿Estás seguro de eliminar esta tipología?');">Eliminar</a>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
