@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $monto     = floatval(str_replace('.', '', $_POST['monto']));
     $num_fact  = strtoupper($mysqli->real_escape_string($_POST['numfact_proveedor']));
     $id_pago   = intval($_POST['id_pago']);
-    $verificado = intval($_POST['verificado']); // Nuevo check de revisión
+    $verificado = intval($_POST['verificado']); 
     $desc      = strtoupper($mysqli->real_escape_string($_POST['descripcion']));
 
     if ($tipo === 'F') $monto *= -1;
@@ -48,12 +48,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -------------------------------------------------
-// ACCIÓN: EXPORTAR A EXCEL (Respetando filtros)
+// ACCIÓN: EXPORTAR A EXCEL (Respetando filtros y fechas)
 // -------------------------------------------------
 if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['exportar'] == 1) {
     $nit = $mysqli->real_escape_string($_GET['proveedor']);
     $filtroTipo = $_GET['filtro_tipo'] ?? '';
     $filtroRevision = $_GET['filtro_revision'] ?? '';
+    $fechaIni = str_replace('-', '', $_GET['fecha_ini'] ?? '');
+    $fechaFin = str_replace('-', '', $_GET['fecha_fin'] ?? '');
 
     $whereClause = "Nit='$nit' AND Estado='1'";
     if ($filtroTipo === 'F' || $filtroTipo === 'P') {
@@ -62,9 +64,16 @@ if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['e
     if ($filtroRevision === '1' || $filtroRevision === '0') {
         $whereClause .= " AND idPago='$filtroRevision'";
     }
+    if (!empty($fechaIni) && !empty($fechaFin)) {
+        $whereClause .= " AND F_Creacion BETWEEN '$fechaIni' AND '$fechaFin'";
+    } elseif (!empty($fechaIni)) {
+        $whereClause .= " AND F_Creacion >= '$fechaIni'";
+    } elseif (!empty($fechaFin)) {
+        $whereClause .= " AND F_Creacion <= '$fechaFin'";
+    }
 
     header("Content-Type: application/vnd.ms-excel; charset=utf-8");
-    header("Content-Disposition: attachment; filename=Reporte_Proveedor_$nit.xls");
+    header("Content-Disposition: attachment; filename=Reporte_Cartera_Proveedor_$nit.xls");
     header("Pragma: no-cache");
     header("Expires: 0");
 
@@ -77,7 +86,7 @@ if (isset($_GET['consultar'], $_GET['proveedor'], $_GET['exportar']) && $_GET['e
     ?>
     <table border="1">
         <thead>
-            <tr style="background-color: #007bff; color: #ffffff; font-weight: bold;">
+            <tr style="background-color: #1e293b; color: #ffffff; font-weight: bold;">
                 <th>Fecha</th>
                 <th>Hora</th>
                 <th>Tipo</th>
@@ -165,7 +174,7 @@ if (isset($_GET['borrar'])) {
 }
 
 // -------------------------------------------------
-// PAGINACIÓN Y CONSULTA CON FILTROS
+// PAGINACIÓN Y CONSULTA CON FILTROS Y FECHAS
 // -------------------------------------------------
 $porPagina = 30;
 $pagina = max(1, intval($_GET['page'] ?? 1));
@@ -173,19 +182,36 @@ $offset = ($pagina - 1) * $porPagina;
 $abonos = [];
 $total = 0;
 $nit = '';
+$nombreProveedorActual = '';
 
 $filtroTipo = $_GET['filtro_tipo'] ?? '';
 $filtroRevision = $_GET['filtro_revision'] ?? '';
+$fechaIni = $_GET['fecha_ini'] ?? '';
+$fechaFin = $_GET['fecha_fin'] ?? '';
+$fechaIniSql = str_replace('-', '', $fechaIni);
+$fechaFinSql = str_replace('-', '', $fechaFin);
 
 if (isset($_GET['consultar'], $_GET['proveedor'])) {
     $nit = $_GET['proveedor'];
     
+    $resNom = $mysqli->query("SELECT Nombre FROM terceros WHERE CedulaNit='$nit' LIMIT 1");
+    if($rNom = $resNom->fetch_assoc()) {
+        $nombreProveedorActual = $rNom['Nombre'];
+    }
+
     $whereClause = "Nit='$nit' AND Estado='1'";
     if ($filtroTipo === 'F' || $filtroTipo === 'P') {
         $whereClause .= " AND TipoMonto='$filtroTipo'";
     }
     if ($filtroRevision === '1' || $filtroRevision === '0') {
         $whereClause .= " AND idPago='$filtroRevision'";
+    }
+    if (!empty($fechaIniSql) && !empty($fechaFinSql)) {
+        $whereClause .= " AND F_Creacion BETWEEN '$fechaIniSql' AND '$fechaFinSql'";
+    } elseif (!empty($fechaIniSql)) {
+        $whereClause .= " AND F_Creacion >= '$fechaIniSql'";
+    } elseif (!empty($fechaFinSql)) {
+        $whereClause .= " AND F_Creacion <= '$fechaFinSql'";
     }
 
     $resTotal = $mysqli->query("SELECT IFNULL(SUM(Monto),0) total, COUNT(*) cant FROM pagosproveedores WHERE $whereClause");
@@ -194,201 +220,423 @@ if (isset($_GET['consultar'], $_GET['proveedor'])) {
     $totalPaginas = max(1, ceil($rowT['cant'] / $porPagina));
 
     $res = $mysqli->query("SELECT * FROM pagosproveedores WHERE $whereClause ORDER BY F_Creacion DESC, H_Creacion DESC LIMIT $offset,$porPagina");
-    while ($r = $res->fetch_assoc()) { $abonos[] = $r; }
+    if ($res) {
+        while ($r = $res->fetch_assoc()) { 
+            $abonos[] = $r; 
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Cartera Proveedores</title>
+<title>Control Gerencial de Cartera - Proveedores</title>
 <style>
-body{font-family:Arial;background:#f4f4f4}
-.box{background:#fff;padding:15px;border-radius:10px;max-width:1300px;margin:auto}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
-.row input,.row select,.row button{padding:7px;border-radius:6px;border:1px solid #ccc}
-table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;}
-th{background:#007bff;color:#fff;padding:8px;font-size:13px}
-td{padding:6px;border-bottom:1px solid #ddd; text-align:center;vertical-align:middle;}
-.neg{background:#fde2e2}
-.pos{background:#e6fffa}
-.total{background:#eef;padding:8px;border-radius:6px;margin:10px 0;font-weight:bold}
-a{text-decoration:none;font-weight:bold}
-.btn-del{color:#dc3545;font-size:16px;}
-.paginacion{text-align:center;margin-top:10px}
+:root {
+    --primary: #1e293b;
+    --primary-light: #334155;
+    --accent: #0284c7;
+    --success: #059669;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --bg-main: #f8fafc;
+    --card-bg: #ffffff;
+    --border-color: #e2e8f0;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-main);
+    color: var(--text-main);
+    margin: 0;
+    padding: 20px;
+}
+
+.container-fluid {
+    max-width: 1400px;
+    margin: auto;
+}
+
+.card-executive {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    border: 1px solid var(--border-color);
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.header-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+}
+
+.header-title h2 {
+    margin: 0;
+    font-size: 22px;
+    color: var(--primary);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.filter-grid select, .filter-grid input, .filter-grid button {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: #fff;
+    font-size: 14px;
+    color: var(--text-main);
+    box-sizing: border-box;
+}
+
+.filter-grid button {
+    background-color: var(--accent);
+    color: white;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.filter-grid button:hover {
+    background-color: #0369a1;
+}
+
+/* Cabecera del Formulario con Saldo Integrado */
+.form-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.saldo-badge {
+    background: #f1f5f9;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    border: 1px solid var(--border-color);
+}
+
+/* Formulario de Registro Rápido */
+.form-registro {
+    background: #f8fafc;
+    border: 1px dashed var(--border-color);
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.form-registro .row-reg {
+    display: grid;
+    grid-template-columns: 120px 100px 120px 145px 1fr 90px 90px 100px;
+    gap: 8px;
+    align-items: center;
+}
+
+@media(max-width: 1100px) {
+    .form-registro .row-reg {
+        grid-template-columns: 1fr;
+    }
+}
+
+.form-registro input, .form-registro select {
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.form-registro button {
+    background-color: var(--success);
+    color: white;
+    font-weight: 600;
+    border: none;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* Tabla Ejecutiva */
+.table-responsive {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    table-layout: fixed;
+}
+
+th {
+    background: var(--primary);
+    color: #fff;
+    padding: 12px 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
+td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: center;
+    vertical-align: middle;
+    font-size: 13px;
+}
+
+.neg { background-color: #fef2f2 !important; }
+.pos { background-color: #f0fdf4 !important; }
 
 table input, table select {
     width: 100%;
     box-sizing: border-box;
-    padding: 5px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
 }
-.saving { background-color: #ffeeba !important; transition: background 0.3s; }
+
+.saving { background-color: #fef3c7 !important; transition: background 0.3s; }
 
 /* SWITCH */
-.switch { position: relative; display: inline-block; width: 34px; height: 18px; vertical-align: middle; }
+.switch { position: relative; display: inline-block; width: 36px; height: 20px; vertical-align: middle; }
 .switch input { opacity: 0; width: 0; height: 0; }
-.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 18px; }
-.slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-input:checked + .slider { background-color: #2196F3; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 20px; }
+.slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--accent); }
 input:checked + .slider:before { transform: translateX(16px); }
 
-.btn-excel { background-color: #198754; color: white !important; padding: 6px 12px; border-radius: 6px; font-size: 14px; display: inline-block; }
-.btn-excel:hover { background-color: #146c43; }
+.btn-excel {
+    background-color: var(--success);
+    color: white !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+.btn-excel:hover { background-color: #047857; }
+
+.btn-del { color: var(--danger); font-size: 16px; cursor: pointer; }
+.paginacion { text-align: center; margin-top: 20px; font-weight: 600; color: var(--text-muted); }
+.paginacion a { color: var(--accent); margin: 0 8px; }
 </style>
 </head>
 <body>
 
-<div class="box">
-<h2>Cartera por Proveedor</h2>
+<div class="container-fluid">
+    
+    <!-- TARJETA PRINCIPAL DE FILTROS Y CONTROL -->
+    <div class="card-executive">
+        <div class="header-title">
+            <h2>🏢 Control Gerencial de Cartera de Proveedores</h2>
+            <?php if($nit): ?>
+                <a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&fecha_ini=<?= $fechaIni ?>&fecha_fin=<?= $fechaFin ?>&exportar=1" class="btn-excel">
+                    📊 Exportar Reporte Ejecutivo
+                </a>
+            <?php endif; ?>
+        </div>
 
-<form method="GET" class="row">
-    <select name="proveedor" required>
-        <option value="">Seleccione Proveedor</option>
-        <?php while($p=$proveedores->fetch_assoc()): ?>
-        <option value="<?= $p['Nit'] ?>" <?= $p['Nit']==$nit?'selected':'' ?>>
-            <?= $p['Nombre'] ?>
-        </option>
-        <?php endwhile; ?>
-    </select>
+        <!-- FORMULARIO DE FILTRADO -->
+        <form method="GET" class="filter-grid" id="formFiltros">
+            <input type="hidden" name="consultar" value="1">
+            <select name="proveedor" required onchange="this.form.submit()">
+                <option value="">-- Seleccionar Proveedor --</option>
+                <?php while($p = $proveedores->fetch_assoc()): ?>
+                <option value="<?= $p['Nit'] ?>" <?= $p['Nit'] == $nit ? 'selected' : '' ?>>
+                    <?= $p['Nombre'] ?>
+                </option>
+                <?php endwhile; ?>
+            </select>
 
-    <select name="filtro_tipo">
-        <option value="">-- Todos los Tipos --</option>
-        <option value="F" <?= $filtroTipo=='F'?'selected':'' ?>>Solo Facturas (F)</option>
-        <option value="P" <?= $filtroTipo=='P'?'selected':'' ?>>Solo Pagos (P)</option>
-    </select>
+            <select name="filtro_tipo" onchange="this.form.submit()">
+                <option value="">-- Todos los Movimientos --</option>
+                <option value="F" <?= $filtroTipo == 'F' ? 'selected' : '' ?>>Solo Facturas (Pasivos)</option>
+                <option value="P" <?= $filtroTipo == 'P' ? 'selected' : '' ?>>Solo Pagos (Abonos)</option>
+            </select>
 
-    <select name="filtro_revision">
-        <option value="">-- Estado idPago --</option>
-        <option value="1" <?= $filtroRevision=='1'?'selected':'' ?>>Revisados (Sí)</option>
-        <option value="0" <?= $filtroRevision=='0'?'selected':'' ?>>Pendientes (No)</option>
-    </select>
+            <select name="filtro_revision" onchange="this.form.submit()">
+                <option value="">-- Estado de Revisión (idPago) --</option>
+                <option value="1" <?= $filtroRevision == '1' ? 'selected' : '' ?>>Revisados (Sí)</option>
+                <option value="0" <?= $filtroRevision == '0' ? 'selected' : '' ?>>Pendientes (No)</option>
+            </select>
 
-    <button name="consultar" value="1">Consultar</button>
-</form>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:12px; font-weight:600; color:var(--text-muted);">Desde:</label>
+                <input type="date" name="fecha_ini" value="<?= htmlspecialchars($fechaIni) ?>" onchange="this.form.submit()">
+            </div>
 
-<?php if($nit): ?>
-<form method="POST" class="row">
-<input type="hidden" name="proveedor" value="<?= $nit ?>">
-<input type="date" name="fecha" value="<?= date('Y-m-d') ?>" required>
-<select name="tipo">
-<option value="F">Factura</option>
-<option value="P">Pago</option>
-</select>
-<input name="monto" class="monto-mask" placeholder="Monto" required style="width:120px;">
-<input name="numfact_proveedor" placeholder="Nro Factura" style="width:130px;">
-<input name="descripcion" placeholder="Descripción" style="flex:1; min-width:180px;">
-<label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
-    <input type="checkbox" name="id_pago" value="1"> idPago
-</label>
-<label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
-    <input type="checkbox" name="verificado" value="1"> Verificado
-</label>
-<button name="grabar">Grabar</button>
-</form>
-<?php endif; ?>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:12px; font-weight:600; color:var(--text-muted);">Hasta:</label>
+                <input type="date" name="fecha_fin" value="<?= htmlspecialchars($fechaFin) ?>" onchange="this.form.submit()">
+            </div>
 
-<?php if(isset($_GET['consultar'])): ?>
-<div class="total" style="display: flex; justify-content: space-between; align-items: center;">
-    <span>Saldo Pte (Filtro Actual): <?= number_format($total,0,',','.') ?></span>
-    <a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&exportar=1" class="btn-excel">📊 Exportar a Excel</a>
-</div>
+            <button name="consultar" value="1">Aplicar Filtros</button>
+        </form>
+    </div>
 
-<table>
-<colgroup>
-    <col style="width: 9%;">
-    <col style="width: 8%;">
-    <col style="width: 7%;">
-    <col style="width: 13%;">
-    <col style="width: 13%;">
-    <col style="width: 8%;">
-    <col style="width: 8%;">
-    <col style="width: 31%;">
-    <col style="width: 3%;">
-</colgroup>
-<tr>
-<th>Fecha</th>
-<th>Hora</th>
-<th>Tipo</th>
-<th>Monto</th>
-<th>Nro Factura Prov</th>
-<th>idPago</th>
-<th>Verificado</th>
-<th>Descripción</th>
-<th></th>
-</tr>
-
-<?php if(empty($abonos)): ?>
-<tr>
-    <td colspan="9" style="padding: 20px; text-align: center; color: #777;">No se encontraron registros con los filtros seleccionados.</td>
-</tr>
-<?php else: ?>
-    <?php foreach($abonos as $a): 
-        $rowId = "row_" . $a['F_Creacion'] . "_" . str_replace(':', '', $a['H_Creacion']);
-    ?>
-    <tr id="<?= $rowId ?>" class="<?= $a['Monto']<0?'neg':'pos' ?>">
-    <td><?= $a['F_Creacion'] ?></td>
-    <td><?= $a['H_Creacion'] ?></td>
-    <td>
-        <select class="auto-input" data-field="tipo" data-row="<?= $rowId ?>">
-            <option value="F" <?= $a['TipoMonto']=='F'?'selected':'' ?>>F</option>
-            <option value="P" <?= $a['TipoMonto']=='P'?'selected':'' ?>>P</option>
-        </select>
-    </td>
-    <td>
-        <input class="monto-mask auto-input" data-field="monto" data-row="<?= $rowId ?>" style="text-align:right; font-weight:bold;"
-               value="<?= number_format(abs($a['Monto']),0,',','.') ?>">
-    </td>
-    <td>
-        <input class="auto-input" data-field="numfact_proveedor" style="text-align:center;"
-               value="<?= htmlspecialchars($a['NumfactProveedor'] ?? '') ?>">
-    </td>
-    <!-- Check 1: idPago -->
-    <td>
-        <label class="switch">
-            <input type="checkbox" class="auto-input" data-field="id_pago" data-row="<?= $rowId ?>" value="1" <?= $a['idPago']==1?'checked':'' ?>>
-            <span class="slider"></span>
-        </label>
-    </td>
-    <!-- Check 2: Verificado (Nuevo Check de Revisión) -->
-    <td>
-        <label class="switch">
-            <input type="checkbox" class="auto-input" data-field="verificado" data-row="<?= $rowId ?>" value="1" <?= (isset($a['Verificado']) && $a['Verificado']==1)?'checked':'' ?>>
-            <span class="slider"></span>
-        </label>
-    </td>
-    <td>
-        <input class="auto-input" data-field="descripcion" style="text-align:left;"
-               value="<?= htmlspecialchars($a['Descripcion']) ?>">
-    </td>
-    <td>
-        <input type="hidden" class="key-nit" value="<?= $a['Nit'] ?>">
-        <input type="hidden" class="key-fecha" value="<?= $a['F_Creacion'] ?>">
-        <input type="hidden" class="key-hora" value="<?= $a['H_Creacion'] ?>">
+    <?php if($nit && isset($_GET['consultar'])): ?>
         
-        <a class="btn-del"
-           href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&borrar=1&nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
-           onclick="return confirm('¿Eliminar este registro?')">🗑️</a>
-    </td>
-    </tr>
-    <?php endforeach; ?>
-<?php endif; ?>
-</table>
+        <!-- FORMULARIO DE NUEVO REGISTRO CON SALDO PTE AL LADO -->
+        <div class="card-executive">
+            <div class="form-header-row">
+                <h4 style="margin:0; font-size:15px; color:var(--primary);">➕ Registrar Nuevo Movimiento para: <strong><?= htmlspecialchars($nombreProveedorActual) ?></strong></h4>
+                <div class="saldo-badge">
+                    Saldo Pte: <span style="color: <?= $total < 0 ? 'var(--danger)' : 'var(--success)' ?>;">$ <?= number_format($total, 0, ',', '.') ?></span>
+                </div>
+            </div>
 
-<?php if($totalPaginas > 1): ?>
-<div class="paginacion">
-<?php if($pagina>1): ?>
-<a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&page=<?= $pagina-1 ?>">⬅</a>
-<?php endif; ?>
- Página <?= $pagina ?> de <?= $totalPaginas ?>
-<?php if($pagina<$totalPaginas): ?>
-<a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&page=<?= $pagina+1 ?>">➡</a>
-<?php endif; ?>
-</div>
-<?php endif; ?>
+            <form method="POST" class="form-registro" style="margin-bottom: 0;">
+                <input type="hidden" name="proveedor" value="<?= $nit ?>">
+                <div class="row-reg">
+                    <input type="date" name="fecha" value="<?= date('Y-m-d') ?>" required>
+                    <select name="tipo">
+                        <option value="F">Factura</option>
+                        <option value="P">Pago</option>
+                    </select>
+                    <input name="monto" class="monto-mask" placeholder="Monto ($)" required>
+                    <input name="numfact_proveedor" placeholder="Nro Factura Prov.">
+                    <input name="descripcion" placeholder="Descripción u observaciones...">
+                    <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:600;">
+                        <input type="checkbox" name="id_pago" value="1"> idPago
+                    </label>
+                    <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:600;">
+                        <input type="checkbox" name="verificado" value="1"> Verif.
+                    </label>
+                    <button name="grabar">Registrar</button>
+                </div>
+            </form>
+        </div>
 
-<?php endif; ?>
+        <!-- TABLA DE DETALLE DE CARTERA -->
+        <div class="card-executive">
+            <div class="table-responsive">
+                <table>
+                <colgroup>
+                    <col style="width: 9%;">
+                    <col style="width: 8%;">
+                    <col style="width: 7%;">
+                    <col style="width: 13%;">
+                    <col style="width: 13%;">
+                    <col style="width: 8%;">
+                    <col style="width: 8%;">
+                    <col style="width: 31%;">
+                    <col style="width: 3%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Tipo</th>
+                        <th>Monto</th>
+                        <th>Nro Factura</th>
+                        <th>idPago</th>
+                        <th>Verificado</th>
+                        <th>Descripción</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if(empty($abonos)): ?>
+                    <tr>
+                        <td colspan="9" style="padding: 30px; text-align: center; color: var(--text-muted);">No se encontraron registros de cartera bajo los criterios seleccionados.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach($abonos as $a): 
+                        $rowId = "row_" . $a['F_Creacion'] . "_" . str_replace(':', '', $a['H_Creacion']);
+                    ?>
+                    <tr id="<?= $rowId ?>" class="<?= $a['Monto'] < 0 ? 'neg' : 'pos' ?>">
+                        <td><?= $a['F_Creacion'] ?></td>
+                        <td><?= $a['H_Creacion'] ?></td>
+                        <td>
+                            <select class="auto-input" data-field="tipo" data-row="<?= $rowId ?>">
+                                <option value="F" <?= $a['TipoMonto'] == 'F' ? 'selected' : '' ?>>F</option>
+                                <option value="P" <?= $a['TipoMonto'] == 'P' ? 'selected' : '' ?>>P</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input class="monto-mask auto-input" data-field="monto" data-row="<?= $rowId ?>" style="text-align:right; font-weight:bold;"
+                                   value="<?= number_format(abs($a['Monto']), 0, ',', '.') ?>">
+                        </td>
+                        <td>
+                            <input class="auto-input" data-field="numfact_proveedor" style="text-align:center;"
+                                   value="<?= htmlspecialchars($a['NumfactProveedor'] ?? '') ?>">
+                        </td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" class="auto-input" data-field="id_pago" data-row="<?= $rowId ?>" value="1" <?= $a['idPago'] == 1 ? 'checked' : '' ?>>
+                                <span class="slider"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <label class="switch">
+                                <input type="checkbox" class="auto-input" data-field="verificado" data-row="<?= $rowId ?>" value="1" <?= (isset($a['Verificado']) && $a['Verificado'] == 1) ? 'checked' : '' ?>>
+                                <span class="slider"></span>
+                            </label>
+                        </td>
+                        <td>
+                            <input class="auto-input" data-field="descripcion" style="text-align:left;"
+                                   value="<?= htmlspecialchars($a['Descripcion']) ?>">
+                        </td>
+                        <td>
+                            <input type="hidden" class="key-nit" value="<?= $a['Nit'] ?>">
+                            <input type="hidden" class="key-fecha" value="<?= $a['F_Creacion'] ?>">
+                            <input type="hidden" class="key-hora" value="<?= $a['H_Creacion'] ?>">
+                            
+                            <a class="btn-del"
+                               href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&fecha_ini=<?= $fechaIni ?>&fecha_fin=<?= $fechaFin ?>&borrar=1&nit=<?= $a['Nit'] ?>&f=<?= $a['F_Creacion'] ?>&h=<?= $a['H_Creacion'] ?>"
+                               onclick="return confirm('¿Está seguro de eliminar este registro de cartera?')" title="Eliminar registro">🗑️</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINACIÓN -->
+            <?php if($totalPaginas > 1): ?>
+            <div class="paginacion">
+                <?php if($pagina > 1): ?>
+                    <a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&fecha_ini=<?= $fechaIni ?>&fecha_fin=<?= $fechaFin ?>&page=<?= $pagina - 1 ?>">⬅ Anterior</a>
+                <?php endif; ?>
+                 Página <?= $pagina ?> de <?= $totalPaginas ?> 
+                <?php if($pagina < $totalPaginas): ?>
+                    <a href="?proveedor=<?= $nit ?>&consultar=1&filtro_tipo=<?= $filtroTipo ?>&filtro_revision=<?= $filtroRevision ?>&fecha_ini=<?= $fechaIni ?>&fecha_fin=<?= $fechaFin ?>&page=<?= $pagina + 1 ?>">Siguiente ➡</a>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+
+    <?php endif; ?>
 
 </div>
 
@@ -403,7 +651,7 @@ document.querySelectorAll('.monto-mask').forEach(input => {
     input.addEventListener('input', () => aplicarMascara(input));
 });
 
-// ESCUCHAR CAMBIOS PARA GUARDADO AUTOMÁTICO (AJAX)
+// GUARDADO AUTOMÁTICO VÍA AJAX CON FEEDBACK VISUAL GERENCIAL
 document.querySelectorAll('.auto-input').forEach(input => {
     input.addEventListener('change', function() {
         const tr = this.closest('tr');
@@ -440,18 +688,14 @@ document.querySelectorAll('.auto-input').forEach(input => {
         .then(data => {
             tr.classList.remove('saving');
             if(!data.success) {
-                alert('Error al guardar automáticamente los cambios.');
+                alert('Aviso: No se pudo sincronizar el cambio automáticamente.');
             } else {
-                if(tipo === 'F') {
-                    tr.className = 'neg';
-                } else {
-                    tr.className = 'pos';
-                }
+                tr.className = (tipo === 'F') ? 'neg' : 'pos';
             }
         })
         .catch(err => {
             tr.classList.remove('saving');
-            alert('Error de conexión.');
+            alert('Error de red al intentar actualizar el registro.');
         });
     });
 });
