@@ -81,48 +81,60 @@ function precioPromCompra(?mysqli $db, array $barcodes = []): array
     return $out;
 }
 
-function consultarProductosSede(?mysqli $db, string $termino, string $q, array $skusPorCat): array
+function consultarProductosSede(?mysqli $db, string $termino, string $q, array $skusPorCat, string $estadoFiltro = '1'): array
 {
     if (!$db || $db->connect_errno) {
         return [];
     }
 
-    $baseSelect = "SELECT p.barcode, p.descripcion, p.estado,
-                          IFNULL(p.precioventa, 0) AS precioventa,
-                          IFNULL(p.precioespecial1, 0) AS precioespecial1,
-                          IFNULL(p.precioespecial2, 0) AS precioespecial2,
-                          IFNULL(SUM(i.cantidad), 0) AS stock
-                   FROM productos p
-                   LEFT JOIN inventario i ON p.idproducto = i.idproducto";
+    $whereParts = [];
+    $types = '';
+    $params = [];
 
-    if ($termino === '') {
-        $sqlProd = "{$baseSelect} GROUP BY p.barcode LIMIT 40";
-        $stmtProd = $db->prepare($sqlProd);
-    } elseif (!empty($skusPorCat)) {
-        $placeholdersSku = implode(',', array_fill(0, count($skusPorCat), '?'));
-        $sqlProd = "{$baseSelect}
-                    WHERE (p.barcode LIKE ? OR p.descripcion LIKE ? OR p.barcode IN ({$placeholdersSku}))
-                    GROUP BY p.barcode
-                    LIMIT 40";
-        $stmtProd = $db->prepare($sqlProd);
-        if ($stmtProd) {
-            $types = 'ss' . str_repeat('s', count($skusPorCat));
-            $params = array_merge([$q, $q], $skusPorCat);
-            $stmtProd->bind_param($types, ...$params);
-        }
-    } else {
-        $sqlProd = "{$baseSelect}
-                    WHERE (p.barcode LIKE ? OR p.descripcion LIKE ?)
-                    GROUP BY p.barcode
-                    LIMIT 40";
-        $stmtProd = $db->prepare($sqlProd);
-        if ($stmtProd) {
-            $stmtProd->bind_param("ss", $q, $q);
+    if ($estadoFiltro === '1' || $estadoFiltro === '0') {
+        $whereParts[] = "p.estado = ?";
+        $types .= 'i';
+        $params[] = (int)$estadoFiltro;
+    }
+
+    if ($termino !== '') {
+        if (!empty($skusPorCat)) {
+            $placeholdersSku = implode(',', array_fill(0, count($skusPorCat), '?'));
+            $whereParts[] = "(p.barcode LIKE ? OR p.descripcion LIKE ? OR p.barcode IN ({$placeholdersSku}))";
+            $types .= 'ss' . str_repeat('s', count($skusPorCat));
+            $params[] = $q;
+            $params[] = $q;
+            foreach ($skusPorCat as $sku) {
+                $params[] = (string)$sku;
+            }
+        } else {
+            $whereParts[] = "(p.barcode LIKE ? OR p.descripcion LIKE ?)";
+            $types .= 'ss';
+            $params[] = $q;
+            $params[] = $q;
         }
     }
 
+    $whereSql = !empty($whereParts) ? ('WHERE ' . implode(' AND ', $whereParts)) : '';
+
+    $sqlProd = "SELECT p.barcode, p.descripcion, p.estado,
+                       IFNULL(p.precioventa, 0) AS precioventa,
+                       IFNULL(p.precioespecial1, 0) AS precioespecial1,
+                       IFNULL(p.precioespecial2, 0) AS precioespecial2,
+                       IFNULL(SUM(i.cantidad), 0) AS stock
+                FROM productos p
+                LEFT JOIN inventario i ON p.idproducto = i.idproducto
+                {$whereSql}
+                GROUP BY p.barcode
+                LIMIT 40";
+
+    $stmtProd = $db->prepare($sqlProd);
     if (!$stmtProd) {
         return [];
+    }
+
+    if ($types !== '') {
+        $stmtProd->bind_param($types, ...$params);
     }
 
     $stmtProd->execute();
@@ -305,6 +317,11 @@ if ($action === 'filter') {
         $sedeFiltro = 'todas';
     }
 
+    $estadoFiltro = trim($_POST['estado'] ?? '1');
+    if (!in_array($estadoFiltro, ['1', '0', 'todos'], true)) {
+        $estadoFiltro = '1';
+    }
+
     $termino = trim($_POST['buscar'] ?? '');
     $q = "%{$termino}%";
 
@@ -357,15 +374,15 @@ if ($action === 'filter') {
         }
     }
 
-    $mapCentral = consultarProductosSede($dbCentral, $termino, $q, $skusPorCat);
-    $mapDrinks  = consultarProductosSede($dbDrinks, $termino, $q, $skusPorCat);
+    $mapCentral = consultarProductosSede($dbCentral, $termino, $q, $skusPorCat, $estadoFiltro);
+    $mapDrinks  = consultarProductosSede($dbDrinks, $termino, $q, $skusPorCat, $estadoFiltro);
 
     $barcodes = array_values(array_unique(array_merge(array_keys($mapCentral), array_keys($mapDrinks))));
     $barcodes = array_slice($barcodes, 0, 50);
 
     if (empty($barcodes)) {
         echo json_encode([
-            'html' => "<tr><td colspan='14'>No se encontraron productos en las sedes consultadas</td></tr>"
+            'html' => "<tr><td colspan='14'>No se encontraron productos con el filtro seleccionado</td></tr>"
         ]);
         exit;
     }
@@ -464,7 +481,7 @@ if ($action === 'filter') {
     }
 
     echo json_encode([
-        'html' => $html ?: "<tr><td colspan='14'>No se encontraron productos para la sede seleccionada</td></tr>"
+        'html' => $html ?: "<tr><td colspan='14'>No se encontraron productos con el filtro seleccionado</td></tr>"
     ]);
     exit;
 }
@@ -624,13 +641,13 @@ if ($action === 'toggle_status') {
             align-items: stretch;
         }
 
-        #sede {
+        .filter-select {
             padding: 10px 12px;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
             font-size: 14px;
             background: #fff;
-            min-width: 170px;
+            min-width: 165px;
         }
 
         #search {
@@ -847,7 +864,7 @@ if ($action === 'toggle_status') {
             .container { padding: 12px; border-radius: 8px; }
             .header-top { flex-direction: column; align-items: stretch; }
             .stock-summary-pill { text-align: center; white-space: normal; }
-            #sede, .bulk-toggle { width: 100%; justify-content: center; }
+            .filter-select, .bulk-toggle { width: 100%; justify-content: center; }
 
             .table-wrap {
                 border: none;
@@ -935,10 +952,15 @@ if ($action === 'toggle_status') {
     </div>
 
     <div class="toolbar">
-        <select id="sede" aria-label="Seleccionar sede">
+        <select id="sede" class="filter-select" aria-label="Seleccionar sede">
             <option value="todas">Sedes: Central y Drinks</option>
             <option value="central">Solo Sede: Central</option>
             <option value="drinks">Solo Sede: Drinks</option>
+        </select>
+        <select id="estado-filtro" class="filter-select" aria-label="Filtrar por estado">
+            <option value="1" selected>Estado: Solo Activos</option>
+            <option value="0">Estado: Solo Inactivos</option>
+            <option value="todos">Estado: Todos</option>
         </select>
         <input type="text" id="search" placeholder="Buscar por código o nombre de categoría, código de barras o descripción...">
         <label class="bulk-toggle" id="bulk-label" title="Replica el precio modificado en todos los productos visibles de la misma categoría">
@@ -1007,13 +1029,19 @@ if ($action === 'toggle_status') {
 
     function cargarRelaciones() {
         const sede = $('#sede').val();
+        const estado = $('#estado-filtro').val();
         const buscar = $('#search').val();
 
         if (activeRequest && activeRequest.readyState !== 4) {
             activeRequest.abort();
         }
 
-        activeRequest = $.post('', { action: 'filter', sede: sede, buscar: buscar }, function(res) {
+        activeRequest = $.post('', {
+            action: 'filter',
+            sede: sede,
+            estado: estado,
+            buscar: buscar
+        }, function(res) {
             $('#rel-tbody').html(res.html);
             recalcularStockVisible();
         }, 'json');
@@ -1048,7 +1076,7 @@ if ($action === 'toggle_status') {
         $('#bulk-label').toggleClass('active', $(this).is(':checked'));
     });
 
-    $('#sede').on('change', function() {
+    $('#sede, #estado-filtro').on('change', function() {
         cargarRelaciones();
     });
 
@@ -1057,7 +1085,6 @@ if ($action === 'toggle_status') {
         debounceTimer = setTimeout(() => cargarRelaciones(), 220);
     });
 
-    // Actualizar stock editable por sede
     $(document).on('change', '.stock-input', function() {
         const $inp  = $(this);
         const $fila = $inp.closest('tr');
