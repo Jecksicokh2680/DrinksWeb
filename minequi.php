@@ -448,8 +448,8 @@ if ($resultado && $resultado->num_rows > 0) {
     <div class="row align-items-center justify-content-between g-2 pt-2 mb-3">        
         <div class="col-12 col-md-auto d-flex align-items-center flex-wrap gap-2">
             <button id="btnSincronizar" onclick="sincronizarBanco();" class="btn btn-success btn-sm w-100 w-md-auto text-nowrap px-3 py-2 py-md-1">🔄 Sincronizar Banco</button>            
-            <button onclick="window.print();" class="btn btn-outline-dark btn-sm text-nowrap px-3 py-2 py-md-1">🖨️ Imprimir Listado</button>
-            <button onclick="reproducirAlertaYVoz('Prueba de audio activada', 0)" class="btn btn-outline-primary btn-sm text-nowrap px-3 py-2 py-md-1">🔊 Probar Voz</button>
+            <button onclick="window.print();" class="btn btn-outline-dark btn-sm text-nowrap px-3 py-2 py-md-1">🖨️ Imprimir</button>
+            <!-- <button onclick="reproducirAlertaYVoz('Prueba de audio activada', 0)" class="btn btn-outline-primary btn-sm text-nowrap px-3 py-2 py-md-1">🔊 Probar Voz</button> -->
 
             <?php if ($esAdminStock): ?>
                 <button onclick="actualizarSucursalUnica();" class="btn btn-outline-secondary btn-sm p-1" title="Actualizar Sucursal a 1" style="font-size: 0.75rem; line-height: 1;">⚙️</button>
@@ -467,7 +467,7 @@ if ($resultado && $resultado->num_rows > 0) {
             <?php endif; ?>
 
             <small class="text-muted fw-medium text-nowrap" style="font-size: 0.85rem;">
-                ⏱️ Próxima actualización: <span id="timer" class="text-danger fw-bold">03:00</span>
+                ⏱️ Ref en : <span id="timer" class="text-danger fw-bold">03:00</span>
             </small>
         </div>
     </div>
