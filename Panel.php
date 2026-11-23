@@ -426,7 +426,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="Empresas_Productoras.php" target="contentFrame">Crear Empresas Productoras</a>                                    
                                     <a class="nav-link" href="familias.php" target="contentFrame">Crear Familias</a>                                
                                     <a class="nav-link" href="Categorias.php" target="contentFrame">Crear Categorías</a>
-                                    <!-- <a class="nav-link" href="Productos.php" target="contentFrame">Listar y Modificar Productos</a> -->
+                                    <a class="nav-link" href="Productos.php" target="contentFrame">Modificar Productos</a>
                                     <a class="nav-link" href="CategoriaProducto.php" target="contentFrame">Relacionar Producto/Categoria</a>                                    
                                     <a class="nav-link" href="actualizaprocat.php" target="contentFrame">Sincronizar Productos en Categorias</a>
                                     <a class="nav-link" href="Precios.php" target="contentFrame">Modificar Precios en Productos</a>
