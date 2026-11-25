@@ -295,9 +295,6 @@ function abrirPopup(event, url) {
                         <a class="nav-link" href="ColaboradorFicha.php" target="contentFrame">👤 Ficha Demografica Colaborador</a>
                         <a class="nav-link" href="ColaboradorRequisitos.php" target="contentFrame">Requisitos Hv </a>
                         <a class="nav-link" href="ColaboradorChecklistControl.php" target="contentFrame">Checklist Control </a>
-                        <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
-                        <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
-                        <a class="nav-link" href="Preliquidacion.php" target="contentFrame">Preliquidacion</a>
                                                 
                     </div>
                 </div>
@@ -412,6 +409,11 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="CrearColaborador.php" target="contentFrame">Crear Colaborador</a>
                                     <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
                                     <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+                                    <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
+                                    <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+                                    <a class="nav-link" href="Preliquidacion.php" target="contentFrame">Preliquidacion</a>
+                        
+                                
                                 </div>
                             </div>
                         </div>
