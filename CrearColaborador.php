@@ -18,6 +18,12 @@ if (!file_exists($directorio_fotos)) {
     mkdir($directorio_fotos, 0777, true);
 }
 
+// Helper para limpiar y mantener nombres completos en mayúsculas/legibles
+function formatearNombreCompleto(?string $texto): string {
+    $limpio = preg_replace('/\s+/u', ' ', trim((string)($texto ?? '')));
+    return $limpio !== '' ? mb_strtoupper($limpio, 'UTF-8') : 'NO SINCRONIZADO';
+}
+
 /* ============================================================
     LÓGICA AJAX: CONSULTAR SI EL COLABORADOR YA EXISTE
    ============================================================ */
@@ -54,22 +60,21 @@ if (isset($_POST['importar_terceros'])) {
             while ($tc = $resCen->fetch_assoc()) {
                 $nit = $mysqli->real_escape_string(trim($tc['nit'] ?? ''));
                 if (empty($nit)) continue;
-                
-                // El campo 'nombres' almacena tanto personas naturales como la razón social de empresas (ej. DAVIVIENDA)
-                $nombresStr = trim($tc['nombres'] ?? 'Sin Nombre');
-                
-                $nom   = $mysqli->real_escape_string(preg_replace('/\s+/', ' ', $nombresStr));
+
+                // El campo 'nombres' almacena nombres completos o razón social
+                $nombresStr = preg_replace('/\s+/u', ' ', trim($tc['nombres'] ?? 'Sin Nombre'));
+                $nom   = $mysqli->real_escape_string($nombresStr);
                 $com   = $mysqli->real_escape_string(trim($tc['nomcomercial'] ?? ''));
                 $mail  = $mysqli->real_escape_string(trim($tc['email'] ?? ''));
 
-                $sqlInsCen = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                $sqlInsCen = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado)
                               VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                              ON DUPLICATE KEY UPDATE 
-                              Nombre = VALUES(Nombre), 
-                              NombreCom = VALUES(NombreCom), 
-                              Email = VALUES(Email), 
+                              ON DUPLICATE KEY UPDATE
+                              Nombre = VALUES(Nombre),
+                              NombreCom = VALUES(NombreCom),
+                              Email = VALUES(Email),
                               Estado = 1";
-                              
+
                 if ($mysqli->query($sqlInsCen)) {
                     $importadosCentral++;
                 } else {
@@ -87,21 +92,20 @@ if (isset($_POST['importar_terceros'])) {
             while ($td = $resDrk->fetch_assoc()) {
                 $nit = $mysqli->real_escape_string(trim($td['nit'] ?? ''));
                 if (empty($nit)) continue;
-                
-                $nombresStr = trim($td['nombres'] ?? 'Sin Nombre');
 
-                $nom   = $mysqli->real_escape_string(preg_replace('/\s+/', ' ', $nombresStr));
+                $nombresStr = preg_replace('/\s+/u', ' ', trim($td['nombres'] ?? 'Sin Nombre'));
+                $nom   = $mysqli->real_escape_string($nombresStr);
                 $com   = $mysqli->real_escape_string(trim($td['nomcomercial'] ?? ''));
                 $mail  = $mysqli->real_escape_string(trim($td['email'] ?? ''));
 
-                $sqlInsDrk = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) 
+                $sqlInsDrk = "INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado)
                               VALUES ('$nit', '$nit', '$nom', '$com', '$mail', 1)
-                              ON DUPLICATE KEY UPDATE 
-                              Nombre = VALUES(Nombre), 
-                              NombreCom = VALUES(NombreCom), 
-                              Email = VALUES(Email), 
+                              ON DUPLICATE KEY UPDATE
+                              Nombre = VALUES(Nombre),
+                              NombreCom = VALUES(NombreCom),
+                              Email = VALUES(Email),
                               Estado = 1";
-                              
+
                 if ($mysqli->query($sqlInsDrk)) {
                     $importadosDrinks++;
                 }
@@ -119,7 +123,7 @@ if (isset($_POST['importar_terceros'])) {
    ============================================================ */
 if (isset($_GET['eliminar_id'])) {
     $id_a_borrar = intval($_GET['eliminar_id']);
-    
+
     $resOld = $mysqli->query("SELECT url_foto FROM colaborador WHERE id = $id_a_borrar");
     if ($rowOld = $resOld->fetch_assoc()) {
         if (!empty($rowOld['url_foto']) && file_exists($rowOld['url_foto'])) {
@@ -129,7 +133,7 @@ if (isset($_GET['eliminar_id'])) {
 
     $stmtDel = $mysqli->prepare("DELETE FROM colaborador WHERE id = ?");
     $stmtDel->bind_param("i", $id_a_borrar);
-    
+
     if ($stmtDel->execute()) {
         header("Location: " . $_SERVER['PHP_SELF'] . "?msg=deleted");
         exit();
@@ -143,10 +147,10 @@ if (isset($_GET['eliminar_id'])) {
 if (isset($_GET['retirar_id'])) {
     $id_a_retirar = intval($_GET['retirar_id']);
     $fecha_hoy = date('Y-m-d');
-    
+
     $stmtRet = $mysqli->prepare("UPDATE colaborador SET estado = 'INACTIVO', fecha_retiro = ? WHERE id = ?");
     $stmtRet->bind_param("si", $fecha_hoy, $id_a_retirar);
-    
+
     if ($stmtRet->execute()) {
         header("Location: " . $_SERVER['PHP_SELF'] . "?msg=retired");
         exit();
@@ -190,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
             $ext = strtolower(pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION));
             $permitidas = ['jpg', 'jpeg', 'png', 'webp'];
-            
+
             if (in_array($ext, $permitidas)) {
                 $nombre_archivo = "collab_" . $cedula . "_" . time() . "." . $ext;
                 $ruta_foto = $directorio_fotos . $nombre_archivo;
@@ -202,13 +206,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
         $checkT = $mysqli->query("SELECT CedulaNit FROM terceros WHERE CedulaNit = '$cedula'");
         if ($checkT->num_rows == 0) {
             $encontradoTercero = false;
-            
+
             if (isset($mysqliPos) && $mysqliPos) {
                 $resC = $mysqliPos->query("SELECT * FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resC && $rowC = $resC->fetch_assoc()) {
-                    $nomC = $mysqli->real_escape_string($rowC['nombres'] ?? '');
-                    $comC = $mysqli->real_escape_string($rowC['nomcomercial'] ?? '');
-                    $emC  = $mysqli->real_escape_string($rowC['email'] ?? '');
+                    $nomC = $mysqli->real_escape_string(preg_replace('/\s+/u', ' ', trim($rowC['nombres'] ?? '')));
+                    $comC = $mysqli->real_escape_string(trim($rowC['nomcomercial'] ?? ''));
+                    $emC  = $mysqli->real_escape_string(trim($rowC['email'] ?? ''));
                     $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomC', '$comC', '$emC', 1)");
                     $encontradoTercero = true;
                 }
@@ -217,9 +221,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             if (!$encontradoTercero && isset($mysqliDrinks) && $mysqliDrinks) {
                 $resD = $mysqliDrinks->query("SELECT * FROM terceros WHERE nit = '$cedula' LIMIT 1");
                 if ($resD && $rowD = $resD->fetch_assoc()) {
-                    $nomD = $mysqli->real_escape_string($rowD['nombres'] ?? '');
-                    $comD = $mysqli->real_escape_string($rowD['nomcomercial'] ?? '');
-                    $emD  = $mysqli->real_escape_string($rowD['email'] ?? '');
+                    $nomD = $mysqli->real_escape_string(preg_replace('/\s+/u', ' ', trim($rowD['nombres'] ?? '')));
+                    $comD = $mysqli->real_escape_string(trim($rowD['nomcomercial'] ?? ''));
+                    $emD  = $mysqli->real_escape_string(trim($rowD['email'] ?? ''));
                     $mysqli->query("INSERT INTO terceros (IdTercero, CedulaNit, Nombre, NombreCom, Email, Estado) VALUES ('$cedula', '$cedula', '$nomD', '$comD', '$emD', 1)");
                 }
             }
@@ -243,36 +247,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
                     }
                 }
 
-                $sqlUpdAuto = "UPDATE colaborador SET 
-                    salario = ?, tipo_contrato = ?, nivel_arl = ?, cargo = ?, 
-                    jornada_laboral = ?, fecha_ingreso = ?, fecha_nacimiento = ?, genero = ?, estado_civil = ?, 
-                    grupo_sanguineo = ?, nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?, 
-                    llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?, url_foto = ? 
+                $sqlUpdAuto = "UPDATE colaborador SET
+                    salario = ?, tipo_contrato = ?, nivel_arl = ?, cargo = ?,
+                    jornada_laboral = ?, fecha_ingreso = ?, fecha_nacimiento = ?, genero = ?, estado_civil = ?,
+                    grupo_sanguineo = ?, nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?,
+                    llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?, url_foto = ?
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
                 $stmtUpdAuto->bind_param(
                     "dsissssssssisssssssssi",
-                    $salario, $tipo_con, $arl_num, $cargo, 
-                    $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil, 
-                    $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
+                    $salario, $tipo_con, $arl_num, $cargo,
+                    $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil,
+                    $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta,
                     $llave_payment, $eps, $fondo_pensiones, $fondo_cesantias, $arl_txt, $email,
                     $ruta_foto, $idExistente
                 );
             } else {
-                $sqlUpdAuto = "UPDATE colaborador SET 
-                    salario = ?, tipo_contrato = ?, nivel_arl = ?, cargo = ?, 
-                    jornada_laboral = ?, fecha_ingreso = ?, fecha_nacimiento = ?, genero = ?, estado_civil = ?, 
-                    grupo_sanguineo = ?, nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?, 
-                    llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ? 
+                $sqlUpdAuto = "UPDATE colaborador SET
+                    salario = ?, tipo_contrato = ?, nivel_arl = ?, cargo = ?,
+                    jornada_laboral = ?, fecha_ingreso = ?, fecha_nacimiento = ?, genero = ?, estado_civil = ?,
+                    grupo_sanguineo = ?, nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?,
+                    llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?
                     WHERE id = ?";
 
                 $stmtUpdAuto = $mysqli->prepare($sqlUpdAuto);
                 $stmtUpdAuto->bind_param(
                     "dsissssssssissssssssi",
-                    $salario, $tipo_con, $arl_num, $cargo, 
-                    $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil, 
-                    $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
+                    $salario, $tipo_con, $arl_num, $cargo,
+                    $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil,
+                    $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta,
                     $llave_payment, $eps, $fondo_pensiones, $fondo_cesantias, $arl_txt, $email,
                     $idExistente
                 );
@@ -288,17 +292,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
             $stmtCheck->close();
 
             $stmtIns = $mysqli->prepare("INSERT INTO colaborador (
-                CedulaNit, NitEmpresa, IdSucursal, salario, tipo_contrato, nivel_arl, cargo, 
-                jornada_laboral, fecha_ingreso, estado, fecha_nacimiento, genero, estado_civil, 
-                grupo_sanguineo, nivel_educativo, estrato_socioeconomico, direccion, numero_cuenta, 
+                CedulaNit, NitEmpresa, IdSucursal, salario, tipo_contrato, nivel_arl, cargo,
+                jornada_laboral, fecha_ingreso, estado, fecha_nacimiento, genero, estado_civil,
+                grupo_sanguineo, nivel_educativo, estrato_socioeconomico, direccion, numero_cuenta,
                 llave_payment, eps, fondo_pensiones, fondo_cesantias, arl, url_foto, email
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
             $stmtIns->bind_param(
                 "ssidsissssssssisssssssss",
-                $cedula, $NitEmpresa, $IdSucursal, $salario, $tipo_con, $arl_num, $cargo, 
-                $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil, 
-                $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
+                $cedula, $NitEmpresa, $IdSucursal, $salario, $tipo_con, $arl_num, $cargo,
+                $jornada, $fecha, $fecha_nacimiento, $genero, $estado_civil,
+                $grupo_sanguineo, $nivel_educativo, $estrato, $direccion, $numero_cuenta,
                 $llave_payment, $eps, $fondo_pensiones, $fondo_cesantias, $arl_txt, $ruta_foto, $email
             );
 
@@ -317,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_colaborador']
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_complementarios'])) {
     $id_colaborador    = intval($_POST['id_colaborador']);
     $nuevo_nit_empresa = $_POST['edit_nit_empresa'];
-    
+
     $salario          = floatval($_POST['edit_salario']);
     $tipo_con         = $_POST['edit_tipo_contrato'];
     $cargo            = $_POST['edit_cargo'];
@@ -339,11 +343,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_complement
     $email            = $_POST['edit_email'] ?? null;
 
     $ruta_nueva = null;
-    
+
     if (isset($_FILES['edit_foto']) && $_FILES['edit_foto']['error'] === UPLOAD_ERR_OK) {
         $ext = strtolower(pathinfo($_FILES['edit_foto']['name'], PATHINFO_EXTENSION));
         $permitidas = ['jpg', 'jpeg', 'png', 'webp'];
-        
+
         if (in_array($ext, $permitidas)) {
             $resOld = $mysqli->query("SELECT url_foto FROM colaborador WHERE id = $id_colaborador");
             if ($rowOld = $resOld->fetch_assoc()) {
@@ -359,36 +363,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['actualizar_complement
     }
 
     if (!empty($ruta_nueva)) {
-        $sqlUpd = "UPDATE colaborador SET 
-            NitEmpresa = ?, salario = ?, tipo_contrato = ?, cargo = ?, jornada_laboral = ?, nivel_arl = ?, 
-            fecha_nacimiento = ?, genero = ?, estado_civil = ?, grupo_sanguineo = ?, 
-            nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?, 
-            llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?, url_foto = ? 
+        $sqlUpd = "UPDATE colaborador SET
+            NitEmpresa = ?, salario = ?, tipo_contrato = ?, cargo = ?, jornada_laboral = ?, nivel_arl = ?,
+            fecha_nacimiento = ?, genero = ?, estado_civil = ?, grupo_sanguineo = ?,
+            nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?,
+            llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?, url_foto = ?
             WHERE id = ?";
 
         $stmtUpd = $mysqli->prepare($sqlUpd);
         $stmtUpd->bind_param(
             "sdsssisssssissssssssssi",
-            $nuevo_nit_empresa, $salario, $tipo_con, $cargo, $jornada, $arl_num, 
-            $fecha_nacimiento, $genero, $estado_civil, $grupo_sanguineo, 
-            $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
+            $nuevo_nit_empresa, $salario, $tipo_con, $cargo, $jornada, $arl_num,
+            $fecha_nacimiento, $genero, $estado_civil, $grupo_sanguineo,
+            $nivel_educativo, $estrato, $direccion, $numero_cuenta,
             $llave_payment, $eps, $fondo_pensiones, $fondo_cesantias, $arl_txt, $email,
             $ruta_nueva, $id_colaborador
         );
     } else {
-        $sqlUpd = "UPDATE colaborador SET 
-            NitEmpresa = ?, salario = ?, tipo_contrato = ?, cargo = ?, jornada_laboral = ?, nivel_arl = ?, 
-            fecha_nacimiento = ?, genero = ?, estado_civil = ?, grupo_sanguineo = ?, 
-            nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?, 
-            llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ? 
+        $sqlUpd = "UPDATE colaborador SET
+            NitEmpresa = ?, salario = ?, tipo_contrato = ?, cargo = ?, jornada_laboral = ?, nivel_arl = ?,
+            fecha_nacimiento = ?, genero = ?, estado_civil = ?, grupo_sanguineo = ?,
+            nivel_educativo = ?, estrato_socioeconomico = ?, direccion = ?, numero_cuenta = ?,
+            llave_payment = ?, eps = ?, fondo_pensiones = ?, fondo_cesantias = ?, arl = ?, email = ?
             WHERE id = ?";
 
         $stmtUpd = $mysqli->prepare($sqlUpd);
         $stmtUpd->bind_param(
             "sdsssisssssissssssssi",
-            $nuevo_nit_empresa, $salario, $tipo_con, $cargo, $jornada, $arl_num, 
-            $fecha_nacimiento, $genero, $estado_civil, $grupo_sanguineo, 
-            $nivel_educativo, $estrato, $direccion, $numero_cuenta, 
+            $nuevo_nit_empresa, $salario, $tipo_con, $cargo, $jornada, $arl_num,
+            $fecha_nacimiento, $genero, $estado_civil, $grupo_sanguineo,
+            $nivel_educativo, $estrato, $direccion, $numero_cuenta,
             $llave_payment, $eps, $fondo_pensiones, $fondo_cesantias, $arl_txt, $email,
             $id_colaborador
         );
@@ -414,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_emergencia'])
 
     $stmtEmerg = $mysqli->prepare("INSERT INTO colaborador_emergencia (colaborador_id, nombre_contacto, parentesco, celular_1, celular_2, es_principal) VALUES (?, ?, ?, ?, ?, ?)");
     $stmtEmerg->bind_param("issssi", $colaborador_id, $nombre_contacto, $parentesco, $celular_1, $celular_2, $es_principal);
-    
+
     if ($stmtEmerg->execute()) {
         header("Location: " . $_SERVER['PHP_SELF'] . "?msg=emergencia_saved");
         exit();
@@ -459,26 +463,106 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
     <title>Gestión de Colaboradores</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body, html { height: 100%; background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
-        .full-screen-container { min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; }
-        .card-custom { border: none; border-radius: 15px; border-top: 6px solid #0d6efd; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05); }
+        html, body {
+            max-width: 100%;
+            min-height: 100%;
+            background-color: #f0f2f5;
+            font-family: 'Segoe UI', sans-serif;
+            overflow-x: hidden;
+        }
+        .full-screen-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card-custom {
+            border: none;
+            border-radius: 15px;
+            border-top: 6px solid #0d6efd;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.05);
+        }
+        .nombre-completo-cell {
+            white-space: normal !important;
+            word-break: break-word;
+            min-width: 190px;
+        }
+        .acciones-grupo {
+            display: inline-flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        /* Modo tarjeta en pantallas pequeñas para tablas dentro de modales */
+        @media (max-width: 767.98px) {
+            .table-mobile-cards thead {
+                display: none;
+            }
+            .table-mobile-cards,
+            .table-mobile-cards tbody,
+            .table-mobile-cards tr,
+            .table-mobile-cards td {
+                display: block;
+                width: 100%;
+            }
+            .table-mobile-cards tbody tr {
+                background-color: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 0.65rem;
+                margin-bottom: 0.75rem;
+                padding: 0.5rem 0.75rem;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+            .table-mobile-cards tbody td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 0.75rem;
+                padding: 0.4rem 0 !important;
+                border: none !important;
+                border-bottom: 1px solid #f1f3f5 !important;
+                text-align: right !important;
+                white-space: normal !important;
+            }
+            .table-mobile-cards tbody td:last-child {
+                border-bottom: none !important;
+                padding-top: 0.55rem !important;
+            }
+            .table-mobile-cards tbody td[data-label]::before {
+                content: attr(data-label);
+                font-weight: 700;
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                color: #6c757d;
+                text-align: left;
+                flex-shrink: 0;
+            }
+            .nombre-completo-cell {
+                min-width: 0;
+            }
+        }
     </style>
 </head>
 <body class="py-3 px-2 px-md-4">
 
-<div class="container-fluid full-screen-container max-w-100" style="max-width: 1400px; margin: 0 auto;">
-    
+<div class="container-fluid full-screen-container">
+
     <div>
         <?= $mensaje ?? '' ?>
 
         <!-- BARRA SUPERIOR DE SINCRONIZACIÓN -->
         <div class="card mb-3 shadow-sm border-0 rounded-4">
-            <div class="card-body py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-center bg-white rounded-4 gap-2">
+            <div class="card-body py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center bg-white rounded-4 gap-2">
                 <div>
                     <h6 class="mb-0 fw-bold text-primary">Sincronización de Datos</h6>
                     <small class="text-muted">Actualiza terceros desde las bases Central y Drinks</small>
                 </div>
-                <form method="POST" class="w-100 w-sm-auto text-end">
+                <form method="POST" class="w-100 w-sm-auto text-sm-end">
                     <button type="submit" name="importar_terceros" class="btn btn-outline-primary btn-sm fw-bold w-100 w-sm-auto">
                         📥 IMPORTAR DESDE CENTRAL Y DRINKS
                     </button>
@@ -489,30 +573,30 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
         <!-- CONTENEDOR PRINCIPAL / FORMULARIO COMPACTO -->
         <div class="card shadow card-custom mb-3">
             <div class="card-body p-3 p-md-4">
-                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center mb-3 gap-2">
+                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center mb-3 gap-2">
                     <h4 class="fw-bold text-dark mb-0 fs-5 fs-md-4">💼 Registro / Actualización de Colaborador</h4>
                     <button type="button" class="btn btn-dark btn-sm fw-bold w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#modalListado">
                         📋 VER REGISTRADOS
                     </button>
                 </div>
-                
+
                 <form method="POST" enctype="multipart/form-data" id="formColaborador">
                     <!-- Selector de Empresa y Tercero en Fila -->
-                    <div class="row g-2 mb-3">
+                    <div class="row g-2 g-md-3 mb-3">
                         <div class="col-12 col-md-6">
                             <label class="form-label fw-bold small mb-1">Empresa / Sede a la que se vincula:</label>
                             <select name="nit_empresa_seleccionada" id="nit_empresa_seleccionada" class="form-select form-select-sm" required>
                                 <option value="">-- Seleccione la Empresa --</option>
-                                <?php 
+                                <?php
                                 if ($resEmpresas) {
                                     $resEmpresas->data_seek(0);
-                                    while ($emp = $resEmpresas->fetch_assoc()): 
+                                    while ($emp = $resEmpresas->fetch_assoc()):
                                 ?>
-                                    <option value="<?= $emp['Nit'] ?>" <?= ($NitEmpresaSession == $emp['Nit']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($emp['RazonSocial']) ?> (NIT: <?= $emp['Nit'] ?>)
+                                    <option value="<?= htmlspecialchars($emp['Nit']) ?>" <?= ($NitEmpresaSession == $emp['Nit']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars(mb_strtoupper(trim($emp['RazonSocial']), 'UTF-8')) ?> (NIT: <?= htmlspecialchars($emp['Nit']) ?>)
                                     </option>
-                                <?php 
-                                    endwhile; 
+                                <?php
+                                    endwhile;
                                 }
                                 ?>
                             </select>
@@ -521,15 +605,16 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                             <label class="form-label fw-bold small mb-1">Seleccionar Empleado (Terceros Sincronizados):</label>
                             <select name="nit_seleccionado" id="nit_seleccionado" class="form-select form-select-sm" required>
                                 <option value="">-- Seleccione un Tercero --</option>
-                                <?php 
+                                <?php
                                 if ($resTerceros) {
-                                    while ($t = $resTerceros->fetch_assoc()): 
+                                    while ($t = $resTerceros->fetch_assoc()):
+                                        $nombreTerceroCompleto = formatearNombreCompleto($t['nombres'] ?? '');
                                 ?>
-                                    <option value="<?= $t['nit'] ?>">
-                                        <?= htmlspecialchars(trim(preg_replace('/\s+/', ' ', $t['nombres']))) ?> (<?= $t['nit'] ?>)
+                                    <option value="<?= htmlspecialchars($t['nit']) ?>">
+                                        <?= htmlspecialchars($nombreTerceroCompleto) ?> (<?= htmlspecialchars($t['nit']) ?>)
                                     </option>
-                                <?php 
-                                    endwhile; 
+                                <?php
+                                    endwhile;
                                 }
                                 ?>
                             </select>
@@ -540,7 +625,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                         ⚠️ Este colaborador ya cuenta con un registro activo en esta empresa. Los datos y su fotografía actual han sido cargados para su edición automática.
                     </div>
 
-                    <div class="row g-2 mb-3">
+                    <div class="row g-2 g-md-3 mb-3">
                         <div class="col-12 text-center">
                             <div id="contenedorFotoActual" class="d-none mb-1">
                                 <img id="imgFotoActual" src="" alt="Foto actual" width="70" height="70" class="rounded-circle object-fit-cover shadow-sm border border-2 border-primary"><br>
@@ -553,11 +638,11 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                             <input type="file" name="foto" class="form-control form-control-sm" accept=".jpg, .jpeg, .png, .webp">
                         </div>
 
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Cargo</label>
                             <input type="text" name="cargo" id="cargo" class="form-control form-control-sm" placeholder="Ej: Administrador" required>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Salario Mensual</label>
                             <input type="number" step="0.01" name="salario" id="salario" class="form-control form-control-sm" required placeholder="1750905">
                         </div>
@@ -565,7 +650,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                             <label class="form-label small fw-bold mb-1">Correo Electrónico</label>
                             <input type="email" name="email" id="email" class="form-control form-control-sm" placeholder="ejemplo@correo.com">
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Tipo de Contrato</label>
                             <select name="tipo_contrato" id="tipo_contrato" class="form-select form-select-sm">
                                 <option value="INDEFINIDO">Indefinido</option>
@@ -574,7 +659,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                                 <option value="SERVICIOS">Servicios</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Jornada Laboral</label>
                             <select name="jornada_laboral" id="jornada_laboral" class="form-select form-select-sm">
                                 <option value="DIURNA">Diurna</option>
@@ -582,20 +667,20 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                                 <option value="MIXTA">Mixta</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Nivel ARL (1 al 5)</label>
                             <input type="number" name="nivel_arl" id="nivel_arl" class="form-control form-control-sm" value="1" min="1" max="5">
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Fecha de Ingreso</label>
                             <input type="date" name="fecha_ingreso" id="fecha_ingreso" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
                         </div>
 
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Fecha de Nacimiento</label>
                             <input type="date" name="fecha_nacimiento" id="fecha_nacimiento" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Género</label>
                             <select name="genero" id="genero" class="form-select form-select-sm">
                                 <option value="">-- Seleccione --</option>
@@ -604,7 +689,7 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                                 <option value="OTRO">Otro</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Estado Civil</label>
                             <select name="estado_civil" id="estado_civil" class="form-select form-select-sm">
                                 <option value="SOLTERO">Soltero(a)</option>
@@ -613,15 +698,15 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                                 <option value="OTRO">Otro</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-3">
+                        <div class="col-12 col-sm-6 col-md-3">
                             <label class="form-label small fw-bold mb-1">Grupo Sanguíneo</label>
                             <input type="text" name="grupo_sanguineo" id="grupo_sanguineo" class="form-control form-control-sm" placeholder="Ej: O+">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Nivel Educativo</label>
                             <input type="text" name="nivel_educativo" id="nivel_educativo" class="form-control form-control-sm" placeholder="Ej: Profesional">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Estrato Socioeconómico</label>
                             <input type="number" name="estrato_socioeconomico" id="estrato_socioeconomico" class="form-control form-control-sm" min="1" max="6">
                         </div>
@@ -630,27 +715,27 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                             <input type="text" name="direccion" id="direccion" class="form-control form-control-sm" maxlength="150" placeholder="Ej: Calle 100 # 15-20">
                         </div>
 
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Número de Cuenta</label>
                             <input type="text" name="numero_cuenta" id="numero_cuenta" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Llave Payment</label>
                             <input type="text" name="llave_payment" id="llave_payment" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">EPS</label>
                             <input type="text" name="eps" id="eps" class="form-control form-control-sm" placeholder="Ej: Sura, Sanitas">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Fondo de Pensiones</label>
                             <input type="text" name="fondo_pensiones" id="fondo_pensiones" class="form-control form-control-sm" placeholder="Ej: Porvenir">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">Fondo de Cesantías</label>
                             <input type="text" name="fondo_cesantias" id="fondo_cesantias" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold mb-1">ARL (Entidad)</label>
                             <input type="text" name="arl" id="arl" class="form-control form-control-sm" placeholder="Ej: Sura, Positiva">
                         </div>
@@ -671,15 +756,15 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
 
 <!-- MODAL LISTADO Y GESTIÓN DE COLABORADORES -->
 <div class="modal fade" id="modalListado" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-fullscreen-sm-down modal-dialog-scrollable">
         <div class="modal-content border-0">
             <div class="modal-header bg-dark text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">📋 Personal Registrado</h5>
+                <h5 class="modal-title fw-bold fs-6 fs-md-5">📋 Personal Registrado</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-0">
+            <div class="modal-body p-2 p-md-0">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0 text-nowrap">
+                    <table class="table table-hover align-middle mb-0 table-mobile-cards">
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-3">Foto</th>
@@ -694,62 +779,65 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
                         </thead>
                         <tbody>
                             <?php
-                            $sqlL = "SELECT c.*, t.Nombre, e.RazonSocial FROM colaborador c 
-                                     LEFT JOIN terceros t ON c.CedulaNit = t.CedulaNit 
-                                     LEFT JOIN empresa e ON c.NitEmpresa = e.Nit 
+                            $sqlL = "SELECT c.*, t.Nombre, e.RazonSocial FROM colaborador c
+                                     LEFT JOIN terceros t ON c.CedulaNit = t.CedulaNit
+                                     LEFT JOIN empresa e ON c.NitEmpresa = e.Nit
                                      ORDER BY c.id DESC";
                             $resL = $mysqli->query($sqlL);
-                            while ($c = $resL->fetch_assoc()): 
+                            while ($c = $resL->fetch_assoc()):
                                 $esActivo = (strtoupper($c['estado'] ?? 'ACTIVO') === 'ACTIVO');
+                                $nombreCompletoColab = formatearNombreCompleto($c['Nombre'] ?? '');
                             ?>
                             <tr>
-                                <td class="ps-3">
+                                <td class="ps-md-3" data-label="Foto">
                                     <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                                        <img src="<?= $c['url_foto'] ?>" alt="Foto" width="35" height="35" class="rounded-circle object-fit-cover">
+                                        <img src="<?= htmlspecialchars($c['url_foto']) ?>" alt="Foto" width="35" height="35" class="rounded-circle object-fit-cover">
                                     <?php else: ?>
                                         <span class="badge bg-secondary">Sin foto</span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="fw-bold"><?= $c['CedulaNit'] ?></td>
-                                <td><?= htmlspecialchars($c['Nombre'] ?? 'No sincronizado') ?></td>
-                                <td><small class="fw-bold text-muted"><?= htmlspecialchars($c['RazonSocial'] ?? $c['NitEmpresa']) ?></small></td>
-                                <td><?= htmlspecialchars($c['cargo']) ?></td>
-                                <td class="fw-bold">$<?= number_format($c['salario'], 0) ?></td>
-                                <td class="text-center">
+                                <td class="fw-bold" data-label="Identificación"><?= htmlspecialchars($c['CedulaNit']) ?></td>
+                                <td class="nombre-completo-cell fw-semibold" data-label="Nombre Completo"><?= htmlspecialchars($nombreCompletoColab) ?></td>
+                                <td data-label="Empresa (NIT)"><small class="fw-bold text-muted"><?= htmlspecialchars($c['RazonSocial'] ?? $c['NitEmpresa']) ?></small></td>
+                                <td data-label="Cargo"><?= htmlspecialchars($c['cargo']) ?></td>
+                                <td class="fw-bold" data-label="Salario">$<?= number_format((float)$c['salario'], 0, ',', '.') ?></td>
+                                <td class="text-center" data-label="Estado">
                                     <?php if ($esActivo): ?>
                                         <span class="badge bg-success">Activo</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger" title="Retirado el: <?= $c['fecha_retiro'] ?? 'N/A' ?>">Inactivo</span>
+                                        <span class="badge bg-danger" title="Retirado el: <?= htmlspecialchars($c['fecha_retiro'] ?? 'N/A') ?>">Inactivo</span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-center">
-                                    <button type="button" class="btn btn-link text-primary p-0 me-2" data-bs-toggle="modal" data-bs-target="#modalEditar<?= $c['id'] ?>" title="Editar Datos Complementarios">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
-                                            <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
-                                            <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
-                                        </svg>
-                                    </button>
+                                <td class="text-center" data-label="Acciones">
+                                    <div class="acciones-grupo">
+                                        <button type="button" class="btn btn-sm btn-outline-primary p-1" data-bs-toggle="modal" data-bs-target="#modalEditar<?= $c['id'] ?>" title="Editar Datos Complementarios">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16">
+                                                <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/>
+                                                <path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/>
+                                            </svg>
+                                        </button>
 
-                                    <button type="button" class="btn btn-link text-danger p-0 me-2" data-bs-toggle="modal" data-bs-target="#modalEmergencia<?= $c['id'] ?>" title="Contactos de Emergencia">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-heart-pulse-fill" viewBox="0 0 16 16">
-                                            <path d="M1.475 9C2.702 10.84 4.779 12.871 8 15c3.221-2.129 5.298-4.16 6.525-6H12a.5.5 0 0 1-.464-.314l-1.457-3.642-1.598 5.593a.5.5 0 0 1-.945.049L7.021 3.205 5.365 7.487A.5.5 0 0 1 4.9 8H1.475z"/>
-                                            <path d="M3.229 1.741C2.556 2.378 2 3.352 2 4.65v.001c0 .54.148 1.055.409 1.5H1.475C1.103 5.485 1 5.08 1 4.65 1 2.94 1.83 1.77 2.729.98c.5-.44 1.1-.81 1.771-1.09-.27.46-.77 1.25-1.27 1.85z"/>
-                                        </svg>
-                                    </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger p-1" data-bs-toggle="modal" data-bs-target="#modalEmergencia<?= $c['id'] ?>" title="Contactos de Emergencia">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-heart-pulse-fill" viewBox="0 0 16 16">
+                                                <path d="M1.475 9C2.702 10.84 4.779 12.871 8 15c3.221-2.129 5.298-4.16 6.525-6H12a.5.5 0 0 1-.464-.314l-1.457-3.642-1.598 5.593a.5.5 0 0 1-.945.049L7.021 3.205 5.365 7.487A.5.5 0 0 1 4.9 8H1.475z"/>
+                                                <path d="M3.229 1.741C2.556 2.378 2 3.352 2 4.65v.001c0 .54.148 1.055.409 1.5H1.475C1.103 5.485 1 5.08 1 4.65 1 2.94 1.83 1.77 2.729.98c.5-.44 1.1-.81 1.771-1.09-.27.46-.77 1.25-1.27 1.85z"/>
+                                            </svg>
+                                        </button>
 
-                                    <?php if ($esActivo): ?>
-                                        <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-link text-warning p-0 me-2" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
-                                                <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.146a.5.5 0 0 1 0-.708"/>
+                                        <?php if ($esActivo): ?>
+                                            <a href="?retirar_id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-warning p-1" onclick="return confirm('¿Está seguro de registrar el RETIRO de este colaborador?');" title="Retirar Colaborador">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-person-x-fill" viewBox="0 0 16 16">
+                                                    <path fill-rule="evenodd" d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m6.146-2.854a.5.5 0 0 1 .708 0L14 6.293l1.146-1.147a.5.5 0 0 1 .708.708L14.707 7l1.146 1.147a.5.5 0 0 1-.708.708L14 7.707l-1.146 1.146a.5.5 0 0 1 0-.708"/>
+                                                </svg>
+                                            </a>
+                                        <?php endif; ?>
+
+                                        <a href="?eliminar_id=<?= $c['id'] ?>" class="btn btn-sm btn-outline-danger p-1" onclick="return confirm('¿Eliminar por completo este registro?');" title="Eliminar Registro">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill" viewBox="0 0 16 16">
+                                                <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0"/>
                                             </svg>
                                         </a>
-                                    <?php endif; ?>
-
-                                    <a href="?eliminar_id=<?= $c['id'] ?>" class="btn btn-link text-danger p-0" onclick="return confirm('¿Eliminar por completo este registro?');" title="Eliminar Registro">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-trash-fill" viewBox="0 0 16 16">
-                                            <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5M8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5m3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0"/>
-                                        </svg>
-                                    </a>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -766,34 +854,36 @@ if (!$resTerceros || $resTerceros->num_rows == 0 && isset($mysqliPos)) {
 $resL->data_seek(0);
 while ($c = $resL->fetch_assoc()):
     $resEm = $mysqli->query("SELECT * FROM colaborador_emergencia WHERE colaborador_id = " . intval($c['id']));
+    $nombreCompletoModal = formatearNombreCompleto($c['Nombre'] ?? '');
+    $etiquetaModal = ($nombreCompletoModal !== 'NO SINCRONIZADO') ? $nombreCompletoModal : ($c['CedulaNit'] ?? '');
 ?>
 
 <!-- MODAL EDITAR COMPLEMENTARIOS -->
 <div class="modal fade" id="modalEditar<?= $c['id'] ?>" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
         <div class="modal-content border-0">
             <div class="modal-header bg-primary text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">✏️ Editar Complementos: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
+                <h5 class="modal-title fw-bold fs-6 fs-md-5">✏️ Editar Complementos: <?= htmlspecialchars($etiquetaModal) ?></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" enctype="multipart/form-data">
                 <div class="modal-body p-3">
                     <input type="hidden" name="id_colaborador" value="<?= $c['id'] ?>">
-                    
-                    <div class="row g-2">
+
+                    <div class="row g-2 g-md-3">
                         <div class="col-12">
                             <label class="form-label small fw-bold">Empresa / Sede Asociada</label>
                             <select name="edit_nit_empresa" class="form-select form-select-sm" required>
-                                <?php 
+                                <?php
                                 if ($resEmpresas) {
                                     $resEmpresas->data_seek(0);
-                                    while ($emp = $resEmpresas->fetch_assoc()): 
+                                    while ($emp = $resEmpresas->fetch_assoc()):
                                 ?>
-                                    <option value="<?= $emp['Nit'] ?>" <?= ($c['NitEmpresa'] == $emp['Nit']) ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($emp['RazonSocial']) ?> (NIT: <?= $emp['Nit'] ?>)
+                                    <option value="<?= htmlspecialchars($emp['Nit']) ?>" <?= ($c['NitEmpresa'] == $emp['Nit']) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars(mb_strtoupper(trim($emp['RazonSocial']), 'UTF-8')) ?> (NIT: <?= htmlspecialchars($emp['Nit']) ?>)
                                     </option>
-                                <?php 
-                                    endwhile; 
+                                <?php
+                                    endwhile;
                                 }
                                 ?>
                             </select>
@@ -801,7 +891,7 @@ while ($c = $resL->fetch_assoc()):
 
                         <div class="col-12 text-center my-1">
                             <?php if (!empty($c['url_foto']) && file_exists($c['url_foto'])): ?>
-                                <img src="<?= $c['url_foto'] ?>" alt="Foto actual" width="70" height="70" class="rounded-circle object-fit-cover shadow-sm mb-1"><br>
+                                <img src="<?= htmlspecialchars($c['url_foto']) ?>" alt="Foto actual" width="70" height="70" class="rounded-circle object-fit-cover shadow-sm mb-1"><br>
                                 <small class="text-muted">Foto actual almacenada</small>
                             <?php else: ?>
                                 <span class="badge bg-secondary mb-1">Sin fotografía registrada</span><br>
@@ -812,19 +902,19 @@ while ($c = $resL->fetch_assoc()):
                             <input type="file" name="edit_foto" class="form-control form-control-sm" accept=".jpg, .jpeg, .png, .webp">
                         </div>
 
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Cargo</label>
                             <input type="text" name="edit_cargo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['cargo'] ?? '') ?>" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Salario Mensual</label>
-                            <input type="number" step="0.01" name="edit_salario" class="form-control form-control-sm" value="<?= $c['salario'] ?>" required>
+                            <input type="number" step="0.01" name="edit_salario" class="form-control form-control-sm" value="<?= htmlspecialchars((string)$c['salario']) ?>" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Correo Electrónico</label>
                             <input type="email" name="edit_email" class="form-control form-control-sm" value="<?= htmlspecialchars($c['email'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Tipo de Contrato</label>
                             <select name="edit_tipo_contrato" class="form-select form-select-sm">
                                 <option value="INDEFINIDO" <?= ($c['tipo_contrato'] == 'INDEFINIDO') ? 'selected' : '' ?>>Indefinido</option>
@@ -833,7 +923,7 @@ while ($c = $resL->fetch_assoc()):
                                 <option value="SERVICIOS" <?= ($c['tipo_contrato'] == 'SERVICIOS') ? 'selected' : '' ?>>Servicios</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Jornada Laboral</label>
                             <select name="edit_jornada_laboral" class="form-select form-select-sm">
                                 <option value="DIURNA" <?= ($c['jornada_laboral'] == 'DIURNA') ? 'selected' : '' ?>>Diurna</option>
@@ -841,15 +931,15 @@ while ($c = $resL->fetch_assoc()):
                                 <option value="MIXTA" <?= ($c['jornada_laboral'] == 'MIXTA') ? 'selected' : '' ?>>Mixta</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Nivel ARL</label>
-                            <input type="number" name="edit_nivel_arl" class="form-control form-control-sm" value="<?= $c['nivel_arl'] ?>" min="1" max="5">
+                            <input type="number" name="edit_nivel_arl" class="form-control form-control-sm" value="<?= htmlspecialchars((string)$c['nivel_arl']) ?>" min="1" max="5">
                         </div>
                         <div class="col-12 col-md-4">
                             <label class="form-label small fw-bold">Fecha de Nacimiento</label>
-                            <input type="date" name="edit_fecha_nacimiento" class="form-control form-control-sm" value="<?= $c['fecha_nacimiento'] ?>">
+                            <input type="date" name="edit_fecha_nacimiento" class="form-control form-control-sm" value="<?= htmlspecialchars((string)$c['fecha_nacimiento']) ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Género</label>
                             <select name="edit_genero" class="form-select form-select-sm">
                                 <option value="">-- Seleccione --</option>
@@ -858,7 +948,7 @@ while ($c = $resL->fetch_assoc()):
                                 <option value="OTRO" <?= ($c['genero'] == 'OTRO') ? 'selected' : '' ?>>Otro</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Estado Civil</label>
                             <select name="edit_estado_civil" class="form-select form-select-sm">
                                 <option value="SOLTERO" <?= ($c['estado_civil'] == 'SOLTERO') ? 'selected' : '' ?>>Soltero(a)</option>
@@ -871,31 +961,31 @@ while ($c = $resL->fetch_assoc()):
                             <label class="form-label small fw-bold">Grupo Sanguíneo</label>
                             <input type="text" name="edit_grupo_sanguineo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['grupo_sanguineo'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Nivel Educativo</label>
                             <input type="text" name="edit_nivel_educativo" class="form-control form-control-sm" value="<?= htmlspecialchars($c['nivel_educativo'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Estrato Socioeconómico</label>
-                            <input type="number" name="edit_estrato_socioeconomico" class="form-control form-control-sm" value="<?= $c['estrato_socioeconomico'] ?>" min="1" max="6">
+                            <input type="number" name="edit_estrato_socioeconomico" class="form-control form-control-sm" value="<?= htmlspecialchars((string)$c['estrato_socioeconomico']) ?>" min="1" max="6">
                         </div>
                         <div class="col-12 col-md-4">
                             <label class="form-label small fw-bold">Dirección de Vivienda</label>
                             <input type="text" name="edit_direccion" class="form-control form-control-sm" value="<?= htmlspecialchars($c['direccion'] ?? '') ?>" maxlength="150">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Número de Cuenta</label>
                             <input type="text" name="edit_numero_cuenta" class="form-control form-control-sm" value="<?= htmlspecialchars($c['numero_cuenta'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Llave Payment</label>
                             <input type="text" name="edit_llave_payment" class="form-control form-control-sm" value="<?= htmlspecialchars($c['llave_payment'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">EPS</label>
                             <input type="text" name="edit_eps" class="form-control form-control-sm" value="<?= htmlspecialchars($c['eps'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-6 col-md-4">
                             <label class="form-label small fw-bold">Fondo de Pensiones</label>
                             <input type="text" name="edit_fondo_pensiones" class="form-control form-control-sm" value="<?= htmlspecialchars($c['fondo_pensiones'] ?? '') ?>">
                         </div>
@@ -903,20 +993,20 @@ while ($c = $resL->fetch_assoc()):
                             <label class="form-label small fw-bold">Fondo de Cesantías</label>
                             <input type="text" name="edit_fondo_cesantias" class="form-control form-control-sm" value="<?= htmlspecialchars($c['fondo_cesantias'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-8">
+                        <div class="col-12 col-sm-8">
                             <label class="form-label small fw-bold">ARL (Entidad)</label>
                             <input type="text" name="edit_arl" class="form-control form-control-sm" value="<?= htmlspecialchars($c['arl'] ?? '') ?>">
                         </div>
-                        <div class="col-12 col-md-4 d-flex align-items-end">
+                        <div class="col-12 col-sm-4 d-flex align-items-end">
                             <button type="button" class="btn btn-success btn-sm fw-bold text-white shadow-sm w-100 py-1" onclick="abrirPopupEmergencia(<?= $c['id'] ?>)" title="Crear Contacto de Emergencia vía Popup">
                                 ➕ Emergencia (Popup)
                             </button>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer bg-light p-2">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" name="actualizar_complementarios" class="btn btn-primary btn-sm fw-bold">💾 Guardar Cambios</button>
+                <div class="modal-footer bg-light p-2 d-flex flex-column flex-sm-row gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm w-100 w-sm-auto" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" name="actualizar_complementarios" class="btn btn-primary btn-sm fw-bold w-100 w-sm-auto">💾 Guardar Cambios</button>
                 </div>
             </form>
         </div>
@@ -925,17 +1015,17 @@ while ($c = $resL->fetch_assoc()):
 
 <!-- MODAL CONTACTOS DE EMERGENCIA -->
 <div class="modal fade" id="modalEmergencia<?= $c['id'] ?>" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
         <div class="modal-content border-0">
             <div class="modal-header bg-danger text-white p-3">
-                <h5 class="modal-title fw-bold fs-5">🚨 Contactos de Emergencia: <?= htmlspecialchars($c['Nombre'] ?? $c['CedulaNit']) ?></h5>
+                <h5 class="modal-title fw-bold fs-6 fs-md-5">🚨 Contactos de Emergencia: <?= htmlspecialchars($etiquetaModal) ?></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-3">
-                
+
                 <h6 class="fw-bold text-secondary mb-2">Contactos Registrados</h6>
                 <div class="table-responsive mb-3">
-                    <table class="table table-sm table-bordered align-middle text-nowrap">
+                    <table class="table table-sm table-bordered align-middle table-mobile-cards">
                         <thead class="table-light">
                             <tr>
                                 <th>Nombre</th>
@@ -947,18 +1037,18 @@ while ($c = $resL->fetch_assoc()):
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if ($resEm->num_rows > 0): ?>
+                            <?php if ($resEm && $resEm->num_rows > 0): ?>
                                 <?php while ($em = $resEm->fetch_assoc()): ?>
                                 <tr>
-                                    <td><?= htmlspecialchars($em['nombre_contacto']) ?></td>
-                                    <td><?= htmlspecialchars($em['parentesco'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars($em['celular_1']) ?></td>
-                                    <td><?= htmlspecialchars($em['celular_2'] ?? '-') ?></td>
-                                    <td class="text-center">
+                                    <td data-label="Nombre"><?= htmlspecialchars(formatearNombreCompleto($em['nombre_contacto'] ?? '')) ?></td>
+                                    <td data-label="Parentesco"><?= htmlspecialchars($em['parentesco'] ?? '-') ?></td>
+                                    <td data-label="Celular 1"><?= htmlspecialchars($em['celular_1']) ?></td>
+                                    <td data-label="Celular 2"><?= htmlspecialchars($em['celular_2'] ?? '-') ?></td>
+                                    <td class="text-center" data-label="Principal">
                                         <?= $em['es_principal'] ? '<span class="badge bg-success">Sí</span>' : '<span class="badge bg-secondary">No</span>' ?>
                                     </td>
-                                    <td class="text-center">
-                                        <a href="?eliminar_emergencia_id=<?= $em['id'] ?>" class="text-danger" onclick="return confirm('¿Eliminar este contacto de emergencia?');">🗑️</a>
+                                    <td class="text-center" data-label="Acción">
+                                        <a href="?eliminar_emergencia_id=<?= $em['id'] ?>" class="text-danger text-decoration-none" onclick="return confirm('¿Eliminar este contacto de emergencia?');">🗑️</a>
                                     </td>
                                 </tr>
                                 <?php endwhile; ?>
@@ -975,24 +1065,24 @@ while ($c = $resL->fetch_assoc()):
                 <h6 class="fw-bold text-primary mb-2">Agregar Nuevo Contacto</h6>
                 <form method="POST">
                     <input type="hidden" name="colaborador_id" value="<?= $c['id'] ?>">
-                    <div class="row g-2">
-                        <div class="col-12 col-md-6">
-                            <label class="form-label small fw-bold">Nombre del Contacto</label>
+                    <div class="row g-2 g-md-3">
+                        <div class="col-12 col-sm-6">
+                            <label class="form-label small fw-bold">Nombre Completo del Contacto</label>
                             <input type="text" name="nombre_contacto" class="form-control form-control-sm" required>
                         </div>
-                        <div class="col-12 col-md-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-bold">Parentesco</label>
                             <input type="text" name="parentesco" class="form-control form-control-sm" placeholder="Ej: Esposo(a), Madre">
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-4">
                             <label class="form-label small fw-bold">Celular Principal</label>
                             <input type="text" name="celular_1" class="form-control form-control-sm" required>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-sm-4">
                             <label class="form-label small fw-bold">Celular Opcional</label>
                             <input type="text" name="celular_2" class="form-control form-control-sm">
                         </div>
-                        <div class="col-12 col-md-4 d-flex align-items-end">
+                        <div class="col-12 col-sm-4 d-flex align-items-end">
                             <div class="form-check mb-1">
                                 <input class="form-check-input" type="checkbox" name="es_principal" value="1" id="principal<?= $c['id'] ?>">
                                 <label class="form-check-label small fw-bold" for="principal<?= $c['id'] ?>">
@@ -1001,8 +1091,8 @@ while ($c = $resL->fetch_assoc()):
                             </div>
                         </div>
                     </div>
-                    <div class="mt-2 text-end">
-                        <button type="submit" name="guardar_emergencia" class="btn btn-danger btn-sm fw-bold">➕ Añadir Contacto</button>
+                    <div class="mt-3 text-end">
+                        <button type="submit" name="guardar_emergencia" class="btn btn-danger btn-sm fw-bold w-100 w-sm-auto">➕ Añadir Contacto</button>
                     </div>
                 </form>
 
@@ -1027,12 +1117,12 @@ document.addEventListener("DOMContentLoaded", function() {
         const cedula = selTercero.value;
 
         if (nitEmpresa && cedula) {
-            fetch(`?ajax_consultar=1&nit_empresa=${nitEmpresa}&cedula=${cedula}`)
+            fetch(`?ajax_consultar=1&nit_empresa=${encodeURIComponent(nitEmpresa)}&cedula=${encodeURIComponent(cedula)}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.existe) {
                         const d = data.datos;
-                        
+
                         document.getElementById("cargo").value = d.cargo || '';
                         document.getElementById("salario").value = d.salario || '';
                         document.getElementById("email").value = d.email || '';
@@ -1082,13 +1172,13 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 function abrirPopupEmergencia(idColaborador) {
-    const ancho = 600;
-    const alto = 700;
-    const x = (screen.width - ancho) / 2;
-    const y = (screen.height - alto) / 2;
-    
+    const ancho = Math.min(600, window.screen.width - 20);
+    const alto = Math.min(700, window.screen.height - 40);
+    const x = Math.max(0, (window.screen.width - ancho) / 2);
+    const y = Math.max(0, (window.screen.height - alto) / 2);
+
     window.open(
-        `CrearColaboradorEmergencia.php?id=${idColaborador}`,
+        `CrearColaboradorEmergencia.php?id=${encodeURIComponent(idColaborador)}`,
         'PopupEmergencia',
         `width=${ancho},height=${alto},left=${x},top=${y},resizable=yes,scrollbars=yes,status=yes`
     );

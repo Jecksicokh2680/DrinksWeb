@@ -297,6 +297,8 @@ function abrirPopup(event, url) {
                         <a class="nav-link" href="ColaboradorChecklistControl.php" target="contentFrame">Checklist Control </a>
                         <a class="nav-link" href="NominaGenerar.php" target="contentFrame">Liquidación Quincenal</a>
                         <a class="nav-link" href="HistorialPagos.php" target="contentFrame">Historial Pagos</a>
+                        <a class="nav-link" href="Preliquidacion.php" target="contentFrame">Preliquidacion</a>
+                                                
                     </div>
                 </div>
             </div>
