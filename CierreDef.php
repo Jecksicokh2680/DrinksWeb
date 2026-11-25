@@ -72,6 +72,74 @@ if($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
     $UsuarioFact = $UsuarioSesion;
 }
 
+/* ============================================================
+    CONTROL DE EJECUCIÓN ÚNICA DE CIERRE DEFINITIVO (SIN 9999)
+============================================================ */
+if (isset($mysqli) && $mysqli instanceof mysqli && !$mysqli->connect_error) {
+    $mysqli->query("CREATE TABLE IF NOT EXISTS cierre_definitivo_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        cedula_nit VARCHAR(50) NOT NULL,
+        fecha DATE NOT NULL,
+        sede VARCHAR(30) NOT NULL,
+        usuario_registro VARCHAR(50) NOT NULL,
+        fecha_registro DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_cierre_def (cedula_nit, fecha, sede)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+function yaEjecutoCierreDefinitivo($db, $cedulaNit, $fechaStr, $sedeStr) {
+    if (!$db || $db->connect_error || $cedulaNit === '' || $fechaStr === '') {
+        return false;
+    }
+    $stmt = $db->prepare("SELECT id FROM cierre_definitivo_log WHERE cedula_nit = ? AND fecha = ? AND sede = ? LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param("sss", $cedulaNit, $fechaStr, $sedeStr);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    return ($res && $res->num_rows > 0);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['accion_ajax'] ?? '') === 'registrar_cierre_definitivo') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $nitTarget   = trim($_POST['nit'] ?? '');
+    $fechaTarget = trim($_POST['fecha'] ?? date('Y-m-d'));
+    $sedeTarget  = trim($_POST['sede'] ?? 'central');
+
+    if ($permiso9999 !== 'SI' && $permiso0003 !== 'SI') {
+        $nitTarget = $UsuarioSesion;
+    }
+
+    if ($nitTarget === '') {
+        echo json_encode(['ok' => false, 'bloqueado' => true, 'mensaje' => 'Debe seleccionar un facturador válido.']);
+        exit;
+    }
+
+    if ($permiso9999 !== 'SI' && yaEjecutoCierreDefinitivo($mysqli, $nitTarget, $fechaTarget, $sedeTarget)) {
+        echo json_encode([
+            'ok' => false,
+            'bloqueado' => true,
+            'mensaje' => 'Ya dio click al cierre definitivo y no lo puede volver a ejecutar.'
+        ]);
+        exit;
+    }
+
+    $stmtIns = $mysqli->prepare("INSERT IGNORE INTO cierre_definitivo_log (cedula_nit, fecha, sede, usuario_registro, fecha_registro) VALUES (?, ?, ?, ?, NOW())");
+    if ($stmtIns) {
+        $stmtIns->bind_param("ssss", $nitTarget, $fechaTarget, $sedeTarget, $UsuarioSesion);
+        $stmtIns->execute();
+        $stmtIns->close();
+    }
+
+    echo json_encode(['ok' => true, 'bloqueado' => false]);
+    exit;
+}
+
+$yaEjecutoCierre = ($UsuarioFact !== '')
+    ? yaEjecutoCierreDefinitivo($mysqli, $UsuarioFact, $fecha_input, $sede_actual)
+    : false;
+$cierreBloqueadoParaUsuario = ($permiso9999 !== 'SI' && $yaEjecutoCierre);
+
 $fecha_esc       = $mysqliActiva->real_escape_string($fecha);
 $UsuarioFact_esc = $mysqliActiva->real_escape_string($UsuarioFact);
 
@@ -340,7 +408,7 @@ if (!empty($reporte)) {
         .table td, .table th{padding:10px; border-bottom:1px solid #eee; text-align: left;}
         .button{padding:10px 20px; background:#1f2d3d; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; width: auto; text-align: center;}
         .btn-save{background:#0b63a3; color:#fff; border:none; padding:8px 12px; border-radius:4px; cursor:pointer;}
-        .actions-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .actions-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; position: relative; }
         .text-end{ text-align: right; }
         .input-edit { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         
@@ -361,6 +429,67 @@ if (!empty($reporte)) {
 
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); overflow-y: auto; padding: 10px; }
         .modal-content { background: white; margin: 20px auto; padding: 15px; width: 100%; max-width: 420px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        .alerta-cierre-ejecutado {
+            width: 100%;
+            background: #fdecea;
+            border: 1px solid #f5c2c7;
+            color: #842029;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        .cierre-btn-wrap {
+            position: relative;
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .cierre-hover-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2d3d;
+            color: #fff;
+            padding: 7px 11px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.22);
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .cierre-hover-tooltip::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 6px;
+            border-style: solid;
+            border-color: #1f2d3d transparent transparent transparent;
+        }
+
+        .cierre-btn-wrap:hover .cierre-hover-tooltip {
+            display: block;
+        }
+
+        @media (max-width: 576px) {
+            .cierre-hover-tooltip {
+                white-space: normal;
+                width: 240px;
+                text-align: center;
+            }
+        }
 
         /* REGLAS DE IMPRESIÓN PARA NEGRITA FUERTE, MODO OSCURO/TINTA Y TAMAÑO REDUCIDO */
         @media print {
@@ -386,12 +515,12 @@ if (!empty($reporte)) {
                 max-width: 100% !important;
                 padding: 0 !important;
                 font-size: 10px !important;
-                color: #000 !important; /* Texto negro puro */
-                font-weight: 900 !important; /* Máxima negrita global para oscurecer la impresión térmica */
+                color: #000 !important;
+                font-weight: 900 !important;
             }
             .modal-content * {
                 color: #000 !important;
-                font-weight: 900 !important; /* Forzar negrita fuerte en todos los elementos internos */
+                font-weight: 900 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -508,12 +637,18 @@ if (!empty($reporte)) {
             </div>
 
             <div class="panel actions-container" style="margin-bottom: 0;">
-                <button class="button" style="background:#f39c12;" onclick="mostrarVoucher('precierre')">📋 Ver Precierre</button>
-                <?php if($cierreRealizado): ?>
-                    <button class="button" style="background:#2ecc71;" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
-                <?php else: ?>
-                    <button class="button" style="background:#d32f2f;" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
-                <?php endif; ?>
+                <div class="cierre-btn-wrap">
+                    <span class="cierre-hover-tooltip">Solo se puede ejecutar 1 vez al cierre de la operación</span>
+                    <?php if($cierreRealizado): ?>
+                        <button id="btnCierreDefinitivo" class="button" style="background:#2ecc71;" title="Solo se puede ejecutar 1 vez al cierre de la operación" onclick="mostrarVoucher('cierre')">🖨️ Imprimir Cierre</button>
+                    <?php else: ?>
+                        <button id="btnCierreDefinitivo" class="button" style="background:#d32f2f;" title="Solo se puede ejecutar 1 vez al cierre de la operación" onclick="mostrarVoucher('cierre')">🔒 Cierre Definitivo</button>
+                    <?php endif; ?>
+                </div>
+
+                <div id="mensajeCierreBloqueado" class="alerta-cierre-ejecutado" style="<?= $cierreBloqueadoParaUsuario ? '' : 'display:none;' ?>">
+                    Ya dio click al cierre definitivo y no lo puede volver a ejecutar.
+                </div>
             </div>
         </div>
 
@@ -600,15 +735,63 @@ if (!empty($reporte)) {
 <?php endif; ?>
 
 <script>
-    function mostrarVoucher(tipo) {
+    const MENSAJE_YA_EJECUTADO = 'Ya dio click al cierre definitivo y no lo puede volver a ejecutar.';
+    let cierreYaEjecutadoEnSesion = <?= $cierreBloqueadoParaUsuario ? 'true' : 'false' ?>;
+
+    function mostrarMensajeBloqueoCierre() {
+        const aviso = document.getElementById('mensajeCierreBloqueado');
+        if (aviso) {
+            aviso.textContent = MENSAJE_YA_EJECUTADO;
+            aviso.style.display = 'block';
+        }
+        alert(MENSAJE_YA_EJECUTADO);
+    }
+
+    async function mostrarVoucher(tipo) {
+        if (tipo !== 'cierre') return;
+
         const p9999 = '<?= $permiso9999 ?>';
         const p7777 = '<?= $permiso7777 ?>';
         const p0003 = '<?= $permiso0003 ?>';
         const cierreYaHecho = <?= $cierreRealizado ? 'true' : 'false' ?>;
 
-        if(tipo === 'cierre' && !cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
+        if(!cierreYaHecho && p7777 !== 'SI' && p9999 !== 'SI' && p0003 !== 'SI') {
             alert('ACCESO DENEGADO: Requiere permiso de supervisor para realizar el cierre.'); 
             return;
+        }
+
+        if (p9999 !== 'SI') {
+            if (cierreYaEjecutadoEnSesion) {
+                mostrarMensajeBloqueoCierre();
+                return;
+            }
+
+            try {
+                const bodyParams = new URLSearchParams({
+                    accion_ajax: 'registrar_cierre_definitivo',
+                    nit: '<?= htmlspecialchars($UsuarioFact, ENT_QUOTES) ?>',
+                    fecha: '<?= htmlspecialchars($fecha_input, ENT_QUOTES) ?>',
+                    sede: '<?= htmlspecialchars($sede_actual, ENT_QUOTES) ?>'
+                });
+
+                const resp = await fetch(window.location.href, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: bodyParams.toString()
+                });
+                const data = await resp.json();
+
+                if (!data.ok) {
+                    cierreYaEjecutadoEnSesion = true;
+                    mostrarMensajeBloqueoCierre();
+                    return;
+                }
+
+                cierreYaEjecutadoEnSesion = true;
+            } catch (err) {
+                alert('No se pudo validar el estado del cierre definitivo. Intente nuevamente.');
+                return;
+            }
         }
 
         let egresosHtml = "";
@@ -616,7 +799,7 @@ if (!empty($reporte)) {
             egresosHtml += `<tr><td style="padding:1px; max-width:240px; overflow:hidden;">- <?= htmlspecialchars($e['MOTIVO']) ?></td><td style="text-align:right;"><b>$<?= money($e['VALOR']) ?></b></td></tr>`;
         <?php endforeach; ?>
 
-        const titulo = (tipo === 'precierre') ? 'PRECIERRE' : 'CIERRE FINAL';
+        const titulo = 'CIERRE FINAL';
         const horaImpresion = '<?= date("h:i a") ?>';
         const estadoSesion = cierreYaHecho ? "SESIÓN CERRADA" : "SESIÓN ABIERTA";
         
