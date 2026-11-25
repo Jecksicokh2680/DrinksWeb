@@ -78,9 +78,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $cat = $_POST['cod_cat'];
     $nit = $_POST['nit'];
     $dbSede = ($nit == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
-    
+
     $esAdminStock = (Autorizacion($_SESSION['CedulaNit'] ?? '', '9999') === 'SI');
-    
+
     $stmt = $mysqli->prepare("SELECT Sku FROM catproductos WHERE CodCat=? AND Estado='1'");
     $stmt->bind_param("s", $cat);
     $stmt->execute();
@@ -88,41 +88,38 @@ if (isset($_POST['action']) && $_POST['action'] === 'ver_productos') {
     $skus = [];
     while($r = $res->fetch_assoc()) $skus[] = $r['Sku'];
 
-    $html = "<div style='margin-bottom: 10px; text-align: right;' class='no-print'>
-                <button onclick='window.print()' style='background:#6c757d; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:12px;'>🖨️ Imprimir Detalle</button>
-             </div>
-             <div style='overflow-x:auto;'>
+    $html = "<div style='overflow-x:auto;'>
              <table style='width:100%; border-collapse:collapse; font-size:13px; min-width:400px;'>
              <thead><tr style='background:#f4f4f4;'>
                  <th style='padding:8px; border:1px solid #ddd;'>Barcode</th>
                  <th style='padding:8px; border:1px solid #ddd;'>Descripción</th>";
-    
+
     if ($esAdminStock) {
         $html .= "<th style='padding:8px; border:1px solid #ddd;'>Stock</th>";
     }
-    
+
     $html .= "</tr></thead><tbody>";
-    
+
     if ($skus) {
         $ph = implode(',', array_fill(0, count($skus), '?'));
         $tp = str_repeat('s', count($skus));
-        
-        $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as stock 
-                FROM productos p 
-                LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1 
+
+        $sql = "SELECT p.barcode, p.descripcion, IFNULL(SUM(i.cantidad),0) as stock
+                FROM productos p
+                LEFT JOIN inventario i ON i.idproducto=p.idproducto AND i.idalmacen=1
                 WHERE p.barcode IN ($ph) and p.estado='1'
                 GROUP BY p.barcode ORDER BY p.descripcion ASC";
-        
+
         $stmtP = $dbSede->prepare($sql);
         $stmtP->bind_param($tp, ...$skus);
         $stmtP->execute();
         $resP = $stmtP->get_result();
-        
+
         while($p = $resP->fetch_assoc()){
             $html .= "<tr>
                     <td style='padding:8px; border:1px solid #ddd;'>{$p['barcode']}</td>
                     <td style='padding:8px; border:1px solid #ddd;'>".htmlspecialchars($p['descripcion'])."</td>";
-            
+
             if ($esAdminStock) {
                 $html .= "<td style='padding:8px; border:1px solid #ddd;' align='right'><strong>".number_format($p['stock'],2)."</strong></td>";
             }
@@ -158,9 +155,9 @@ if (!isset($_SESSION['Usuario'])) {
     die("Sesión no válida. Por favor inicie sesión.");
 }
 
-$nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL; 
+$nitSesion  = $_SESSION['NitEmpresa'] ?? NIT_CENTRAL;
 $sucursal   = $_SESSION['NroSucursal'] ?? '001';
-$idalmacen  = 1; 
+$idalmacen  = 1;
 
 $mysqliSede = ($nitSesion == NIT_DRINKS) ? $mysqliDrinks : $mysqliCentral;
 $nombreSede = ($nitSesion == NIT_DRINKS) ? "DRINKS" : "CENTRAL";
@@ -173,8 +170,8 @@ if (empty($_SESSION['csrf_token'])) {
 }
 
 $AUT_BORRAR   = Autorizacion($usuario, '1810');
-$AUT_CORREGIR = Autorizacion($usuario, '9999'); 
-$AUT_VERSTOCK = Autorizacion($usuario, '1801'); 
+$AUT_CORREGIR = Autorizacion($usuario, '9999');
+$AUT_VERSTOCK = Autorizacion($usuario, '1801');
 
 // Borrar Conteo
 if (isset($_POST['borrar_conteo'])) {
@@ -193,11 +190,11 @@ if (isset($_POST['guardar_conteo'])) {
     $unicaja       = floatval($_POST['unicaja']);
     $stockSistema  = floatval($_POST['stock_sistema']);
     $stockFisico   = $cajas + ($unicaja > 0 ? $unidades / $unicaja : 0);
-    $diferencia    = $stockFisico - $stockSistema; 
+    $diferencia    = $stockFisico - $stockSistema;
     $estadoActivo  = 'A';
 
     $stmt_check = $mysqli->prepare("
-        SELECT id FROM conteoweb 
+        SELECT id FROM conteoweb
         WHERE CodCat = ? AND TRIM(NitEmpresa) = TRIM(?) AND estado = ? AND DATE(fecha_conteo) = ?
         LIMIT 1
     ");
@@ -208,12 +205,11 @@ if (isset($_POST['guardar_conteo'])) {
     if ($res_check->num_rows > 0) {
         $mensaje = "⚠️ Error: Ya existe un conteo registrado y activo para esta categoría en la fecha seleccionada.";
     } else {
-        // Se define si se guarda con la fecha del filtro actual o con la fecha/hora actual si es el día de hoy
         $fechaRegistro = ($fechaFiltro === date('Y-m-d')) ? date('Y-m-d H:i:s') : $fechaFiltro . ' ' . date('H:i:s');
 
         $stmt = $mysqli->prepare("INSERT INTO conteoweb (CodCat, stock_sistema, stock_fisico, diferencia, NitEmpresa, NroSucursal, usuario, estado, fecha_conteo) VALUES (?, ?, ?, ?, ?, ?, ?, 'A', ?)");
         $stmt->bind_param("sdddssss", $codCat, $stockSistema, $stockFisico, $diferencia, $nitSesion, $sucursal, $usuario, $fechaRegistro);
-        
+
         if ($stmt->execute()) {
             $mensaje = "✅ Conteo guardado correctamente";
             $categoriaSel = "";
@@ -235,10 +231,10 @@ while ($r = $resResult->fetch_assoc()) {
 
 // Cargar TODAS las Categorías ordenadas por Familia y excluir las que ya estén en $contados
 $categorias = [];
-$res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia 
-                        FROM categorias c 
-                        LEFT JOIN familias f ON c.Tipo = f.id 
-                        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1 
+$res = $mysqli->query("SELECT c.CodCat, c.Nombre, c.unicaja, f.nombre AS nombre_familia
+                        FROM categorias c
+                        LEFT JOIN familias f ON c.Tipo = f.id
+                        WHERE c.Estado='1' AND (c.SegWebT+c.SegWebF)>=1
                         ORDER BY f.nombre ASC, c.Nombre ASC");
 while ($r = $res->fetch_assoc()) {
     if (in_array($r['CodCat'], $contados)) {
@@ -299,16 +295,16 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <style>
         *{box-sizing:border-box;}
         body{font-family:'Segoe UI', sans-serif; background:#f4f7f6; margin:0; padding:10px; color:#333;}
-        
+
         .card{width:100%; max-width:100%; margin:0; background:#fff; padding:15px; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.05);}
-        
+
         .sede-selector { display:flex; gap:8px; margin-bottom:15px; background:#e9ecef; padding:8px; border-radius:8px; align-items:center; flex-wrap: wrap; }
         .sede-btn { text-decoration:none; padding:8px 12px; border-radius:6px; font-weight:bold; font-size:13px; color:#555; background:#ddd; transition: 0.3s; flex-grow: 1; text-align: center; }
         .sede-btn.active { background:#2c3e50; color:#fff; }
         .btn-refresh { text-decoration:none; padding:8px 12px; border-radius:6px; background:#fff; border:1px solid #ccc; cursor:pointer; font-size:15px; margin-left: auto; }
-        
+
         .select-categoria{ width:100%; padding:14px; font-size:16px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; background:#fff;}
-        
+
         .grid{display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;}
         @media (max-width: 600px) {
             .grid { grid-template-columns: 1fr; }
@@ -318,32 +314,29 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 
         label{display:block; font-weight:bold; margin-bottom:5px; font-size: 13px;}
         input[type="number"] { width:100%; padding:12px; font-size:24px; border-radius:8px; border:2px solid #eee; text-align:center;}
-        
+
         .btn-save { width:100%; background:#28a745; color:white; padding:16px; border:none; border-radius:8px; font-size:18px; cursor:pointer; font-weight:bold;}
         .btn-info { background:#17a2b8; color:white; border:none; padding:10px 15px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:15px; display:inline-block; width: 100%;}
         .btn-print { background:#6c757d; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:13px; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
-        
+
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table{width:100%; border-collapse:collapse; margin-top:15px; min-width: 100%;}
         th,td{padding:10px 8px; border-bottom:1px solid #f0f0f0; text-align:left;}
         th{background:#f8f9fa; color:#666; font-size:11px; text-transform:uppercase;}
-        
+
         .semaforo{width:12px; height:12px; border-radius:50%; display:inline-block;}
         .verde{background:#28a745;} .rojo{background:#dc3545;}
-        
+
         .modal { display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
         .modal-content { background:#fff; margin:5% auto; padding:20px; width:95%; max-width:800px; border-radius:12px; max-height:85vh; overflow-y:auto; position:relative;}
         .close-modal { position:absolute; right:15px; top:10px; font-size:28px; cursor:pointer; color:#999; }
 
-        /* Estilos optimizados para impresión */
+        /* Estilos optimizados para impresión (solo historial) */
         @media print {
             body * { visibility: hidden; }
             .no-print { display: none !important; }
             #seccion-historial, #seccion-historial * { visibility: visible; }
             #seccion-historial { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
-            .modal { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: none; }
-            .modal-content { box-shadow: none; margin: 0; width: 100%; max-height: none; }
-            .modal-content * { visibility: visible; }
         }
     </style>
 </head>
@@ -371,7 +364,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
     <?php endif; ?>
 
     <h3 style="margin:0 0 15px 0;" class="no-print">Inventario Físico <span style="color:#17a2b8;">#<?= $nombreSede ?></span> <?php if($fechaFiltro !== date('Y-m-d')): ?><small style="font-size:13px; color:#d9534f;">(Fecha: <?= $fechaFiltro ?>)</small><?php endif; ?></h3>
-    
+
     <?php if($mensaje): ?>
         <div style="background:#d4edda; color:#155724; padding:12px; border-radius:8px; margin-bottom:15px; border-left:5px solid #28a745; font-size: 14px;" class="no-print">
             <?= $mensaje ?>
@@ -452,14 +445,14 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach($conteos as $c): 
+                        <?php foreach($conteos as $c):
                             $dif = (float)$c['diferencia'];
                             $color = ($dif <= -0.1) ? 'rojo' : 'verde';
                         ?>
                         <tr>
                             <td style="color:#999; font-size:10px;"><?= $c['hora'] ?></td>
                             <td style="font-size:13px;"><strong><?= $c['CodCat'] ?></strong><br><small><?= $c['Nombre'] ?></small></td>
-                            
+
                             <?php if($AUT_CORREGIR === 'SI'): ?>
                                 <td style="color:#666; font-size:13px;"><?= number_format($c['stock_sistema'],2) ?></td>
                             <?php endif; ?>
@@ -473,7 +466,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
                             <?php endif; ?>
 
                             <td align="center" class="no-print"><span class="semaforo <?= $color ?>" title="Diferencia: <?= $dif ?>"></span></td>
-                            
+
                             <?php if($AUT_BORRAR==='SI'): ?>
                             <td class="no-print">
                                 <form method="POST" onsubmit="return confirm('¿Anular registro?')">
@@ -493,7 +486,7 @@ while ($r = $resultConteos->fetch_assoc()) $conteos[] = $r;
 
 <div id="modalProductos" class="modal">
     <div class="modal-content">
-        <span class="close-modal no-print" onclick="cerrarModal()">&times;</span>
+        <span class="close-modal" onclick="cerrarModal()">&times;</span>
         <h3 id="modal-titulo" style="border-bottom:2px solid #17a2b8; padding-bottom:10px;">Detalle de Productos</h3>
         <div id="tabla-productos">Cargando...</div>
     </div>
@@ -521,20 +514,20 @@ function actualizarCategoriasContadas() {
     formData.append('action', 'obtener_contados');
     formData.append('nit', '<?= $nitSesion ?>');
     formData.append('fecha', '<?= $fechaFiltro ?>');
-    
+
     fetch(window.location.href, { method: 'POST', body: formData })
     .then(r => r.json())
     .then(contados => {
         const select = document.getElementById('select-categoria');
         if (!select) return;
-        
+
         const valorActual = select.value;
-        
+
         Array.from(select.options).forEach(option => {
             if (option.value === "") return;
             const cod = option.value;
             const esContado = contados.includes(cod) || contados.includes(String(parseInt(cod)));
-            
+
             if (esContado) {
                 if (valorActual === cod) {
                     select.value = "";
