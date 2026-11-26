@@ -391,6 +391,7 @@ function abrirPopup(event, url) {
                                     <a class="nav-link" href="Estadistica_Vtas_MesaMes.php" target="contentFrame">Lo más Vendido por Mes/Mes</a>
                                     <a class="nav-link" href="VtaDiaDiaXtamaño.php" target="contentFrame">Lo más Vendido por tamaño</a>
                                     <a class="nav-link" href="Estadistica_Vtas_mas_Empresa.php" target="contentFrame">Lo más Vendido por Empresa</a>
+                                    <a class="nav-link" href="Estadistica_Vtas_productosXEmpresa.php" target="contentFrame">Lo más Vendido In por Empresa</a>
                                     <a class="nav-link" href="Estadistica_Familias.php" target="contentFrame">Lo más Vendido por Familia</a>
                                     <a class="nav-link" href="Estadistica_FamiliasXdia.php" target="contentFrame">Ventas por Familia/dia</a>
                                     <a class="nav-link" href="GraficaDiaDiaXProducto.php" target="contentFrame">Grafica Dia Dia X Producto</a>
