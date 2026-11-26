@@ -11,6 +11,28 @@ if (empty($_SESSION['CedulaNit'])) {
     exit;
 }
 
+/* ============================================
+   VALIDACIÓN DE CLAVE PARA REGISTRO DE GASTOS
+============================================ */
+// Reemplaza este hash con el generado en tu servidor mediante:
+// password_hash('252512122323', PASSWORD_DEFAULT)
+$CLAVE_GASTOS = '252512122323';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['validar_clave_gastos']) && $_GET['validar_clave_gastos'] === '1') {
+    header('Content-Type: application/json; charset=utf-8');
+    $claveIngresada = trim((string)($_POST['clave_gastos'] ?? ''));
+
+    if (hash_equals($CLAVE_GASTOS, $claveIngresada)) {
+        $_SESSION['acceso_registro_gastos'] = true;
+        echo json_encode(['ok' => true]);
+    } else {
+        echo json_encode(['ok' => false, 'mensaje' => 'Clave incorrecta. Intente nuevamente.']);
+    }
+    exit;
+}
+
+$TieneAccesoGastos = !empty($_SESSION['acceso_registro_gastos']);
+
 $UsuarioSesion = $_SESSION['CedulaNit'];
 $NombreUsuario = isset($_SESSION['Usuario']) ? $_SESSION['Usuario'] : $UsuarioSesion;
 
@@ -320,7 +342,7 @@ function abrirPopup(event, url) {
                                 <div class="accordion-body">
                                     <a class="nav-link" href="ValorInventario.php" target="contentFrame">Dashboard BNMA</a>  
                                     <a class="nav-link" href="Flujo_Caja.php" target="contentFrame">Movimientos de Caja</a>                                   
-                                    <a class="nav-link" href="RegistroGastos.php" target="contentFrame">Registro de Gastos Diarios</a>  
+                                    <a class="nav-link" id="linkRegistroGastos" href="RegistroGastos.php" target="contentFrame">Registro de Gastos Diarios</a>  
                                     <a class="nav-link" href="Compras.php" target="contentFrame">Ver Compras </a>       
                                     <a class="nav-link" href="ResumenVtas.php" target="contentFrame">Ver Ventas </a> 
                                     <a class="nav-link" href="CierreCajerosTodos.php" target="contentFrame">Cierres Cajeros Bnma</a>                                                                               
@@ -459,6 +481,29 @@ function abrirPopup(event, url) {
     </div>
 </div>
 
+<!-- Modal Clave Registro de Gastos Diarios -->
+<div class="modal fade" id="modalClaveGastos" tabindex="-1" aria-labelledby="modalClaveGastosLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h6 class="modal-title" id="modalClaveGastosLabel">🔒 Registro de Gastos Diarios</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form id="formClaveGastos" autocomplete="off">
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Ingrese la clave de acceso para abrir este módulo:</p>
+                    <input type="password" class="form-control text-center" id="inputClaveGastos" name="clave_gastos" placeholder="••••••••••••" required>
+                    <div id="errorClaveGastos" class="alert alert-danger py-2 px-3 mt-2 mb-0 small d-none"></div>
+                </div>
+                <div class="modal-footer bg-light py-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm" id="btnValidarClaveGastos">Ingresar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Modal de Confirmación de Ingreso con Logos de Sede enlazado a $_SESSION['SedeActual'] -->
 <div class="modal fade" id="modalBienvenida" tabindex="-1" aria-labelledby="modalBienvenidaLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered">
@@ -545,7 +590,25 @@ function abrirPopup(event, url) {
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
-var sedeActual = "<?= $SedeActual ?>"; 
+var sedeActual = "<?= $SedeActual ?>";
+var accesoGastosHabilitado = <?= $TieneAccesoGastos ? 'true' : 'false' ?>;
+
+function abrirModuloGastos(linkElement) {
+    const urlDestino = linkElement.getAttribute('href');
+    const tituloOpcion = linkElement.textContent.trim();
+    const frame = document.querySelector('iframe[name="contentFrame"]');
+
+    if (frame) {
+        frame.src = urlDestino;
+    }
+    if (tituloOpcion) {
+        document.title = tituloOpcion + " - Sistema BNMA";
+    }
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar && sidebar.classList.contains('show')) {
+        sidebar.classList.remove('show');
+    }
+}
 
 document.addEventListener("DOMContentLoaded", function() {
     var txtSede = document.getElementById("txtSedeNombre");
@@ -562,6 +625,64 @@ document.addEventListener("DOMContentLoaded", function() {
 
     var modalBienvenida = new bootstrap.Modal(document.getElementById('modalBienvenida'));
     modalBienvenida.show();
+
+    const linkGastos = document.getElementById('linkRegistroGastos');
+    const modalClaveEl = document.getElementById('modalClaveGastos');
+    const modalClaveGastos = modalClaveEl ? new bootstrap.Modal(modalClaveEl) : null;
+    const formClaveGastos = document.getElementById('formClaveGastos');
+    const inputClaveGastos = document.getElementById('inputClaveGastos');
+    const errorClaveGastos = document.getElementById('errorClaveGastos');
+
+    if (linkGastos && modalClaveGastos) {
+        linkGastos.addEventListener('click', function(e) {
+            if (accesoGastosHabilitado) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (errorClaveGastos) {
+                errorClaveGastos.classList.add('d-none');
+                errorClaveGastos.textContent = '';
+            }
+            if (inputClaveGastos) {
+                inputClaveGastos.value = '';
+            }
+            modalClaveGastos.show();
+            setTimeout(() => inputClaveGastos && inputClaveGastos.focus(), 200);
+        });
+    }
+
+    if (formClaveGastos && linkGastos) {
+        formClaveGastos.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const clave = inputClaveGastos ? inputClaveGastos.value : '';
+
+            fetch(window.location.pathname + '?validar_clave_gastos=1', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'clave_gastos=' + encodeURIComponent(clave)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    accesoGastosHabilitado = true;
+                    modalClaveGastos.hide();
+                    abrirModuloGastos(linkGastos);
+                } else if (errorClaveGastos) {
+                    errorClaveGastos.textContent = data.mensaje || 'Clave incorrecta.';
+                    errorClaveGastos.classList.remove('d-none');
+                    inputClaveGastos && inputClaveGastos.focus();
+                }
+            })
+            .catch(() => {
+                if (errorClaveGastos) {
+                    errorClaveGastos.textContent = 'Error al validar la clave.';
+                    errorClaveGastos.classList.remove('d-none');
+                }
+            });
+        });
+    }
 });
 
 document.getElementById('toggleMenu').onclick = () => {
@@ -570,7 +691,10 @@ document.getElementById('toggleMenu').onclick = () => {
 
 // Cambio automático del título de la página y ocultar menú en móviles al hacer clic
 document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    link.addEventListener('click', () => {
+    link.addEventListener('click', (e) => {
+        if (link.id === 'linkRegistroGastos' && !accesoGastosHabilitado) {
+            return;
+        }
         const tituloOpcion = link.textContent.trim();
         
         if (tituloOpcion) {
