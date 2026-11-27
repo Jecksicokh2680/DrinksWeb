@@ -30,11 +30,25 @@ function porcentaje($parte, $total) {
     if ($total <= 0) return '0%';
     return number_format(($parte / $total) * 100, 1, ',', '.') . '%'; 
 }
+function diaCorto3($fechaYmd) {
+    $dias = [
+        'Mon' => 'Lun',
+        'Tue' => 'Mar',
+        'Wed' => 'Mié',
+        'Thu' => 'Jue',
+        'Fri' => 'Vie',
+        'Sat' => 'Sáb',
+        'Sun' => 'Dom'
+    ];
+    $en = date('D', strtotime($fechaYmd));
+    return $dias[$en] ?? substr($en, 0, 3);
+}
 
 $fechaSQL = date('Y-m-d');
 $fechaSinGuion = date('Ymd');
 $mes = date('m');
 $anio = date('Y');
+$diaActual = (int)date('j');
 $fecha_45_atras = date('Y-m-d', strtotime('-60 days'));
 
 $nitSedes = ['CENTRAL' => '86057267-8', 'DRINKS' => '901724534-7'];
@@ -146,8 +160,85 @@ function analizarSucursal($mysqli_conn, $nombreSede, $pcData){
     ];
 }
 
+// ============================================================
+// VENTAS DÍA A DÍA DEL MES HASTA EL DÍA ACTUAL (SIN DÍAS EN 0)
+// ============================================================
+function ventasDiariasMes($mysqli_conn, $mes, $anio, $diaActual) {
+    $diario = array_fill(1, $diaActual, 0.0);
+    if (!$mysqli_conn) return $diario;
+
+    $sqlDiario = "SELECT dia, SUM(total) AS v FROM (
+        SELECT DAY(F.FECHA) AS dia, (D.CANTIDAD * D.VALORPROD) AS total
+        FROM FACTURAS F
+        INNER JOIN DETFACTURAS D ON D.IDFACTURA = F.IDFACTURA
+        LEFT JOIN DEVVENTAS DV ON DV.IDFACTURA = F.IDFACTURA
+        WHERE F.ESTADO = '0' AND DV.IDFACTURA IS NULL
+          AND MONTH(F.FECHA) = '$mes' AND YEAR(F.FECHA) = '$anio'
+          AND DAY(F.FECHA) <= $diaActual
+        UNION ALL
+        SELECT DAY(P.FECHA) AS dia, (DP.CANTIDAD * DP.VALORPROD) AS total
+        FROM PEDIDOS P
+        INNER JOIN DETPEDIDOS DP ON DP.IDPEDIDO = P.IDPEDIDO
+        WHERE P.ESTADO = '0'
+          AND MONTH(P.FECHA) = '$mes' AND YEAR(P.FECHA) = '$anio'
+          AND DAY(P.FECHA) <= $diaActual
+    ) X GROUP BY dia";
+
+    $resD = $mysqli_conn->query($sqlDiario);
+    if ($resD) {
+        while ($row = $resD->fetch_assoc()) {
+            $d = (int)$row['dia'];
+            if (isset($diario[$d])) {
+                $diario[$d] = (float)$row['v'];
+            }
+        }
+    }
+    return $diario;
+}
+
 $central = analizarSucursal($mysqliCentral, 'CENTRAL', $pcC);
 $drinks  = analizarSucursal($mysqliDrinks, 'DRINKS', $pcD);
+
+$rawCentral = ventasDiariasMes($mysqliCentral, $mes, $anio, $diaActual);
+$rawDrinks  = ventasDiariasMes($mysqliDrinks, $mes, $anio, $diaActual);
+
+$labelsDiasMes        = [];
+$ventasDiariasTotal   = [];
+$ventasDiariasCentral = [];
+$ventasDiariasDrinks  = [];
+$maxVentaDiaMes       = 0;
+$diaPicoLabel         = '-';
+$diasConVenta         = 0;
+
+for ($d = 1; $d <= $diaActual; $d++) {
+    $vC = $rawCentral[$d] ?? 0.0;
+    $vD = $rawDrinks[$d] ?? 0.0;
+    $valTotal = $vC + $vD;
+
+    // Omitir días sin ventas (venta consolidada igual a 0)
+    if ($valTotal <= 0) {
+        continue;
+    }
+
+    $diaStr = str_pad($d, 2, '0', STR_PAD_LEFT);
+    $fechaStr = "$anio-$mes-$diaStr";
+    $nomDia3 = diaCorto3($fechaStr);
+    $lbl = "$nomDia3 $diaStr/$mes";
+
+    $labelsDiasMes[]        = $lbl;
+    $ventasDiariasTotal[]   = $valTotal;
+    $ventasDiariasCentral[] = $vC;
+    $ventasDiariasDrinks[]  = $vD;
+    $diasConVenta++;
+
+    if ($valTotal > $maxVentaDiaMes) {
+        $maxVentaDiaMes = $valTotal;
+        $diaPicoLabel   = $lbl;
+    }
+}
+
+$totalMesConsolidado = $central['venta_mes'] + $drinks['venta_mes'];
+$promedioDiarioMes   = $diasConVenta > 0 ? ($totalMesConsolidado / $diasConVenta) : 0;
 
 // Compras del día
 $todasLasCompras = [];
@@ -239,6 +330,11 @@ usort($rankingCajeros, function($a,$b) { return $b['total'] <=>$a['total']; });
         .full-width { grid-column: 1 / -1; }
 
         .wrap-box { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; min-width: 0; }
+
+        .trend-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+        .trend-stats { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.82rem; }
+        .trend-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 10px; font-weight: 600; color: #334155; }
+        .trend-pill span { color: #2563eb; font-weight: 800; }
 
         .table-container { width: 100%; overflow-x: auto; border-radius: 8px; -webkit-overflow-scrolling: touch; background: #fff; border: 1px solid #e5e7eb; }
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
@@ -332,7 +428,7 @@ usort($rankingCajeros, function($a,$b) { return $b['total'] <=>$a['total']; });
                 <div class="details">
                     Trans. Manual: <?= moneda($central['trans_dia']+$drinks['trans_dia']) ?><br>
                     Trans. Automática: <?= moneda($central['trans_auto_val']+$drinks['trans_auto_val']) ?> <small>(<?= $central['trans_auto_cant']+$drinks['trans_auto_cant'] ?>)</small><br>
-                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - (($central['trans_dia']+$drinks['trans_auto_val']) + ($drinks['trans_dia']+$drinks['trans_auto_val']))) ?></b>
+                    Neto: <b style="color:#2563eb"><?= moneda(($central['venta_dia']+$drinks['venta_dia']) - (($central['trans_dia']+$central['trans_auto_val']) + ($drinks['trans_dia']+$drinks['trans_auto_val']))) ?></b>
                 </div>
             </div>
             <div>
@@ -369,6 +465,29 @@ usort($rankingCajeros, function($a,$b) { return $b['total'] <=>$a['total']; });
         <div class="wrap-box">
             <h4 style="text-align:center; margin-top:0; color:#4b5563;">🥧 % PARTICIPACION VENTAS</h4>
             <div style="position: relative; height:200px;"><canvas id="chartVenta"></canvas></div>
+        </div>
+
+        <!-- PANEL ADICIONAL: TENDENCIA DE VENTAS DÍA A DÍA DEL MES (HASTA HOY, SIN DÍAS EN 0) -->
+        <div class="wrap-box full-width" style="border-left: 4px solid #2563eb;">
+            <div class="trend-header">
+                <h3 style="margin:0; color:#111827; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
+                    📉 Tendencia de Ventas Día a Día (01/<?= $mes ?> al <?= str_pad($diaActual, 2, '0', STR_PAD_LEFT) . '/' . $mes ?>)
+                </h3>
+                <div class="trend-stats">
+                    <div class="trend-pill">Acumulado Mes: <span><?= moneda($totalMesConsolidado) ?></span></div>
+                    <div class="trend-pill">Prom. Día Vendido: <span><?= moneda($promedioDiarioMes) ?></span></div>
+                    <div class="trend-pill">Día Pico (<?= $diaPicoLabel ?>): <span><?= moneda($maxVentaDiaMes) ?></span></div>
+                </div>
+            </div>
+            <div style="position: relative; height: 290px; width: 100%;">
+                <?php if(empty($labelsDiasMes)): ?>
+                    <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#9ca3af; font-size:0.9rem;">
+                        No hay días con ventas registradas hasta la fecha
+                    </div>
+                <?php else: ?>
+                    <canvas id="chartTendenciaVentasMes"></canvas>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="wrap-box full-width">
@@ -448,6 +567,97 @@ usort($rankingCajeros, function($a,$b) { return $b['total'] <=>$a['total']; });
         data: { labels: ['Central', 'Drinks'], datasets: [{ data: [<?= $central['venta_dia'] ?>, <?=$drinks['venta_dia'] ?>], backgroundColor: ['#3b82f6', '#34d399'] }] }, 
         options: { ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } } 
     });
+
+    // GRÁFICA DE TENDENCIA DE VENTAS DÍA A DÍA (HASTA HOY, SIN DÍAS EN 0)
+    const fmtCOP = (val) => '$' + Math.round(Number(val || 0)).toLocaleString('es-CO');
+    const canvasTendencia = document.getElementById('chartTendenciaVentasMes');
+    if (canvasTendencia) {
+        const ctxTendencia = canvasTendencia.getContext('2d');
+        const gradTotal = ctxTendencia.createLinearGradient(0, 0, 0, 290);
+        gradTotal.addColorStop(0, 'rgba(37, 99, 235, 0.25)');
+        gradTotal.addColorStop(1, 'rgba(37, 99, 235, 0.01)');
+
+        new Chart(ctxTendencia, {
+            type: 'line',
+            data: {
+                labels: <?= json_encode($labelsDiasMes) ?>,
+                datasets: [
+                    {
+                        label: 'Total Consolidado',
+                        data: <?= json_encode($ventasDiariasTotal) ?>,
+                        borderColor: '#2563eb',
+                        backgroundColor: gradTotal,
+                        borderWidth: 3,
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 3.5,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#2563eb',
+                        datalabels: { display: false }
+                    },
+                    {
+                        label: 'Central',
+                        data: <?= json_encode(array_values($ventasDiariasCentral)) ?>,
+                        borderColor: '#f97316',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        borderDash: [4, 4],
+                        tension: 0.35,
+                        fill: false,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        datalabels: { display: false }
+                    },
+                    {
+                        label: 'Drinks',
+                        data: <?= json_encode(array_values($ventasDiariasDrinks)) ?>,
+                        borderColor: '#10b981',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: false,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        datalabels: { display: false }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { boxWidth: 14, font: { size: 12, weight: 'bold' } }
+                    },
+                    datalabels: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ` ${ctx.dataset.label}: ${fmtCOP(ctx.parsed.y)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 11 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9' },
+                        ticks: {
+                            font: { size: 11 },
+                            callback: function(value) { return fmtCOP(value); }
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     document.querySelectorAll('.edit-compra').forEach(el => {
         el.addEventListener('blur', function() {
